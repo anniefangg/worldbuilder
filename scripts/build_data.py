@@ -6,7 +6,7 @@ curated People / Places / Political parties / Heads of state records
 transcribed from the five worldbuilding sheets. Emits data/wiki_data.json:
 a single object of entities + typed relationships that the artifact renders.
 """
-import json, re, unicodedata
+import os, json, re, unicodedata
 from collections import OrderedDict
 
 STREETS = json.load(open("/home/user/worldbuilder/data/streets.json"))
@@ -296,6 +296,26 @@ for st in STREETS:
         rel(slug, psl, "named after", f"Street honouring {entities[psl]['name']}")
     elif find(st["name"],"person"):
         rel(slug, find(st["name"],"person"), "named after", f"Street honouring {st['name']}")
+
+# ── PORTRAITS (from exported Characters xlsx tabs) ─────────────────────────
+def _norm(s):
+    return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode().lower().strip()
+PORT_PATH = "/home/user/worldbuilder/data/portraits.json"
+if os.path.exists(PORT_PATH):
+    portraits = json.load(open(PORT_PATH))
+    pmap = {}
+    for e in entities.values():
+        if e["type"] == "person":
+            pmap.setdefault(_norm(e["name"]), e["slug"])
+    matched = new = 0
+    for nm, uri in portraits.items():
+        slug = pmap.get(_norm(nm))
+        if slug:
+            entities[slug]["photo"] = uri; matched += 1
+        else:  # a portrait for someone not yet in the wiki — add them
+            s = add(nm, "person", "A pirate-era figure of Amparacán.", seasons=[2], photo=uri)
+            pmap[_norm(nm)] = s; new += 1
+    print(f"portraits: matched {matched}, added {new} new people")
 
 # ── finalise ──────────────────────────────────────────────────────────────
 data = {
