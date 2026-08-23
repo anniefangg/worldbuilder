@@ -225,6 +225,7 @@ td .cat{font-size:11px;color:var(--muted)}
 @media(max-width:560px){.rel-add{grid-template-columns:1fr}}
 .relbox{display:flex;flex-direction:column;gap:.5rem}
 .relbox .conn .rel{min-width:96px}
+.redlink{color:var(--danger);border-bottom:1px dotted var(--danger);cursor:help;opacity:.85}
 
 /* ── responsive ── */
 .menubtn{display:none}
@@ -283,10 +284,15 @@ function bootState(){
 bootState();
 
 // indexes
-let BY={}, RELS_A={}, RELS_B={};
+let BY={}, RELS_A={}, RELS_B={}, BY_NAME={};
+const NAME_PRIO={person:0,place:1,political_party:2,organisation:3,street:4};
 function reindex(){
-  BY={}; RELS_A={}; RELS_B={};
+  BY={}; RELS_A={}; RELS_B={}; BY_NAME={};
   DATA.entities.forEach(e=>BY[e.slug]=e);
+  // name -> slug for [[wiki-links]]; when a name is shared, prefer person>place>party>street
+  DATA.entities.slice().sort((a,b)=>(NAME_PRIO[a.type]||9)-(NAME_PRIO[b.type]||9)).forEach(e=>{
+    const k=e.name.toLowerCase(); if(!(k in BY_NAME))BY_NAME[k]=e.slug;
+  });
   (DATA.relationships||[]).forEach((r,i)=>{
     (RELS_A[r.a]=RELS_A[r.a]||[]).push(r);
     (RELS_B[r.b]=RELS_B[r.b]||[]).push(r);
@@ -298,6 +304,20 @@ DATA.revisions=DATA.revisions||[];
 const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation'};
 const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations'};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// render free text, turning [[Name]] / [[Name|label]] into links to that article
+function wikitext(str){
+  if(str==null||str==='')return '';
+  return String(str).split(/(\[\[[^\]]+\]\])/g).map(seg=>{
+    const m=seg.match(/^\[\[([^\]]+)\]\]$/);
+    if(!m)return esc(seg);
+    let inner=m[1],pipe=inner.indexOf('|');
+    let target=(pipe>=0?inner.slice(0,pipe):inner).trim();
+    let label=(pipe>=0?inner.slice(pipe+1):inner).trim();
+    const slug=BY_NAME[target.toLowerCase()];
+    if(slug)return `<a href="#/e/${slug}">${esc(label)}</a>`;
+    return `<span class="redlink" title="No article named “${esc(target)}” yet">${esc(label)}</span>`;
+  }).join('');
+}
 const fmt=n=>n==null||n===''?'':Number(n).toLocaleString('en-US');
 
 function link(slug,label){const e=BY[slug];if(!e)return esc(label||slug);
@@ -439,7 +459,9 @@ function pageEntity(slug,params){
     <div class="eyebrow">${esc(subtitleFor(e))}</div>
     <h1 class="title">${esc(e.name)}</h1>
     ${WRITER||LOCAL||CAP?`<button class="btn small editbtn" onclick="location.hash='#/edit/${e.slug}'">✎ Edit</button>`:''}
-    <p class="lead">${esc(e.description||'No description yet.')}</p>`;
+    <p class="lead">${wikitext(e.description)||'No description yet.'}</p>`;
+  if(e.bio){body+=`<h2 class="sec">${e.type==='person'?'Biography':'Overview'}</h2>`+
+    e.bio.split(/\n\s*\n/).map(para=>`<p>${wikitext(para)}</p>`).join('');}
   body+=typeSections(e,rels);
   // connections (personal relations are shown separately for people)
   const shown=rels.filter(r=>BY[r.other]&&!(e.type==='person'&&PERSON_RELS.includes(r.rel)));
@@ -471,9 +493,8 @@ function cap1(s){return s?s[0].toUpperCase()+s.slice(1):s;}
 function infobox(e,rels){
   let rows='';
   const R=(k,v)=>{if(v!=null&&v!=='')rows+=`<div class="row"><dt>${esc(k)}</dt><dd>${v}</dd></div>`;};
-  let photo='';
+  let photo=e.photo?`<img class="ib-photo" src="${e.photo}" alt="Image of ${esc(e.name)}">`:'';
   if(e.type==='person'){
-    if(e.photo)photo=`<img class="ib-photo" src="${e.photo}" alt="Portrait of ${esc(e.name)}">`;
     const life=[e.birth_year,e.death_year].some(x=>x!=null)?`${e.birth_year!=null?e.birth_year:'?'}–${e.death_year!=null?e.death_year:(e.birth_year!=null?'present':'?')}`:'';
     R('Born',life);
     R('Birthplace',e.origin_city?esc(e.origin_city):(e.origin==='foreign'?'Foreign':''));
@@ -519,7 +540,6 @@ function typeSections(e,rels){
     if(mem.length){h+=`<h2 class="sec">Heads of state <span class="count">${mem.length}</span></h2><div class="conns">`+mem.map(x=>`<div class="conn"><span class="rel">${esc(x.d||'')}</span><span>${link(x.s)}</span></div>`).join('')+`</div>`;}
   }
   if(e.type==='person'){
-    if(e.bio){h+=`<h2 class="sec">Biography</h2>`+e.bio.split(/\n\s*\n/).map(para=>`<p>${esc(para)}</p>`).join('');}
     const prs=relsOf(e.slug).filter(r=>PERSON_RELS.includes(r.rel)&&BY[r.other]&&BY[r.other].type==='person');
     if(prs.length){h+=`<h2 class="sec">Relations <span class="count">${prs.length}</span></h2><div class="relbox">`+
       prs.map(r=>`<div class="conn"><span class="rel">${esc(r.rel)}</span><span>${link(r.other)}${r.desc?` <span class="cat">— ${esc(r.desc)}</span>`:''}</span></div>`).join('')+`</div>`;}
@@ -620,8 +640,8 @@ function pageSeasons(){
 const EDIT_FIELDS={
   person:[['name','Name','text'],['description','Short description','textarea'],['bio','Biography','textarea'],['birth_year','Born (year)','number'],['death_year','Died (year)','number'],['origin_city','Birthplace','text'],['education','Education','text'],['party','Political party','party'],['political_role','Political role','text'],['notable_for','Notable for','text'],['occupation','Occupation','text'],['seasons','Seasons (comma-separated numbers)','seasons']],
   street:[['name','Name','text'],['description','Description','textarea'],['street_type','Street type','text'],['category','Category','text'],['meaning','Meaning / etymology','text'],['note','Note','textarea']],
-  place:[['name','Name','text'],['description','Description','textarea'],['place_type','Kind','text'],['population','Population','number'],['founded_decade','Founded (decade)','text'],['peak_decade','Grew fastest (decade)','text'],['typology','Typology','text']],
-  political_party:[['name','Name','text'],['description','Description','textarea'],['abbreviation','Abbreviation','text'],['alignment','Alignment','text'],['ideology','Ideology','text'],['seats','Seats','number'],['vote_pct','Vote %','number'],['year_est','Founded (year)','number'],['status','Status','text']],
+  place:[['name','Name','text'],['description','Short description','textarea'],['bio','Overview','textarea'],['place_type','Kind','text'],['population','Population','number'],['founded_decade','Founded (decade)','text'],['peak_decade','Grew fastest (decade)','text'],['typology','Typology','text']],
+  political_party:[['name','Name','text'],['description','Short description','textarea'],['bio','Overview','textarea'],['abbreviation','Abbreviation','text'],['alignment','Alignment','text'],['ideology','Ideology','text'],['seats','Seats','number'],['vote_pct','Vote %','number'],['year_est','Founded (year)','number'],['status','Status','text']],
 };
 function pageEdit(slug){
   const e=BY[slug];
@@ -636,27 +656,35 @@ function pageEdit(slug){
     if(kind==='textarea')ctl=`<textarea id="f_${k}">${esc(val)}</textarea>`;
     else if(kind==='party')ctl=`<input id="f_${k}" list="partylist" value="${esc(val)}" placeholder="Type a party name…">`;
     else ctl=`<input id="f_${k}" type="${kind==='number'?'number':'text'}" value="${esc(val)}">`;
+    const linkHint='Use <span class="mono">[[Name]]</span> to link to another article.';
     const hint=kind==='party'?`<div class="hint">Links to a party page if the name matches one.</div>`
-      :k==='bio'?`<div class="hint">Full biography. Blank lines separate paragraphs.</div>`:'';
+      :k==='bio'?`<div class="hint">Blank lines separate paragraphs. ${linkHint}</div>`
+      :k==='description'?`<div class="hint">${linkHint}</div>`:'';
     return `<div class="field"><label for="f_${k}">${esc(label)}</label>${ctl}${hint}</div>`;
   };
-  // person-only: photo uploader + relations editor
+  // photo uploader (person / place / party) + relations editor (person only)
   let extra='';
-  if(e.type==='person'){
-    EDIT_PHOTO=e.photo||null;
-    EDIT_RELS=(RELS_A[e.slug]||[]).filter(r=>PERSON_RELS.includes(r.type)).map(r=>({b:r.b,type:r.type,description:r.description||''}));
-    const peopleNames=DATA.entities.filter(x=>x.type==='person'&&x.slug!==e.slug).map(x=>x.name);
-    extra=`
+  const wantsPhoto=e.type==='person'||e.type==='place'||e.type==='political_party';
+  EDIT_PHOTO=wantsPhoto?(e.photo||null):null;
+  EDIT_RELS=[];
+  if(wantsPhoto){
+    const word=e.type==='person'?'portrait':'image';
+    extra+=`
     <div class="field"><label>Photo</label>
       <div class="photoedit">
-        <div class="pv" id="photoPrev">${EDIT_PHOTO?`<img src="${EDIT_PHOTO}" alt="">`:'No photo'}</div>
+        <div class="pv" id="photoPrev">${EDIT_PHOTO?`<img src="${EDIT_PHOTO}" alt="">`:'No image'}</div>
         <div>
           <input type="file" accept="image/*" id="photoInput" style="font-size:13px">
-          <div class="hint">Upload a portrait — it is stored inside the wiki (downscaled). External image links won't load.</div>
-          <button type="button" class="btn small ghost" id="photoClear" style="margin-top:.5rem">Remove photo</button>
+          <div class="hint">Upload a ${word} — it is stored inside the wiki (downscaled). External image links won't load.</div>
+          <button type="button" class="btn small ghost" id="photoClear" style="margin-top:.5rem">Remove image</button>
         </div>
       </div>
-    </div>
+    </div>`;
+  }
+  if(e.type==='person'){
+    EDIT_RELS=(RELS_A[e.slug]||[]).filter(r=>PERSON_RELS.includes(r.type)).map(r=>({b:r.b,type:r.type,description:r.description||''}));
+    const peopleNames=DATA.entities.filter(x=>x.type==='person'&&x.slug!==e.slug).map(x=>x.name);
+    extra+=`
     <div class="field"><label>Relations</label>
       <div class="rel-editor">
         <div class="rel-list" id="relList"></div>
@@ -727,8 +755,8 @@ function doSave(slug){
     ov=ov==null?'':ov; const cmp=nv==null?'':nv;
     if(String(cmp)!==String(ov)){changes.push([k,String(ov),String(cmp)]);e[k]=nv;}
   });
-  // photo
-  if(e.type==='person'&&EDIT_PHOTO!==(e.photo||null)){
+  // photo (person / place / party)
+  if((e.type==='person'||e.type==='place'||e.type==='political_party')&&EDIT_PHOTO!==(e.photo||null)){
     changes.push(['photo',e.photo?'(image)':'(none)',EDIT_PHOTO?'(image)':'(none)']);
     if(EDIT_PHOTO)e.photo=EDIT_PHOTO;else delete e.photo;
   }
