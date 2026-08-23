@@ -1,0 +1,3425 @@
+[
+ {
+  "name": "28 de Agosto",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Local history",
+  "meaning": "28 August",
+  "note": ""
+ },
+ {
+  "name": "Abadía del Sacromonte",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Sacromonte"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Sacromonte Abbey",
+  "note": ""
+ },
+ {
+  "name": "Abreojos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "Open eyes",
+  "note": ""
+ },
+ {
+  "name": "Abundio",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Name",
+  "meaning": "Abundance",
+  "note": ""
+ },
+ {
+  "name": "Acacias",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Acacia",
+  "note": ""
+ },
+ {
+  "name": "Acanto",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Acanthus",
+  "note": ""
+ },
+ {
+  "name": "Acapulco",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Acapulco, Guerrero",
+  "note": ""
+ },
+ {
+  "name": "Acosta",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Surname",
+  "meaning": "Acosta",
+  "note": ""
+ },
+ {
+  "name": "Acquarello",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Watercolour",
+  "note": ""
+ },
+ {
+  "name": "Acuña",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Surname",
+  "meaning": "Acuña",
+  "note": ""
+ },
+ {
+  "name": "Adobe",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Alamedas",
+   "Esquera"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Adobe mudbrick",
+  "note": ""
+ },
+ {
+  "name": "África",
+  "type_abbrev": "Calz.",
+  "type_full": "Calzada de",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Africa",
+  "note": ""
+ },
+ {
+  "name": "Agave",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Plants - other",
+  "meaning": "Agave",
+  "note": ""
+ },
+ {
+  "name": "Agramonte",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad",
+   "Colonia Rosas"
+  ],
+  "category": "Surname",
+  "meaning": "Agramonte",
+  "note": ""
+ },
+ {
+  "name": "Aguacero",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Other",
+  "meaning": "Downpour",
+  "note": ""
+ },
+ {
+  "name": "Aguadulce",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Sweet water",
+  "note": ""
+ },
+ {
+  "name": "Aguas Claras",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Other",
+  "meaning": "Clear water",
+  "note": ""
+ },
+ {
+  "name": "Aguasal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Other",
+  "meaning": "Salt water",
+  "note": ""
+ },
+ {
+  "name": "Agudo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Other",
+  "meaning": "Agudo",
+  "note": ""
+ },
+ {
+  "name": "Aire",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Sacromonte"
+  ],
+  "category": "Other",
+  "meaning": "Air",
+  "note": ""
+ },
+ {
+  "name": "Ajúra",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Other - unknown",
+  "meaning": "Ajúra",
+  "note": ""
+ },
+ {
+  "name": "Alajero",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "Jewelry box",
+  "note": ""
+ },
+ {
+  "name": "Álamos",
+  "type_abbrev": "C.",
+  "type_full": "Calle de los",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Poplars",
+  "note": ""
+ },
+ {
+  "name": "Alao",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Other",
+  "meaning": "Alao",
+  "note": ""
+ },
+ {
+  "name": "Albergue",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Playa Pálida",
+   "Laureles"
+  ],
+  "category": "Local history",
+  "meaning": "Shelter",
+  "note": ""
+ },
+ {
+  "name": "Albión",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Albion Park Stadium",
+  "note": ""
+ },
+ {
+  "name": "Albionito",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Little Albion",
+  "note": ""
+ },
+ {
+  "name": "Albox",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Albox, Valencia",
+  "note": ""
+ },
+ {
+  "name": "Alcatraces",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Lilles",
+  "note": ""
+ },
+ {
+  "name": "Aldama",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Surname",
+  "meaning": "Aldama",
+  "note": ""
+ },
+ {
+  "name": "Aldebrío",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Other",
+  "meaning": "Aldebrío",
+  "note": ""
+ },
+ {
+  "name": "Alegría",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Other",
+  "meaning": "Happiness",
+  "note": ""
+ },
+ {
+  "name": "Alejandrina",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "From Alexandria",
+  "note": ""
+ },
+ {
+  "name": "Alejandro Vázquez Merayo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Pueblo Viejo"
+  ],
+  "category": "Local people - origins",
+  "meaning": "Alejandro Vázquez Merayo",
+  "note": ""
+ },
+ {
+  "name": "Alexander von Humboldt",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya",
+   "Academia"
+  ],
+  "category": "Foreign people - scientists",
+  "meaning": "Alexander von Humboldt",
+  "note": ""
+ },
+ {
+  "name": "Alfareros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Potters",
+  "note": ""
+ },
+ {
+  "name": "Algarín",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Algarín",
+  "note": ""
+ },
+ {
+  "name": "Allende",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Surname",
+  "meaning": "Allende",
+  "note": ""
+ },
+ {
+  "name": "Almacenistas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Storekeepers",
+  "note": ""
+ },
+ {
+  "name": "Almagro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Surname",
+  "meaning": "Almagro",
+  "note": ""
+ },
+ {
+  "name": "Almarza",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Surname",
+  "meaning": "Almarza",
+  "note": ""
+ },
+ {
+  "name": "Almendros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Almond trees",
+  "note": ""
+ },
+ {
+  "name": "Almería",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Amería",
+  "note": ""
+ },
+ {
+  "name": "Alondra",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Animals - birds",
+  "meaning": "Lark",
+  "note": ""
+ },
+ {
+  "name": "Altagracia",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Other",
+  "meaning": "High grace",
+  "note": ""
+ },
+ {
+  "name": "Altamirano",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Foreign people - authors",
+  "meaning": "Ignacio Manuel Altamirano",
+  "note": ""
+ },
+ {
+  "name": "Altar Norte",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Altar (north)",
+  "note": ""
+ },
+ {
+  "name": "Altar Sur",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Altar (south)",
+  "note": ""
+ },
+ {
+  "name": "Alva",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Alva",
+  "note": ""
+ },
+ {
+  "name": "Amador",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Other",
+  "meaning": "Lover",
+  "note": ""
+ },
+ {
+  "name": "Amancio",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Name",
+  "meaning": "Amancio",
+  "note": ""
+ },
+ {
+  "name": "Amanecer",
+  "type_abbrev": "Pl.",
+  "type_full": "Plaza",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Sunrise",
+  "note": ""
+ },
+ {
+  "name": "Amapolas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Poppies",
+  "note": ""
+ },
+ {
+  "name": "Amarre",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Pueblo Viejo"
+  ],
+  "category": "Other",
+  "meaning": "Tie",
+  "note": ""
+ },
+ {
+  "name": "América",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "America",
+  "note": ""
+ },
+ {
+  "name": "Ameyac",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Ameyac",
+  "note": ""
+ },
+ {
+  "name": "Amoles",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Soaproot",
+  "note": ""
+ },
+ {
+  "name": "Ana María Rosas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Ana María Rosas",
+  "note": ""
+ },
+ {
+  "name": "Ana Paredes Cortés",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Ana Paredes Cortés",
+  "note": ""
+ },
+ {
+  "name": "Ana Regalado",
+  "type_abbrev": "C.",
+  "type_full": "Calle de la",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Ana Regalado",
+  "note": "Writer"
+ },
+ {
+  "name": "Ananea",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Other",
+  "meaning": "Ananea",
+  "note": ""
+ },
+ {
+  "name": "Añasco",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Surname",
+  "meaning": "Añasco",
+  "note": ""
+ },
+ {
+  "name": "Ancianos",
+  "type_abbrev": "C.",
+  "type_full": "Calle de los",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local history",
+  "meaning": "Elders",
+  "note": ""
+ },
+ {
+  "name": "Andavías",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Andavías, Zamora",
+  "note": ""
+ },
+ {
+  "name": "Andén",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Platform",
+  "note": ""
+ },
+ {
+  "name": "Andrómeda",
+  "type_abbrev": "Pte.",
+  "type_full": "Puente",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Other - cosmos",
+  "meaning": "Andromeda",
+  "note": ""
+ },
+ {
+  "name": "Añelo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Añelo",
+  "note": ""
+ },
+ {
+  "name": "Ángel Solano",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Ángel Solano",
+  "note": ""
+ },
+ {
+  "name": "Ángeles",
+  "type_abbrev": "C.",
+  "type_full": "Calle de los",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other - religious",
+  "meaning": "Angles",
+  "note": ""
+ },
+ {
+  "name": "Angostura",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Narrow pass",
+  "note": ""
+ },
+ {
+  "name": "Ánimas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Other",
+  "meaning": "Sould",
+  "note": ""
+ },
+ {
+  "name": "Anora",
+  "type_abbrev": "C., Pte.",
+  "type_full": "Calle, Puente",
+  "neighbourhoods": [
+   "Colonia Rosas",
+   "Islas de la Madrugada"
+  ],
+  "category": "Other",
+  "meaning": "Anora",
+  "note": ""
+ },
+ {
+  "name": "Añoranza",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Nostalgia",
+  "note": ""
+ },
+ {
+  "name": "Antares",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Other",
+  "meaning": "Antares",
+  "note": ""
+ },
+ {
+  "name": "Antequera",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "La Joya"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Antequerea, Málaga",
+  "note": ""
+ },
+ {
+  "name": "Antioquia",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Antioquia, Colombia",
+  "note": ""
+ },
+ {
+  "name": "Antonieta Rivas Mercado",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Foreign people - authors",
+  "meaning": "Antonieta Rivas Mercado",
+  "note": ""
+ },
+ {
+  "name": "Antonio Bascaro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Antonio Bascaro",
+  "note": "Painter"
+ },
+ {
+  "name": "Antonio Bashara Riquelme",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local people - politics",
+  "meaning": "Antonio Bashara Riquelme",
+  "note": ""
+ },
+ {
+  "name": "Antonio de la Fe",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Antonio de la Fe",
+  "note": "Painter"
+ },
+ {
+  "name": "Anula",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Surname",
+  "meaning": "Anula",
+  "note": ""
+ },
+ {
+  "name": "Anza",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Anza",
+  "note": ""
+ },
+ {
+  "name": "Aparia",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "Aparia",
+  "note": ""
+ },
+ {
+  "name": "Apolonia",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Apolonia",
+  "note": "Singer"
+ },
+ {
+  "name": "Aponte",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Aponte",
+  "note": ""
+ },
+ {
+  "name": "Aquila",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Aquila, Michoacán",
+  "note": ""
+ },
+ {
+  "name": "Araceli",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Name",
+  "meaning": "Araceli",
+  "note": ""
+ },
+ {
+  "name": "Aracena",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Aracena, Huelva",
+  "note": ""
+ },
+ {
+  "name": "Aráez",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Surname",
+  "meaning": "Aráez",
+  "note": ""
+ },
+ {
+  "name": "Aragón",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Aragón",
+  "note": ""
+ },
+ {
+  "name": "Aragua",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Aragua, Venezuela",
+  "note": ""
+ },
+ {
+  "name": "Arahal",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Arahal lighthouse",
+  "note": ""
+ },
+ {
+  "name": "Arango",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Surname",
+  "meaning": "Arango",
+  "note": ""
+ },
+ {
+  "name": "Arau",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Surname",
+  "meaning": "Arau",
+  "note": ""
+ },
+ {
+  "name": "Araza",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Plants - fruits",
+  "meaning": "Guayaba",
+  "note": ""
+ },
+ {
+  "name": "Arboledas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya",
+   "Laureles"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Grove",
+  "note": ""
+ },
+ {
+  "name": "Arboreto",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Arboretum",
+  "note": ""
+ },
+ {
+  "name": "Arcabé",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Other - unknown",
+  "meaning": "Arcabé",
+  "note": ""
+ },
+ {
+  "name": "Arce",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Maple",
+  "note": ""
+ },
+ {
+  "name": "Arcediano",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Arcediano, Salamanca",
+  "note": ""
+ },
+ {
+  "name": "Arcila",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Arcila, Morocco",
+  "note": ""
+ },
+ {
+  "name": "Arcoleo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Surname",
+  "meaning": "Arcoleo",
+  "note": ""
+ },
+ {
+  "name": "Arellano",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Surname",
+  "meaning": "Arellano",
+  "note": ""
+ },
+ {
+  "name": "Arenal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Sandy area",
+  "note": ""
+ },
+ {
+  "name": "Arévalo",
+  "type_abbrev": "C., Cam.",
+  "type_full": "Calle, Camino de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Arévalo",
+  "note": ""
+ },
+ {
+  "name": "Arias",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Surname",
+  "meaning": "Arias",
+  "note": ""
+ },
+ {
+  "name": "Arlo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Plants - fruits",
+  "meaning": "Barberry",
+  "note": ""
+ },
+ {
+  "name": "Armando de Teneraca",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Armando de Teneraca",
+  "note": ""
+ },
+ {
+  "name": "Arnaldo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Name",
+  "meaning": "Arnaldo",
+  "note": ""
+ },
+ {
+  "name": "Arqueología",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Other - intellectual discipline",
+  "meaning": "Archaeology",
+  "note": ""
+ },
+ {
+  "name": "Arquesa",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Neighbourhood name",
+  "meaning": "Arquesa",
+  "note": ""
+ },
+ {
+  "name": "Arquitectura",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya",
+   "Academia"
+  ],
+  "category": "Other - intellectual discipline",
+  "meaning": "Architecture",
+  "note": ""
+ },
+ {
+  "name": "Arquitos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Little arches",
+  "note": ""
+ },
+ {
+  "name": "Arrabal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa",
+   "El Amparo"
+  ],
+  "category": "Local area - descriptive",
+  "meaning": "Outlying suburb",
+  "note": ""
+ },
+ {
+  "name": "Arroyo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Creek",
+  "note": ""
+ },
+ {
+  "name": "Arsenio Kársakov",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Isla Calo"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Arsenio Kársakov",
+  "note": ""
+ },
+ {
+  "name": "Artemio",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Name",
+  "meaning": "Artemis",
+  "note": ""
+ },
+ {
+  "name": "Artesanias",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Crafts",
+  "note": ""
+ },
+ {
+  "name": "Artesanos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Craftsmen",
+  "note": ""
+ },
+ {
+  "name": "Asamblea",
+  "type_abbrev": "Av.",
+  "type_full": "Avenida",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "City Hall",
+  "note": ""
+ },
+ {
+  "name": "Ascención",
+  "type_abbrev": "Pl.",
+  "type_full": "Plaza",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other - religious",
+  "meaning": "Ascencion",
+  "note": ""
+ },
+ {
+  "name": "Asier Urquidi",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Asier Urquidi",
+  "note": ""
+ },
+ {
+  "name": "Asilo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro",
+   "Plaza Canaro"
+  ],
+  "category": "Other - concepts",
+  "meaning": "Asylum",
+  "note": ""
+ },
+ {
+  "name": "Asomada",
+  "type_abbrev": "C.",
+  "type_full": "Calle de la",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Other",
+  "meaning": "Overlooking",
+  "note": ""
+ },
+ {
+  "name": "Astillero",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Shipyard",
+  "note": ""
+ },
+ {
+  "name": "Astronomía",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Other - intellectual discipline",
+  "meaning": "Astronomy",
+  "note": ""
+ },
+ {
+  "name": "Atalaya",
+  "type_abbrev": "C.",
+  "type_full": "Calle de la",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Watchtower",
+  "note": ""
+ },
+ {
+  "name": "Atascaderos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Tanayac"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Bog",
+  "note": ""
+ },
+ {
+  "name": "Atilano Vegas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Atilano Vegas",
+  "note": ""
+ },
+ {
+  "name": "Atlántico",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Atlantic Ocean",
+  "note": ""
+ },
+ {
+  "name": "Atlas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Atlas Football Club",
+  "note": ""
+ },
+ {
+  "name": "Atocha",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Atocha, Madrid",
+  "note": ""
+ },
+ {
+  "name": "Aulencia",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Aulencia, Madrid",
+  "note": ""
+ },
+ {
+  "name": "Aurora",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Other - cosmos",
+  "meaning": "Aurora",
+  "note": ""
+ },
+ {
+  "name": "Avándaro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Avándaro, Mexico State",
+  "note": ""
+ },
+ {
+  "name": "Avante",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Other",
+  "meaning": "Forward",
+  "note": ""
+ },
+ {
+  "name": "Ayachi",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other - unknown",
+  "meaning": "Ayachi",
+  "note": ""
+ },
+ {
+  "name": "Ayamonte",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Ayamonte, Huelva",
+  "note": ""
+ },
+ {
+  "name": "Ayora",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Ayora, Valencia",
+  "note": ""
+ },
+ {
+  "name": "Azúa",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Amparo"
+  ],
+  "category": "Foreign places - Caribbean",
+  "meaning": "Azúa, Dominican Republic",
+  "note": ""
+ },
+ {
+  "name": "Azúcar",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Sugar",
+  "note": ""
+ },
+ {
+  "name": "Azucena",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Lily",
+  "note": ""
+ },
+ {
+  "name": "Azulejos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Tiles",
+  "note": ""
+ },
+ {
+  "name": "Azura",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Other - unknown",
+  "meaning": "Azura",
+  "note": ""
+ },
+ {
+  "name": "Bacanora",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Bacanora mezcal",
+  "note": ""
+ },
+ {
+  "name": "Badajoz",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Badajoz",
+  "note": ""
+ },
+ {
+  "name": "Bahía",
+  "type_abbrev": "C.",
+  "type_full": "Calle de la",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Bay",
+  "note": ""
+ },
+ {
+  "name": "Balam",
+  "type_abbrev": "And.",
+  "type_full": "Andador",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Animals - other",
+  "meaning": "Jaguar",
+  "note": ""
+ },
+ {
+  "name": "Balché",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Tropical lilac",
+  "note": ""
+ },
+ {
+  "name": "Balmoral",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Balmoral, Scotland",
+  "note": ""
+ },
+ {
+  "name": "Balsas",
+  "type_abbrev": "C.",
+  "type_full": "Calle de las",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Balsas",
+  "note": ""
+ },
+ {
+  "name": "Baranda",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya"
+  ],
+  "category": "Surname",
+  "meaning": "Baranda",
+  "note": ""
+ },
+ {
+  "name": "Barcelona",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Barcelona",
+  "note": ""
+ },
+ {
+  "name": "Barcino",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "From old Barcelona",
+  "note": ""
+ },
+ {
+  "name": "Barragán",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Surname",
+  "meaning": "Barragán",
+  "note": ""
+ },
+ {
+  "name": "Barranco",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Barranco",
+  "note": ""
+ },
+ {
+  "name": "Barrera",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Surname",
+  "meaning": "Barrera",
+  "note": ""
+ },
+ {
+  "name": "Barrios",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Surname",
+  "meaning": "Barrios",
+  "note": ""
+ },
+ {
+  "name": "Barro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván",
+   "Colonia Rosas"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Clay",
+  "note": ""
+ },
+ {
+  "name": "Bartolomé de las Casas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Foreign people - other historical figures",
+  "meaning": "Bartolomé de las Casas",
+  "note": ""
+ },
+ {
+  "name": "Batará",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Animals - birds",
+  "meaning": "Antshrike",
+  "note": ""
+ },
+ {
+  "name": "Bayóna",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Bayonne, France",
+  "note": ""
+ },
+ {
+  "name": "Bazán",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria",
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Bazán",
+  "note": ""
+ },
+ {
+  "name": "Beatriz Antonia de Monclova",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Local people - oracles",
+  "meaning": "Beatriz Antonia de Monclova",
+  "note": ""
+ },
+ {
+  "name": "Begonias",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Begonias",
+  "note": ""
+ },
+ {
+  "name": "Belacqua",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Surname",
+  "meaning": "Belacqua",
+  "note": ""
+ },
+ {
+  "name": "Belandro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Other",
+  "meaning": "Belandro",
+  "note": ""
+ },
+ {
+  "name": "Belén",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Bethlehem, Palestine",
+  "note": ""
+ },
+ {
+  "name": "Belice",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - Central America",
+  "meaning": "Belize",
+  "note": ""
+ },
+ {
+  "name": "Belmonte",
+  "type_abbrev": "C.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Belmonte",
+  "note": ""
+ },
+ {
+  "name": "Benady",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Surname",
+  "meaning": "Benady",
+  "note": ""
+ },
+ {
+  "name": "Benavides",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Surname",
+  "meaning": "Benavides",
+  "note": ""
+ },
+ {
+  "name": "Benicio Carmona",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Joya",
+   "Academia"
+  ],
+  "category": "Local people - politics",
+  "meaning": "Benicio Carmona",
+  "note": ""
+ },
+ {
+  "name": "Bergantín",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Other",
+  "meaning": "Brigantine",
+  "note": ""
+ },
+ {
+  "name": "Berilo Suárez",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local people - outer island",
+  "meaning": "Berilo Suárez",
+  "note": ""
+ },
+ {
+  "name": "Bermeo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Neighbourhood name",
+  "meaning": "Ensenada de Bermeo",
+  "note": ""
+ },
+ {
+  "name": "Bernal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Bernal, Querétaro",
+  "note": ""
+ },
+ {
+  "name": "Berra",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Surname",
+  "meaning": "Berra",
+  "note": ""
+ },
+ {
+  "name": "Besada",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Other",
+  "meaning": "Kissed",
+  "note": ""
+ },
+ {
+  "name": "Betania",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Bethany, Palestine",
+  "note": ""
+ },
+ {
+  "name": "Biznaga",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Plants - other",
+  "meaning": "Bisnaga cactus",
+  "note": ""
+ },
+ {
+  "name": "Blanco",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Other",
+  "meaning": "White",
+  "note": ""
+ },
+ {
+  "name": "Blas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Don Blas",
+  "note": ""
+ },
+ {
+  "name": "Bocana",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Other",
+  "meaning": "Estuary",
+  "note": ""
+ },
+ {
+  "name": "Bocanegra",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Black mouth",
+  "note": ""
+ },
+ {
+  "name": "Bolero",
+  "type_abbrev": "C., Pque.",
+  "type_full": "Calle, Parque",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Other",
+  "meaning": "Bolero dancing",
+  "note": ""
+ },
+ {
+  "name": "Bonifaz",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Surname",
+  "meaning": "Bonifaz",
+  "note": ""
+ },
+ {
+  "name": "Borde",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino del",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Neighbourhood name",
+  "meaning": "El Borde",
+  "note": ""
+ },
+ {
+  "name": "Boronada",
+  "type_abbrev": "C.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Boronada",
+  "note": ""
+ },
+ {
+  "name": "Bósforo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Bosphorus",
+  "note": ""
+ },
+ {
+  "name": "Bosque",
+  "type_abbrev": "C.",
+  "type_full": "Calle del",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Forest",
+  "note": ""
+ },
+ {
+  "name": "Bosquejos",
+  "type_abbrev": "Esq.",
+  "type_full": "Esquina de",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Sketches",
+  "note": ""
+ },
+ {
+  "name": "Boteros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Boatmen",
+  "note": ""
+ },
+ {
+  "name": "Bravo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Other",
+  "meaning": "Name",
+  "note": ""
+ },
+ {
+  "name": "Breña",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Rough terrain",
+  "note": ""
+ },
+ {
+  "name": "Brezal",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino del",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Heath",
+  "note": ""
+ },
+ {
+  "name": "Brisa",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Local area - descriptive",
+  "meaning": "Breeze",
+  "note": ""
+ },
+ {
+  "name": "Britanica",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local history",
+  "meaning": "British",
+  "note": ""
+ },
+ {
+  "name": "Briviesca",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Briviesca, Burgos",
+  "note": ""
+ },
+ {
+  "name": "Brizuela",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Surname",
+  "meaning": "Brizuela",
+  "note": ""
+ },
+ {
+  "name": "Buenaventura",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Other",
+  "meaning": "Good fortune",
+  "note": ""
+ },
+ {
+  "name": "Buenavista",
+  "type_abbrev": "Av.",
+  "type_full": "Avenida",
+  "neighbourhoods": [
+   "La Joya",
+   "Academia"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Beautiful view",
+  "note": ""
+ },
+ {
+  "name": "Buenos Aires",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Good winds",
+  "note": ""
+ },
+ {
+  "name": "Bustillos",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Surname",
+  "meaning": "Bustillos",
+  "note": ""
+ },
+ {
+  "name": "Cabo",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino del",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Cape",
+  "note": ""
+ },
+ {
+  "name": "Cacao",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Tanayac"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Cacao",
+  "note": ""
+ },
+ {
+  "name": "Cachi",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other - unknown",
+  "meaning": "Cachi",
+  "note": ""
+ },
+ {
+  "name": "Cadenas Rotas",
+  "type_abbrev": "C.",
+  "type_full": "Calle de las",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local history",
+  "meaning": "Broken chains",
+  "note": ""
+ },
+ {
+  "name": "Cádiz",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Cádiz",
+  "note": ""
+ },
+ {
+  "name": "Cafeteros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad",
+   "Puerto Malván"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Coffee growers",
+  "note": ""
+ },
+ {
+  "name": "Caguas",
+  "type_abbrev": "Cjón.",
+  "type_full": "Callejón de",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Foreign places - Caribbean",
+  "meaning": "Caguas, Puerto Rico",
+  "note": ""
+ },
+ {
+  "name": "Cajal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Surname",
+  "meaning": "Cajal",
+  "note": ""
+ },
+ {
+  "name": "Caladios",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Alamedas",
+   "Media Luna"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Caladium",
+  "note": ""
+ },
+ {
+  "name": "Calax",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Local places - outer island",
+  "meaning": "Calax",
+  "note": ""
+ },
+ {
+  "name": "Caldas",
+  "type_abbrev": "C.",
+  "type_full": "Calle de las",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Hot springs",
+  "note": ""
+ },
+ {
+  "name": "Caldera",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de la",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Caldera (volcano)",
+  "note": ""
+ },
+ {
+  "name": "Caledonia",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Academia"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Scotland",
+  "note": ""
+ },
+ {
+  "name": "Caléndulas",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Marigolds",
+  "note": ""
+ },
+ {
+  "name": "Calicanto",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Plants - flowers",
+  "meaning": "Calycanthus",
+  "note": ""
+ },
+ {
+  "name": "California",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "California",
+  "note": ""
+ },
+ {
+  "name": "Calistemo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Plants - other",
+  "meaning": "Bottlebrush",
+  "note": ""
+ },
+ {
+  "name": "Callada",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Distrito del Sol"
+  ],
+  "category": "Other",
+  "meaning": "Silent",
+  "note": ""
+ },
+ {
+  "name": "Calo",
+  "type_abbrev": "C., Pte.",
+  "type_full": "Calle, Puente",
+  "neighbourhoods": [
+   "Isla Calo"
+  ],
+  "category": "Other",
+  "meaning": "Calo",
+  "note": ""
+ },
+ {
+  "name": "Camarena",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Camarena",
+  "note": ""
+ },
+ {
+  "name": "Camargo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local places - outer island",
+  "meaning": "Camargo",
+  "note": ""
+ },
+ {
+  "name": "Cambra",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Other",
+  "meaning": "Cambra",
+  "note": ""
+ },
+ {
+  "name": "Campeche",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Campeche",
+  "note": ""
+ },
+ {
+  "name": "Campero",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Country",
+  "note": ""
+ },
+ {
+  "name": "Cañada",
+  "type_abbrev": "C.",
+  "type_full": "Calle de la",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Stream",
+  "note": ""
+ },
+ {
+  "name": "Cáñamo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Hemp",
+  "note": ""
+ },
+ {
+  "name": "Canaro",
+  "type_abbrev": "Pl., C.",
+  "type_full": "Plaza, Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Neighbourhood name",
+  "meaning": "Plaza Canaro",
+  "note": ""
+ },
+ {
+  "name": "Cañaveral",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Plants - other",
+  "meaning": "Reedbed",
+  "note": ""
+ },
+ {
+  "name": "Candán",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Surname",
+  "meaning": "Candán",
+  "note": ""
+ },
+ {
+  "name": "Candelaria",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Alamedas",
+   "El Amparo"
+  ],
+  "category": "Plants - other",
+  "meaning": "Mullein",
+  "note": ""
+ },
+ {
+  "name": "Candiar",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Candiar",
+  "note": ""
+ },
+ {
+  "name": "Canela",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Alamedas"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Cinamon",
+  "note": ""
+ },
+ {
+  "name": "Cañete",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Other",
+  "meaning": "Small pipe",
+  "note": ""
+ },
+ {
+  "name": "Cano",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "White haired",
+  "note": ""
+ },
+ {
+  "name": "Cantadores",
+  "type_abbrev": "C.",
+  "type_full": "Calle de los",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Local community",
+  "meaning": "Singers",
+  "note": ""
+ },
+ {
+  "name": "Cantarranas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Foreign places - Central America",
+  "meaning": "Cantarranas, Honduras",
+  "note": ""
+ },
+ {
+  "name": "Cantinas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Canteens",
+  "note": ""
+ },
+ {
+  "name": "Cantos",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera",
+   "Media Luna"
+  ],
+  "category": "Local history",
+  "meaning": "Chants",
+  "note": ""
+ },
+ {
+  "name": "Canul",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Surname - Maya",
+  "meaning": "Canul",
+  "note": ""
+ },
+ {
+  "name": "Caobas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro",
+   "El Borde"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Mahogany",
+  "note": ""
+ },
+ {
+  "name": "Caparazones",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Shells",
+  "note": ""
+ },
+ {
+  "name": "Capiro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Other",
+  "meaning": "Capiro",
+  "note": ""
+ },
+ {
+  "name": "Capricho",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Other",
+  "meaning": "Whim",
+  "note": ""
+ },
+ {
+  "name": "Carabala",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Surname",
+  "meaning": "Carabala",
+  "note": ""
+ },
+ {
+  "name": "Caraveo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Surname",
+  "meaning": "Caraveo",
+  "note": ""
+ },
+ {
+  "name": "Carax",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Surname",
+  "meaning": "Carax",
+  "note": ""
+ },
+ {
+  "name": "Cárcamo",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Surname",
+  "meaning": "Cárcamo",
+  "note": ""
+ },
+ {
+  "name": "Cárcava",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Gully",
+  "note": ""
+ },
+ {
+  "name": "Cardenal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Animals - birds",
+  "meaning": "Cardinal",
+  "note": ""
+ },
+ {
+  "name": "Cardix",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "Cardix",
+  "note": ""
+ },
+ {
+  "name": "Caribe",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - Caribbean",
+  "meaning": "Caribbean",
+  "note": ""
+ },
+ {
+  "name": "Carlos Durán",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Local people - politics",
+  "meaning": "Carlos Durán",
+  "note": ""
+ },
+ {
+  "name": "Carlos Finlay",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Foreign people - scientists",
+  "meaning": "Carlos Finaly",
+  "note": ""
+ },
+ {
+  "name": "Carlos Fuentes",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Laureles"
+  ],
+  "category": "Foreign people - authors",
+  "meaning": "Carlos Fuentes",
+  "note": ""
+ },
+ {
+  "name": "Carlos Villas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "La Serenidad"
+  ],
+  "category": "Local people - arts and culture",
+  "meaning": "Carlos Villas",
+  "note": ""
+ },
+ {
+  "name": "Carmelo",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Carmel",
+  "note": ""
+ },
+ {
+  "name": "Carmen Santa María",
+  "type_abbrev": "Av.",
+  "type_full": "Avenida",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local people - neighbourhood",
+  "meaning": "Carmen Santa María",
+  "note": ""
+ },
+ {
+  "name": "Carneros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Tanayac"
+  ],
+  "category": "Animals - livestock",
+  "meaning": "Rams",
+  "note": ""
+ },
+ {
+  "name": "Carpinteros",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro"
+  ],
+  "category": "Local economy - workers",
+  "meaning": "Carpenters",
+  "note": ""
+ },
+ {
+  "name": "Cartagena de Indias",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Cartagena de Indias, Colombia",
+  "note": ""
+ },
+ {
+  "name": "Carvajal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Surname",
+  "meaning": "Carvajal",
+  "note": ""
+ },
+ {
+  "name": "Casamata",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Garrison",
+  "note": ""
+ },
+ {
+  "name": "Casaña",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Surname",
+  "meaning": "Casaña",
+  "note": ""
+ },
+ {
+  "name": "Cascabel",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Other",
+  "meaning": "Bell",
+  "note": ""
+ },
+ {
+  "name": "Cascadas",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Local places - outer island",
+  "meaning": "Waterfalls",
+  "note": ""
+ },
+ {
+  "name": "Cascajar",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "Place with gravel",
+  "note": ""
+ },
+ {
+  "name": "Caserio",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera",
+   "Las Alamedas"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Farm house",
+  "note": ""
+ },
+ {
+  "name": "Casetas",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Mesa Verde"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Small houses",
+  "note": ""
+ },
+ {
+  "name": "Casilda",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Casilda",
+  "note": ""
+ },
+ {
+  "name": "Castañeda",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro",
+   "La Serenidad"
+  ],
+  "category": "Local people - politics",
+  "meaning": "Rúben Castañeda",
+  "note": ""
+ },
+ {
+  "name": "Castaño",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Chestnut",
+  "note": ""
+ },
+ {
+  "name": "Castelar",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Surname",
+  "meaning": "Castelar",
+  "note": ""
+ },
+ {
+  "name": "Castellana",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Arquesa"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "From Castille",
+  "note": ""
+ },
+ {
+  "name": "Castorena",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Surname",
+  "meaning": "Castorena",
+  "note": ""
+ },
+ {
+  "name": "Castro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Surname",
+  "meaning": "Castro",
+  "note": ""
+ },
+ {
+  "name": "Cata",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Cata",
+  "note": ""
+ },
+ {
+  "name": "Catalina",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Centro",
+   "La Serenidad",
+   "Colonia Rosas"
+  ],
+  "category": "Name",
+  "meaning": "Catalina",
+  "note": ""
+ },
+ {
+  "name": "Cataluña",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Foreign places - Spain",
+  "meaning": "Catalonia",
+  "note": ""
+ },
+ {
+  "name": "Cataviña",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Esquera"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Cataviña, Baja California",
+  "note": ""
+ },
+ {
+  "name": "Catemaya",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Local places - outer island",
+  "meaning": "Catemaya",
+  "note": ""
+ },
+ {
+  "name": "Catoche",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Cabo Catoche, Quintana Roo",
+  "note": ""
+ },
+ {
+  "name": "Cauca",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Cauca, Colombia",
+  "note": ""
+ },
+ {
+  "name": "Caucel",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Islas de la Madrugada"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Caucel, Yucatan",
+  "note": ""
+ },
+ {
+  "name": "Cayena",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Cayenne",
+  "note": ""
+ },
+ {
+  "name": "Cayuelos",
+  "type_abbrev": "C.",
+  "type_full": "Calle de los",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Other",
+  "meaning": "Cayuelos",
+  "note": ""
+ },
+ {
+  "name": "Cedral",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Former local landmark",
+  "meaning": "Citrus grove",
+  "note": ""
+ },
+ {
+  "name": "Cedro",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Playa Pálida",
+   "Colonia Rosas"
+  ],
+  "category": "Plants - trees",
+  "meaning": "Cedar",
+  "note": ""
+ },
+ {
+  "name": "Celeste",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other",
+  "meaning": "Sky blue",
+  "note": ""
+ },
+ {
+  "name": "Celia Fontez",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Colonia Rosas"
+  ],
+  "category": "Local people - intellectuals",
+  "meaning": "Fontez",
+  "note": "Jungle Scientist"
+ },
+ {
+  "name": "Céltica",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Other",
+  "meaning": "Celtic",
+  "note": ""
+ },
+ {
+  "name": "Centinela",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de la",
+  "neighbourhoods": [
+   "Mesa Verde",
+   "Media Luna"
+  ],
+  "category": "Local history",
+  "meaning": "Sentinel",
+  "note": ""
+ },
+ {
+  "name": "Cerámica",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Ensenada de Bermeo"
+  ],
+  "category": "Local economy - products",
+  "meaning": "Ceramics",
+  "note": ""
+ },
+ {
+  "name": "Ceres",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Other - mythology",
+  "meaning": "Ceres",
+  "note": ""
+ },
+ {
+  "name": "Cerro Blanco",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Aldea de Soria"
+  ],
+  "category": "Local landmark - natural",
+  "meaning": "White Peak",
+  "note": ""
+ },
+ {
+  "name": "Cervantino",
+  "type_abbrev": "Cam.",
+  "type_full": "Camino",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Foreign people - authors",
+  "meaning": "Cervantes",
+  "note": ""
+ },
+ {
+  "name": "Cerviño",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Surname",
+  "meaning": "Cervino",
+  "note": ""
+ },
+ {
+  "name": "Ceuta",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Las Cruces"
+  ],
+  "category": "Foreign places - other",
+  "meaning": "Ceuta",
+  "note": ""
+ },
+ {
+  "name": "Chamula",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Amparo"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Chamula, Chiapas",
+  "note": ""
+ },
+ {
+  "name": "Chan",
+  "type_abbrev": "C.",
+  "type_full": "Calle de",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Surname - Maya",
+  "meaning": "Chan",
+  "note": ""
+ },
+ {
+  "name": "Charrán",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Media Luna"
+  ],
+  "category": "Animals - birds",
+  "meaning": "Tern",
+  "note": ""
+ },
+ {
+  "name": "Chatarrea",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Los Arcos"
+  ],
+  "category": "Local landmark - built",
+  "meaning": "Scrapyard",
+  "note": ""
+ },
+ {
+  "name": "Chelem",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "El Borde"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Chelem, Yucatán",
+  "note": ""
+ },
+ {
+  "name": "Chetu",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Plaza Canaro"
+  ],
+  "category": "Surname - Maya",
+  "meaning": "Chetu",
+  "note": ""
+ },
+ {
+  "name": "Chetumal",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Puerto Malván"
+  ],
+  "category": "Foreign places - Mexico",
+  "meaning": "Chetumal, Quintana Roo",
+  "note": ""
+ },
+ {
+  "name": "Chica",
+  "type_abbrev": "C.",
+  "type_full": "Calle",
+  "neighbourhoods": [
+   "Pueblo Viejo"
+  ],
+  "category": "Other",
+  "meaning": "Small street",
+  "note": ""
+ }
+]

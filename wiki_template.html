@@ -1,0 +1,793 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style id="appstyle">
+:root{
+  --paper:#E6E8E1; --card:#F0F1EB; --inset:#DCDFD5; --ink:#15303A; --ink2:#3A5560;
+  --muted:#6A7A76; --accent:#1F6F8B; --accent2:#B07A2E; --line:#CBD1C6; --line2:#DDE1D6;
+  --link:#1C6883; --good:#3E7D5A; --danger:#9C4A34;
+  --era-pirate:#8A5A2B; --era-colonial:#7A6A3A; --era-independence:#2E6E7E; --era-modern:#1F6F8B;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0E1C22; --card:#14282F; --inset:#1B333C; --ink:#E7ECE6; --ink2:#B7C4C4;
+  --muted:#84979A; --accent:#4FA5C0; --accent2:#D19A4E; --line:#264049; --line2:#1B333C;
+  --link:#6FB9CF; --good:#63B08A; --danger:#D98a72;
+  --era-pirate:#C9924E; --era-colonial:#B7A465; --era-independence:#5FA6B6; --era-modern:#4FA5C0;
+}}
+:root[data-theme="dark"]{
+  --paper:#0E1C22; --card:#14282F; --inset:#1B333C; --ink:#E7ECE6; --ink2:#B7C4C4;
+  --muted:#84979A; --accent:#4FA5C0; --accent2:#D19A4E; --line:#264049; --line2:#1B333C;
+  --link:#6FB9CF; --good:#63B08A; --danger:#D98A72;
+  --era-pirate:#C9924E; --era-colonial:#B7A465; --era-independence:#5FA6B6; --era-modern:#4FA5C0;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:'Spline Sans',system-ui,sans-serif;
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto}}
+
+/* ── layout shell ── */
+.shell{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--card);
+  border-right:1px solid var(--line);padding:1.4rem 1.1rem;display:flex;flex-direction:column;gap:1.1rem}
+.main{min-width:0;padding:clamp(1.4rem,3.5vw,3rem) clamp(1.1rem,4vw,3.4rem);max-width:1120px}
+
+/* ── brand ── */
+.brand{display:block}
+.brand .mark{font-family:'Fraunces',serif;font-weight:600;font-size:1.75rem;letter-spacing:-.02em;
+  line-height:1;color:var(--ink)}
+.brand .mark em{font-style:italic;color:var(--accent)}
+.brand .tag{font-size:11px;color:var(--muted);letter-spacing:.02em;margin-top:.4rem;line-height:1.4}
+
+/* ── search ── */
+.search{position:relative}
+.search input{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:7px;
+  padding:.55rem .7rem;font-size:13.5px;color:var(--ink)}
+.search input::placeholder{color:var(--muted)}
+.results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,.18);
+  max-height:340px;overflow-y:auto;z-index:40;display:none}
+.results.open{display:block}
+.results a{display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;
+  padding:.5rem .7rem;border-bottom:1px solid var(--line2);color:var(--ink)}
+.results a:last-child{border-bottom:none}
+.results a:hover,.results a.active{background:var(--inset);text-decoration:none}
+.results .rn{font-size:13.5px}
+.results .rt{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap}
+
+/* ── nav ── */
+nav.primary{display:flex;flex-direction:column;gap:1px}
+.navlabel{font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin:.3rem 0 .35rem .15rem}
+nav.primary a{display:flex;justify-content:space-between;align-items:center;padding:.42rem .6rem;
+  border-radius:6px;color:var(--ink2);font-size:13.5px}
+nav.primary a:hover{background:var(--inset);text-decoration:none;color:var(--ink)}
+nav.primary a.active{background:var(--inset);color:var(--ink);font-weight:500;
+  box-shadow:inset 3px 0 0 var(--accent)}
+nav.primary a .ct{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sb-foot{margin-top:auto;font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line2);padding-top:.9rem}
+.sb-foot button{background:none;border:1px solid var(--line);border-radius:6px;color:var(--ink2);
+  padding:.3rem .55rem;font-size:11px;margin-top:.5rem}
+.sb-foot button:hover{border-color:var(--accent);color:var(--ink)}
+.statuschip{display:inline-flex;align-items:center;gap:.35rem;font-size:11px;padding:.2rem .5rem;
+  border-radius:20px;background:var(--inset);color:var(--muted)}
+.statuschip.saving{color:var(--accent2)} .statuschip.saved{color:var(--good)}
+.statuschip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
+
+/* ── eyebrows / headings ── */
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1.title{font-family:'Fraunces',serif;font-weight:500;font-size:clamp(2rem,4.5vw,3.1rem);
+  line-height:1.05;letter-spacing:-.015em;text-wrap:balance;margin:.35rem 0 .2rem}
+h2.sec{font-family:'Fraunces',serif;font-weight:500;font-size:1.4rem;letter-spacing:-.01em;
+  margin:2.2rem 0 .9rem;padding-bottom:.4rem;border-bottom:1px solid var(--line)}
+h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink);margin-bottom:.5rem}
+p{margin-bottom:.85rem;max-width:66ch;color:var(--ink2)}
+.lead{font-size:1.05rem;color:var(--ink2);max-width:64ch}
+
+/* ── article + infobox ── */
+.article{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:2.4rem;align-items:start}
+.artbody{min-width:0}
+.crumbs{font-size:12px;color:var(--muted);margin-bottom:.4rem;display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.crumbs a{color:var(--muted)} .crumbs .sep{opacity:.5}
+.mono{font-family:'IBM Plex Mono',monospace}
+
+.infobox{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  position:sticky;top:1.4rem}
+.infobox .ib-head{padding:.85rem 1rem;background:var(--inset);border-bottom:1px solid var(--line)}
+.infobox .ib-type{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-weight:600}
+.infobox .ib-name{font-family:'Fraunces',serif;font-size:1.15rem;font-weight:500;line-height:1.15;margin-top:.15rem}
+.infobox dl{padding:.4rem 1rem .8rem}
+.infobox .row{display:grid;grid-template-columns:96px 1fr;gap:.5rem;padding:.45rem 0;
+  border-bottom:1px solid var(--line2);font-size:12.5px}
+.infobox .row:last-child{border-bottom:none}
+.infobox dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
+.infobox dd{color:var(--ink);min-width:0}
+.infobox dd a{overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:.3rem}
+.chip{display:inline-block;font-size:11px;padding:.15rem .5rem;border-radius:20px;background:var(--inset);
+  color:var(--ink2);border:1px solid var(--line2)}
+.chip.accent{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+
+/* ── fact grid / connections ── */
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem;margin:.4rem 0 .5rem}
+.fact{background:var(--card);border:1px solid var(--line2);border-radius:8px;padding:.7rem .85rem}
+.fact .k{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.fact .v{font-size:1.3rem;font-family:'Fraunces',serif;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:.15rem;line-height:1.1}
+.fact .v.sm{font-size:1rem}
+.conns{display:flex;flex-direction:column;gap:.5rem}
+.conn{display:flex;gap:.7rem;align-items:baseline;padding:.5rem .2rem;border-bottom:1px solid var(--line2)}
+.conn:last-child{border-bottom:none}
+.conn .rel{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  min-width:110px;flex-shrink:0}
+.backlinks{columns:2;column-gap:1.6rem}
+.backlinks a{display:block;padding:.18rem 0;font-size:13.5px;break-inside:avoid}
+@media(max-width:600px){.backlinks{columns:1}}
+
+/* ── index tables & cards ── */
+.toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.3rem 0 1.1rem}
+.toolbar select,.toolbar input{background:var(--card);border:1px solid var(--line);border-radius:7px;
+  padding:.4rem .6rem;font-size:13px;color:var(--ink)}
+.count{font-size:12px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{background:var(--inset);text-align:left;padding:.55rem .8rem;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);font-weight:600;white-space:nowrap;position:sticky;top:0}
+tbody td{padding:.5rem .8rem;border-top:1px solid var(--line2);vertical-align:top;color:var(--ink2)}
+tbody tr:hover{background:var(--card)}
+td .cat{font-size:11px;color:var(--muted)}
+.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem}
+.ecard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.85rem 1rem;display:block;color:var(--ink)}
+.ecard:hover{border-color:var(--accent);text-decoration:none}
+.ecard .en{font-family:'Fraunces',serif;font-size:1.05rem;font-weight:500;line-height:1.15}
+.ecard .ed{font-size:12px;color:var(--muted);margin-top:.3rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ── timeline ── */
+.tl{display:flex;flex-direction:column;gap:2px;border-left:2px solid var(--line);margin-left:.4rem;padding-left:0}
+.tlrow{display:grid;grid-template-columns:96px 1fr;gap:.9rem;align-items:baseline;padding:.32rem 0 .32rem 1rem;position:relative}
+.tlrow::before{content:"";position:absolute;left:-5px;top:.85rem;width:8px;height:8px;border-radius:50%;
+  background:var(--eracol,var(--accent));border:2px solid var(--paper)}
+.tlrow .yr{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap}
+.tlrow .who{font-size:14px}
+.tlrow .pty{font-size:11px;color:var(--muted)}
+.era-pirate{--eracol:var(--era-pirate)} .era-colonial{--eracol:var(--era-colonial)}
+.era-independence{--eracol:var(--era-independence)} .era-modern{--eracol:var(--era-modern)}
+.legend{display:flex;gap:1rem;flex-wrap:wrap;margin:.2rem 0 1rem;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:.35rem}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+/* ── seasons ── */
+.season{margin-bottom:1.6rem}
+.season h3{font-family:'Fraunces',serif;font-size:1.15rem;text-transform:none;letter-spacing:0;
+  color:var(--ink);font-weight:500;border-bottom:1px solid var(--line2);padding-bottom:.3rem;margin-bottom:.6rem}
+.season h3 span{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-left:.5rem}
+.pill-row{display:flex;flex-wrap:wrap;gap:.4rem}
+.pill{display:inline-block;padding:.28rem .6rem;border-radius:20px;background:var(--card);
+  border:1px solid var(--line);font-size:13px;color:var(--ink)}
+.pill:hover{border-color:var(--accent);text-decoration:none}
+
+/* ── overview hero ── */
+.hero{border-bottom:1px solid var(--line);padding-bottom:1.6rem;margin-bottom:1.6rem}
+.hero h1{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(2.4rem,6vw,4.2rem);line-height:.98;
+  letter-spacing:-.02em;text-wrap:balance}
+.hero h1 em{font-style:italic;color:var(--accent);font-weight:500}
+.hero .sub{font-size:1.1rem;color:var(--ink2);margin-top:.7rem;max-width:60ch}
+.statband{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.7rem;margin:1.4rem 0}
+.landgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:8px;padding:.9rem 1.1rem;font-size:13.5px;color:var(--ink2);margin:1.4rem 0}
+.note strong{color:var(--ink)}
+
+/* ── edit form ── */
+.editform{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.3rem 1.4rem;max-width:720px}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem}
+.field input,.field textarea,.field select{width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:7px;padding:.55rem .7rem;font-size:14px;color:var(--ink);font-family:inherit}
+.field textarea{min-height:110px;resize:vertical;line-height:1.55}
+.field .hint{font-size:11px;color:var(--muted);margin-top:.25rem}
+.formrow{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+.btns{display:flex;gap:.6rem;margin-top:1.2rem;align-items:center}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;
+  padding:.5rem .95rem;font-size:13.5px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ghost{background:none}
+.btn.small{padding:.32rem .7rem;font-size:12px}
+.editbtn{float:right;margin-top:.2rem}
+
+/* history */
+.rev{display:grid;grid-template-columns:120px 1fr;gap:.8rem;padding:.6rem 0;border-bottom:1px solid var(--line2);font-size:13px}
+.rev .when{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
+.rev .fld{font-weight:600;color:var(--ink)}
+.rev del{color:var(--danger);text-decoration:line-through;opacity:.8}
+.rev ins{color:var(--good);text-decoration:none}
+
+.empty{color:var(--muted);font-size:14px;padding:2rem 0}
+
+/* ── responsive ── */
+.menubtn{display:none}
+@media (max-width:880px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:fixed;left:0;top:0;width:270px;z-index:50;transform:translateX(-100%);transition:transform .22s}
+  .sidebar.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.3)}
+  .main{padding-top:3.6rem}
+  .article{grid-template-columns:1fr}
+  .infobox{position:static;order:-1;margin-bottom:1.4rem}
+  .menubtn{display:inline-flex;position:fixed;top:.7rem;left:.7rem;z-index:60;background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:.45rem .7rem;font-size:13px;color:var(--ink);align-items:center;gap:.4rem}
+  .scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:45}
+  .scrim.open{display:block}
+}
+</style>
+
+<button class="menubtn" id="menubtn" aria-label="Open menu">☰ Menu</button>
+<div class="scrim" id="scrim"></div>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#/">
+      <div class="mark">Ampara<em>cán</em></div>
+      <div class="tag">A wiki of the island city-state · 1650s–2060s</div>
+    </a>
+    <div class="search">
+      <input id="q" type="search" autocomplete="off" placeholder="Search people, streets, places…" aria-label="Search">
+      <div class="results" id="results" role="listbox"></div>
+    </div>
+    <nav class="primary" id="nav"></nav>
+    <div class="sb-foot" id="sbfoot"></div>
+  </aside>
+  <main class="main" id="view" tabindex="-1"></main>
+</div>
+
+<script id="wikidata" type="application/json">__WIKI_DATA__</script>
+<script id="appcode">
+"use strict";
+(function(){
+const FONTS="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Spline+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
+
+// ── state ──────────────────────────────────────────────────────────────
+let DATA = JSON.parse(document.getElementById('wikidata').textContent);
+let CAP = null;         // artifact capability (writer) or null
+let WRITER = false;
+let LOCAL = false;      // saving to localStorage only
+const LSKEY='amparacan_wiki_v1';
+
+// prefer a locally-saved copy only when we can't publish shared
+function bootState(){
+  try{
+    const ls=localStorage.getItem(LSKEY);
+    if(ls){ const j=JSON.parse(ls); if(j&&j.__local){ DATA=j.data; LOCAL=true; } }
+  }catch(e){}
+}
+bootState();
+
+// indexes
+let BY={}, RELS_A={}, RELS_B={};
+function reindex(){
+  BY={}; RELS_A={}; RELS_B={};
+  DATA.entities.forEach(e=>BY[e.slug]=e);
+  (DATA.relationships||[]).forEach((r,i)=>{
+    (RELS_A[r.a]=RELS_A[r.a]||[]).push(r);
+    (RELS_B[r.b]=RELS_B[r.b]||[]).push(r);
+  });
+}
+reindex();
+DATA.revisions=DATA.revisions||[];
+
+const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation'};
+const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>n==null||n===''?'':Number(n).toLocaleString('en-US');
+
+function link(slug,label){const e=BY[slug];if(!e)return esc(label||slug);
+  return `<a href="#/e/${encodeURIComponent(slug)}">${esc(label||e.name)}</a>`;}
+
+// ── routing ────────────────────────────────────────────────────────────
+function parseHash(){
+  const h=location.hash.replace(/^#\/?/,'');
+  const [path,qs]=h.split('?');
+  const parts=path.split('/').filter(Boolean);
+  const params=new URLSearchParams(qs||'');
+  return {parts,params};
+}
+function go(hash){location.hash=hash;}
+window.addEventListener('hashchange',route);
+
+function route(){
+  const {parts,params}=parseHash();
+  const view=document.getElementById('view');
+  view.scrollTop=0; window.scrollTo(0,0);
+  closeMenu();
+  let html='';
+  if(parts.length===0){ html=pageOverview(); }
+  else if(parts[0]==='e'){ html=pageEntity(decodeURIComponent(parts[1]||''),params); }
+  else if(parts[0]==='edit'){ html=pageEdit(decodeURIComponent(parts[1]||'')); }
+  else if(parts[0]==='history'){ html=pageHistory(decodeURIComponent(parts[1]||'')); }
+  else if(parts[0]==='type'){ html=pageType(parts[1]); }
+  else if(parts[0]==='streets'){ html=pageStreets(params); }
+  else if(parts[0]==='timeline'){ html=pageTimeline(); }
+  else if(parts[0]==='seasons'){ html=pageSeasons(); }
+  else if(parts[0]==='random'){ const e=DATA.entities[Math.floor(Math.random()*DATA.entities.length)]; go('#/e/'+encodeURIComponent(e.slug)); return; }
+  else html=`<div class="empty">Page not found. <a href="#/">Return to the overview.</a></div>`;
+  view.innerHTML=html;
+  renderNav();
+  wirePage();
+  view.focus({preventScroll:true});
+}
+
+// ── nav / sidebar ──────────────────────────────────────────────────────
+function counts(){const c={person:0,place:0,street:0,political_party:0};DATA.entities.forEach(e=>c[e.type]=(c[e.type]||0)+1);return c;}
+function renderNav(){
+  const c=counts(); const h=location.hash;
+  const cur=(frag)=>h.startsWith(frag)?'active':'';
+  const items=[
+    ['#/','Overview',''],
+    ['#/type/person','People',c.person],
+    ['#/streets','Streets',c.street],
+    ['#/type/place','Places',c.place],
+    ['#/type/political_party','Parties',c.political_party],
+  ];
+  const items2=[
+    ['#/timeline','Heads of state',DATA.heads_of_state.length],
+    ['#/seasons','Seasons','11'],
+    ['#/random','Random article',''],
+  ];
+  const row=([href,label,ct])=>`<a href="${href}" class="${href==='#/'?(h===''||h==='#/'?'active':''):(h.startsWith(href)?'active':'')}">${esc(label)}${ct!==''?`<span class="ct">${ct}</span>`:''}</a>`;
+  document.getElementById('nav').innerHTML=
+    `<div class="navlabel">Browse</div>`+items.map(row).join('')+
+    `<div class="navlabel">Discover</div>`+items2.map(row).join('');
+  // footer status
+  const mode = WRITER ? `<span class="statuschip" id="status">Edits shared</span>`
+    : LOCAL||!CAP ? `<span class="statuschip" id="status">Edits saved on this device</span>`
+    : `<span class="statuschip" id="status">Read-only</span>`;
+  document.getElementById('sbfoot').innerHTML=
+    `${mode}<div style="margin-top:.6rem">${DATA.entities.length} articles · ${(DATA.relationships||[]).length} links</div>`+
+    `<button id="themebtn" type="button">◑ Toggle theme</button>`;
+}
+
+// ── OVERVIEW ───────────────────────────────────────────────────────────
+function pageOverview(){
+  const c=counts();
+  const streets=DATA.entities.filter(e=>e.type==='street').length;
+  const neigh=DATA.entities.filter(e=>e.place_type==='neighbourhood').length;
+  const hos=DATA.heads_of_state;
+  const current=hos.filter(h=>h.term).slice(-1)[0]||hos.slice(-1)[0];
+  const founder=BY['alejandro-vazquez-merayo'];
+  const bigNeigh=DATA.entities.filter(e=>e.place_type==='neighbourhood'&&e.population)
+    .sort((a,b)=>b.population-a.population)[0];
+  const rndStreet=DATA.entities.filter(e=>e.type==='street'&&e.meaning)[Math.floor(Math.random()*80)];
+  const stat=(k,v)=>`<div class="fact"><div class="k">${k}</div><div class="v ${String(v).length>6?'sm':''}">${v}</div></div>`;
+  const feat=(label,e,extra)=>e?`<a class="ecard" href="#/e/${e.slug}"><div class="eyebrow">${label}</div><div class="en">${esc(e.name)}</div><div class="ed">${esc(extra||e.description||'')}</div></a>`:'';
+  return `
+  <section class="hero">
+    <div class="eyebrow">Island city-state · Caribbean</div>
+    <h1>Ampara<em>cán</em></h1>
+    <p class="sub">A living reference to a fictional island city-state — from its 1650s beginnings as a smugglers' haven, through Spanish rule and independence, to a democratic metropolis of the 2060s.</p>
+    <div class="statband">
+      ${stat('People',c.person)}
+      ${stat('Streets',streets)}
+      ${stat('Neighbourhoods',neigh)}
+      ${stat('Political parties',c.political_party)}
+      ${stat('Heads of state',hos.length)}
+      ${stat('Years chronicled','~410')}
+    </div>
+  </section>
+  <div class="note"><strong>This wiki is editable.</strong> Every fact lives once as a record; each page is rendered from those records, so an edit to any entry updates every page that references it. Open any article and use <em>Edit</em> — ${WRITER?'your changes are shared with everyone who opens this page.':LOCAL||!CAP?'your changes are saved on this device.':'changes are saved for editors of this artifact.'}</div>
+  <h2 class="sec">Start here</h2>
+  <div class="landgrid">
+    ${feat('Founding figure',founder,founder&&founder.description)}
+    ${feat('Head of state',current&&BY[current.person],current?`Served ${current.start}–${current.end}${current.party&&BY[current.party]?' · '+BY[current.party].name:''}`:'')}
+    ${feat('Largest neighbourhood',bigNeigh,bigNeigh&&('Population '+fmt(bigNeigh.population)))}
+    ${feat('A street',rndStreet,rndStreet&&('Named for: '+rndStreet.meaning))}
+  </div>
+  <h2 class="sec">Browse the archive</h2>
+  <div class="cardgrid">
+    <a class="ecard" href="#/type/person"><div class="en">People</div><div class="ed">${c.person} figures across eleven narrative seasons — pirates, governors, poets, presidents.</div></a>
+    <a class="ecard" href="#/streets"><div class="en">Streets</div><div class="ed">${streets} named streets, cross-referenced to neighbourhoods and the people they honour.</div></a>
+    <a class="ecard" href="#/type/place"><div class="en">Places</div><div class="ed">Provinces, city neighbourhoods and outer-island settlements.</div></a>
+    <a class="ecard" href="#/type/political_party"><div class="en">Parties</div><div class="ed">${c.political_party} political parties, active and defunct, with vote and seat records.</div></a>
+    <a class="ecard" href="#/timeline"><div class="en">Heads of state</div><div class="ed">Every leader from 1658 to 2046, along a timeline coloured by era.</div></a>
+    <a class="ecard" href="#/seasons"><div class="en">Seasons</div><div class="ed">The eleven narrative eras that structure the world, each with its cast.</div></a>
+  </div>`;
+}
+
+// ── ENTITY PAGE ────────────────────────────────────────────────────────
+function relsOf(slug){
+  const out=[];
+  (RELS_A[slug]||[]).forEach(r=>out.push({dir:'out',rel:r.type,other:r.b,desc:r.description}));
+  (RELS_B[slug]||[]).forEach(r=>out.push({dir:'in',rel:invRel(r.type),other:r.a,desc:r.description}));
+  return out;
+}
+function invRel(t){return {'runs through':'streets here','located in':'contains','named after':'namesake of','member of party':'members'}[t]||t;}
+
+function pageEntity(slug,params){
+  const e=BY[slug];
+  if(!e)return `<div class="empty">No article for “${esc(slug)}”. <a href="#/">Overview</a></div>`;
+  const rels=relsOf(slug);
+  const info=infobox(e,rels);
+  let body=`<div class="artbody">
+    <div class="crumbs"><a href="#/type/${e.type}">${esc(TYPE_PLURAL[e.type]||e.type)}</a><span class="sep">›</span><span>${esc(e.name)}</span></div>
+    <div class="eyebrow">${esc(subtitleFor(e))}</div>
+    <h1 class="title">${esc(e.name)}</h1>
+    ${WRITER||LOCAL||CAP?`<button class="btn small editbtn" onclick="location.hash='#/edit/${e.slug}'">✎ Edit</button>`:''}
+    <p class="lead">${esc(e.description||'No description yet.')}</p>`;
+  body+=typeSections(e,rels);
+  // connections
+  const shown=rels.filter(r=>BY[r.other]);
+  if(shown.length){
+    body+=`<h2 class="sec">Connections</h2><div class="conns">`+
+      shown.slice(0,40).map(r=>`<div class="conn"><span class="rel">${esc(r.rel)}</span><span>${link(r.other)}${r.desc?` <span class="cat">— ${esc(r.desc)}</span>`:''}</span></div>`).join('')+
+      `</div>`;
+  }
+  // what links here
+  const back=(RELS_B[slug]||[]).map(r=>r.a).filter((v,i,a)=>a.indexOf(v)===i&&BY[v]);
+  if(back.length){
+    body+=`<h2 class="sec">What links here <span class="count">${back.length}</span></h2>
+      <div class="backlinks">`+back.slice(0,200).map(s=>link(s)).join('')+`</div>`;
+  }
+  body+=`<div style="margin-top:2rem"><a class="btn small ghost" href="#/history/${e.slug}">◷ View history</a></div>`;
+  body+=`</div>`;
+  return `<div class="article">${body}${info}</div>`;
+}
+
+function subtitleFor(e){
+  if(e.type==='person'){const ss=e.seasons&&e.seasons.length?`Season ${e.seasons.join(', ')}`:'';return [e.occupation,ss].filter(Boolean).join(' · ')||'Person';}
+  if(e.type==='street')return (e.street_type||'Street')+(e.category?' · '+e.category:'');
+  if(e.type==='place')return (e.place_type?cap1(e.place_type):'Place');
+  if(e.type==='political_party')return 'Political party'+(e.abbreviation?' · '+e.abbreviation:'');
+  return TYPE_LABEL[e.type]||'Article';
+}
+function cap1(s){return s?s[0].toUpperCase()+s.slice(1):s;}
+
+function infobox(e,rels){
+  let rows='';
+  const R=(k,v)=>{if(v!=null&&v!=='')rows+=`<div class="row"><dt>${esc(k)}</dt><dd>${v}</dd></div>`;};
+  if(e.type==='person'){
+    R('Occupation',e.occupation?esc(e.occupation):'');
+    R('Seasons',e.seasons&&e.seasons.length?`<div class="chips">${e.seasons.map(s=>`<a class="chip accent" href="#/seasons">${s}</a>`).join('')}</div>`:'');
+    R('Origin',e.origin_city?esc(e.origin_city):(e.origin==='foreign'?'Foreign':''));
+    const terms=DATA.heads_of_state.filter(h=>h.person===e.slug);
+    if(terms.length)R('In office',terms.map(t=>`${t.start}–${t.end}`).join(', '));
+  }else if(e.type==='street'){
+    R('Type',esc(e.street_type));R('Category',esc(e.category));
+    R('Meaning',e.meaning?`<span class="mono">${esc(e.meaning)}</span>`:'');
+    R('Note',e.note?esc(e.note):'');
+  }else if(e.type==='place'){
+    R('Kind',e.place_type?cap1(e.place_type):'');
+    R('Population',e.population?fmt(e.population):'');
+    R('Founded',e.founded_decade);R('Grew fastest',e.peak_decade);
+    R('Typology',e.typology);R('Province type',e.province_of);
+    if(e.districts)R('Districts',e.districts);
+    if(e.parent&&BY[e.parent])R('Within',link(e.parent));
+  }else if(e.type==='political_party'){
+    R('Abbrev.',e.abbreviation?`<span class="mono">${esc(e.abbreviation)}</span>`:'');
+    R('Alignment',esc(e.alignment));R('Ideology',esc(e.ideology));
+    R('Seats',e.seats!=null?e.seats:'');R('Vote',e.vote_pct!=null?e.vote_pct+'%':'');
+    R('Votes',e.constituency?fmt(e.constituency):'');R('Founded',e.year_est);R('Status',esc(e.status));
+  }
+  return `<aside class="infobox"><div class="ib-head"><div class="ib-type">${esc(TYPE_LABEL[e.type]||e.type)}</div>
+    <div class="ib-name">${esc(e.name)}</div></div><dl>${rows||'<div class="row"><dd style="color:var(--muted)">No structured facts yet.</dd></div>'}</dl></aside>`;
+}
+
+function typeSections(e,rels){
+  let h='';
+  if(e.type==='place'){
+    const kids=(RELS_B[e.slug]||[]).filter(r=>r.type==='located in').map(r=>r.a).filter(s=>BY[s]);
+    if(kids.length){h+=`<h2 class="sec">Within ${esc(e.name)} <span class="count">${kids.length}</span></h2><div class="pill-row">`+kids.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
+    const streets=(RELS_B[e.slug]||[]).filter(r=>r.type==='runs through').map(r=>r.a).filter(s=>BY[s]);
+    if(streets.length){h+=`<h2 class="sec">Streets in ${esc(e.name)} <span class="count">${streets.length}</span></h2><div class="pill-row">`+streets.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
+  }
+  if(e.type==='political_party'){
+    const mem=(RELS_B[e.slug]||[]).filter(r=>r.type==='member of party').map(r=>({s:r.a,d:r.description})).filter(x=>BY[x.s]);
+    if(mem.length){h+=`<h2 class="sec">Heads of state <span class="count">${mem.length}</span></h2><div class="conns">`+mem.map(x=>`<div class="conn"><span class="rel">${esc(x.d||'')}</span><span>${link(x.s)}</span></div>`).join('')+`</div>`;}
+  }
+  if(e.type==='person'){
+    const terms=DATA.heads_of_state.filter(h=>h.person===e.slug).sort((a,b)=>a.start-b.start);
+    if(terms.length){h+=`<h2 class="sec">Terms in office</h2><div class="conns">`+terms.map(t=>`<div class="conn"><span class="rel mono">${t.start}–${t.end}</span><span>${t.term?'Term '+t.term+' · ':''}${t.occupation?esc(t.occupation):''}${t.party&&BY[t.party]?' · '+link(t.party):''}${t.notes?` <span class="cat">— ${esc(t.notes)}</span>`:''}</span></div>`).join('')+`</div>`;}
+    const named=(RELS_B[e.slug]||[]).filter(r=>r.type==='named after').map(r=>r.a).filter(s=>BY[s]);
+    if(named.length){h+=`<h2 class="sec">Streets named after ${esc(e.name)} <span class="count">${named.length}</span></h2><div class="pill-row">`+named.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
+  }
+  return h;
+}
+
+// ── TYPE INDEX ─────────────────────────────────────────────────────────
+function pageType(type){
+  if(type==='place')return pagePlaces();
+  const list=DATA.entities.filter(e=>e.type===type).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!list.length)return `<div class="empty">Nothing here yet.</div>`;
+  if(type==='person')return pagePeople(list);
+  return `<div class="eyebrow">Index</div><h1 class="title">${esc(TYPE_PLURAL[type]||type)}</h1>
+    <div class="toolbar"><span class="count">${list.length} articles</span></div>
+    <div class="cardgrid">`+list.map(cardOf).join('')+`</div>`;
+}
+function cardOf(e){return `<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${esc(e.description||subtitleFor(e))}</div></a>`;}
+
+function pagePeople(list){
+  return `<div class="eyebrow">Index</div><h1 class="title">People</h1>
+   <div class="toolbar">
+     <input id="pfilter" placeholder="Filter people…" style="min-width:200px">
+     <select id="pseason"><option value="">All seasons</option>${Array.from({length:11},(_,i)=>`<option value="${i+1}">Season ${i+1}</option>`).join('')}</select>
+     <span class="count" id="pcount">${list.length}</span>
+   </div>
+   <div class="cardgrid" id="pgrid">${list.map(cardOf).join('')}</div>`;
+}
+
+function pagePlaces(){
+  const groups=[['province','Provinces'],['neighbourhood','City neighbourhoods'],['settlement','Outer-island settlements']];
+  let h=`<div class="eyebrow">Index</div><h1 class="title">Places</h1>`;
+  groups.forEach(([pt,label])=>{
+    const list=DATA.entities.filter(e=>e.type==='place'&&e.place_type===pt).sort((a,b)=>(b.population||0)-(a.population||0)||a.name.localeCompare(b.name));
+    if(!list.length)return;
+    h+=`<h2 class="sec">${label} <span class="count">${list.length}</span></h2><div class="cardgrid">`+
+      list.map(e=>`<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${e.population?'Pop. '+fmt(e.population)+' · ':''}${esc(e.founded_decade?('est. '+e.founded_decade):(e.typology||e.province_of||''))}</div></a>`).join('')+`</div>`;
+  });
+  return h;
+}
+
+// ── STREETS EXPLORER ───────────────────────────────────────────────────
+function pageStreets(params){
+  const all=DATA.entities.filter(e=>e.type==='street');
+  const cats=Array.from(new Set(all.map(s=>s.category).filter(Boolean))).sort();
+  const neighs=Array.from(new Set(DATA.relationships.filter(r=>r.type==='runs through').map(r=>BY[r.b]&&BY[r.b].name).filter(Boolean))).sort();
+  return `<div class="eyebrow">Index</div><h1 class="title">Streets</h1>
+   <p class="lead">${all.length} named streets. The densest connective layer of the world — each links to the neighbourhoods it runs through and, where known, the person or place it honours.</p>
+   <div class="toolbar">
+     <input id="sfilter" placeholder="Filter by name or meaning…" style="min-width:220px">
+     <select id="scat"><option value="">All categories</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select>
+     <select id="sneigh"><option value="">All neighbourhoods</option>${neighs.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+     <span class="count" id="scount"></span>
+   </div>
+   <div class="tablewrap"><table><thead><tr><th>Street</th><th>Type</th><th>Category</th><th>Meaning</th><th>Neighbourhoods</th></tr></thead>
+   <tbody id="stbody"></tbody></table></div>`;
+}
+function streetNeighNames(slug){return (RELS_A[slug]||[]).filter(r=>r.type==='runs through').map(r=>BY[r.b]).filter(Boolean);}
+
+// ── TIMELINE ───────────────────────────────────────────────────────────
+function pageTimeline(){
+  const hos=DATA.heads_of_state.slice().sort((a,b)=>a.start-b.start);
+  const eras=[['pirate','Pirate era'],['colonial','Colonial'],['independence','Independence'],['modern','Modern republic']];
+  let h=`<div class="eyebrow">1658 – 2046</div><h1 class="title">Heads of state</h1>
+   <p class="lead">Every ruler of Amparacán, from its founding smuggler-captain to the present day. Colours mark the constitutional era.</p>
+   <div class="legend">${eras.map(([k,l])=>`<span><i style="background:var(--era-${k})"></i>${l}</span>`).join('')}</div>
+   <div class="tl">`;
+  hos.forEach(t=>{
+    const p=t.person&&BY[t.person];
+    h+=`<div class="tlrow era-${t.era||'modern'}">
+      <span class="yr">${t.start}${t.end&&t.end!==t.start?'–'+t.end:''}</span>
+      <span class="who">${p?link(t.person):esc(t.notes||'—')}${t.party&&BY[t.party]?` <span class="pty">· ${esc(BY[t.party].abbreviation||BY[t.party].name)}</span>`:''}${t.occupation?` <span class="pty">· ${esc(t.occupation)}</span>`:''}</span>
+    </div>`;
+  });
+  return h+`</div>`;
+}
+
+// ── SEASONS ────────────────────────────────────────────────────────────
+const SEASON_SPANS=['1650s–1690s','1690s–1720s','1720s–1750s','1750s–1790s','1790s–1830s','1830s–1860s','1860s–1910s','1910s–1940s','1940s–1990s','1990s–2020s','2020s–2060s'];
+function pageSeasons(){
+  let h=`<div class="eyebrow">Narrative structure</div><h1 class="title">The eleven seasons</h1>
+   <p class="lead">The world is organised into eleven narrative eras. Each gathers the figures who shaped it.</p>`;
+  for(let s=1;s<=11;s++){
+    const people=DATA.entities.filter(e=>e.type==='person'&&(e.seasons||[]).includes(s)).sort((a,b)=>a.name.localeCompare(b.name));
+    h+=`<div class="season"><h3>Season ${s}<span>${SEASON_SPANS[s-1]||''}</span></h3>`;
+    h+= people.length?`<div class="pill-row">`+people.map(e=>`<a class="pill" href="#/e/${e.slug}">${esc(e.name)}</a>`).join('')+`</div>`
+      :`<div class="empty" style="padding:.4rem 0">No figures recorded for this season yet.</div>`;
+    h+=`</div>`;
+  }
+  return h;
+}
+
+// ── EDIT ───────────────────────────────────────────────────────────────
+const EDIT_FIELDS={
+  person:[['name','Name','text'],['description','Description','textarea'],['occupation','Occupation','text'],['origin_city','Origin city','text'],['seasons','Seasons (comma-separated numbers)','seasons']],
+  street:[['name','Name','text'],['description','Description','textarea'],['street_type','Street type','text'],['category','Category','text'],['meaning','Meaning / etymology','text'],['note','Note','textarea']],
+  place:[['name','Name','text'],['description','Description','textarea'],['place_type','Kind','text'],['population','Population','number'],['founded_decade','Founded (decade)','text'],['peak_decade','Grew fastest (decade)','text'],['typology','Typology','text']],
+  political_party:[['name','Name','text'],['description','Description','textarea'],['abbreviation','Abbreviation','text'],['alignment','Alignment','text'],['ideology','Ideology','text'],['seats','Seats','number'],['vote_pct','Vote %','number'],['year_est','Founded (year)','number'],['status','Status','text']],
+};
+function pageEdit(slug){
+  const e=BY[slug];
+  if(!e)return `<div class="empty">No such article.</div>`;
+  const fields=EDIT_FIELDS[e.type]||[['name','Name','text'],['description','Description','textarea']];
+  const inp=([k,label,kind])=>{
+    let val=e[k]; if(kind==='seasons')val=(e.seasons||[]).join(', ');
+    val=val==null?'':val;
+    let ctl;
+    if(kind==='textarea')ctl=`<textarea id="f_${k}">${esc(val)}</textarea>`;
+    else ctl=`<input id="f_${k}" type="${kind==='number'?'number':'text'}" value="${esc(val)}">`;
+    return `<div class="field"><label for="f_${k}">${esc(label)}</label>${ctl}</div>`;
+  };
+  return `<div class="crumbs"><a href="#/e/${e.slug}">${esc(e.name)}</a><span class="sep">›</span><span>Edit</span></div>
+    <div class="eyebrow">Editing ${esc(TYPE_LABEL[e.type])}</div>
+    <h1 class="title">${esc(e.name)}</h1>
+    <p class="lead" style="font-size:.95rem">Fields are structured, not free text — the same record feeds every page that mentions this ${esc(TYPE_LABEL[e.type].toLowerCase())}. ${WRITER?'Saving publishes a new shared version.':LOCAL||CAP?'Saving stores your changes on this device.':''}</p>
+    <form class="editform" id="editform" onsubmit="return false">
+      ${fields.map(inp).join('')}
+      <div class="btns">
+        <button class="btn primary" id="savebtn" type="submit">Save changes</button>
+        <a class="btn ghost" href="#/e/${e.slug}">Cancel</a>
+        <span id="savemsg" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </form>`;
+}
+
+function doSave(slug){
+  const e=BY[slug];const fields=EDIT_FIELDS[e.type]||[['name','Name','text'],['description','Description','textarea']];
+  const changes=[];
+  fields.forEach(([k,label,kind])=>{
+    const el=document.getElementById('f_'+k);if(!el)return;
+    let nv=el.value;
+    let ov=e[k];
+    if(kind==='seasons'){nv=nv.split(',').map(x=>parseInt(x.trim(),10)).filter(n=>!isNaN(n));
+      if(JSON.stringify(nv)!==JSON.stringify(ov||[])){changes.push([k,(ov||[]).join(', '),nv.join(', ')]);e.seasons=nv;}return;}
+    if(kind==='number'){nv=nv===''?null:Number(nv);}
+    ov=ov==null?'':ov; const cmp=nv==null?'':nv;
+    if(String(cmp)!==String(ov)){changes.push([k,String(ov),String(cmp)]);e[k]=nv;}
+  });
+  if(!changes.length){document.getElementById('savemsg').textContent='No changes to save.';return;}
+  const now=new Date().toISOString();
+  changes.forEach(([f,o,n])=>DATA.revisions.push({entity:slug,field:f,old:o,new:n,at:now}));
+  reindex();
+  persist(()=>{go('#/e/'+encodeURIComponent(slug));});
+}
+
+// ── HISTORY ────────────────────────────────────────────────────────────
+function pageHistory(slug){
+  const e=BY[slug];if(!e)return `<div class="empty">No such article.</div>`;
+  const revs=DATA.revisions.filter(r=>r.entity===slug).slice().reverse();
+  return `<div class="crumbs"><a href="#/e/${e.slug}">${esc(e.name)}</a><span class="sep">›</span><span>History</span></div>
+    <div class="eyebrow">Revision history</div><h1 class="title">${esc(e.name)}</h1>
+    ${revs.length?revs.map(r=>`<div class="rev"><span class="when">${new Date(r.at).toLocaleString()}</span>
+      <span><span class="fld">${esc(r.field)}</span> — ${r.old?`<del>${esc(r.old)}</del> `:''}<ins>${esc(r.new)||'<em>(empty)</em>'}</ins></span></div>`).join('')
+      :`<p class="empty">No edits recorded yet. Changes you make through <a href="#/edit/${e.slug}">Edit</a> will appear here.</p>`}`;
+}
+
+// ── persistence ────────────────────────────────────────────────────────
+function fullDocument(){
+  const css=document.getElementById('appstyle').textContent;
+  const js=document.getElementById('appcode').textContent;
+  const dataStr=JSON.stringify({meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,revisions:DATA.revisions}).replace(/</g,'\u003c');
+  const S='scr'+'ipt';
+  // clone the static chrome and blank the dynamic regions (repopulated on load)
+  const shell=document.querySelector('.shell').cloneNode(true);
+  const blank=(sel,cls)=>{const el=shell.querySelector(sel);if(el){el.innerHTML='';if(cls)el.className=cls;}};
+  blank('#view'); blank('#nav'); blank('#sbfoot'); blank('#results','results');
+  const sb=shell.querySelector('#sidebar'); if(sb)sb.className='sidebar';
+  const menu=document.getElementById('menubtn').cloneNode(true);
+  const scrim=document.getElementById('scrim').cloneNode(true); scrim.className='scrim';
+  const fontLink='<link rel="stylesheet" href="'+FONTS+'">';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Amparacán</title>'+
+    fontLink+'</head><body>'+
+    '<style id="appstyle">'+css+'</style>'+
+    menu.outerHTML+scrim.outerHTML+shell.outerHTML+
+    '<'+S+' id="wikidata" type="application/json">'+dataStr+'</'+S+'>'+
+    '<'+S+' id="appcode">'+js+'</'+S+'>'+
+    '</body></html>';
+}
+function setStatus(txt,cls){const s=document.getElementById('status');if(s){s.textContent=txt;s.className='statuschip '+(cls||'');}}
+function persist(done){
+  if(WRITER&&CAP){
+    setStatus('Saving…','saving');
+    const msg=document.getElementById('savemsg');if(msg)msg.textContent='Publishing…';
+    CAP.publish(fullDocument()).then(()=>{ /* view reloads */ }).catch(err=>{
+      if(err&&(err.code==='not_writer'||err.code==='not_granted'||err.code==='capability_disabled')){
+        WRITER=false;LOCAL=true;saveLocal();setStatus('Saved on this device','saved');done&&done();
+      }else if(err&&err.code==='conflict'){ /* reloading to winner */ }
+      else{setStatus('Save failed','');if(msg)msg.textContent='Could not publish ('+(err&&err.code||'error')+'). Saved locally instead.';saveLocal();done&&done();}
+    });
+  }else{
+    saveLocal();setStatus('Saved on this device','saved');done&&done();
+  }
+}
+function saveLocal(){try{localStorage.setItem(LSKEY,JSON.stringify({__local:true,data:{meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,revisions:DATA.revisions}}));}catch(e){}}
+
+// ── search ─────────────────────────────────────────────────────────────
+let sIdx=-1,sHits=[];
+function runSearch(term){
+  const box=document.getElementById('results');
+  term=term.trim().toLowerCase();
+  if(!term){box.classList.remove('open');box.innerHTML='';sHits=[];return;}
+  const hits=[];
+  for(const e of DATA.entities){
+    const n=e.name.toLowerCase();
+    let sc=-1;
+    if(n===term)sc=100;else if(n.startsWith(term))sc=70;else if(n.includes(term))sc=40;
+    else if((e.meaning||'').toLowerCase().includes(term))sc=20;
+    else if((e.description||'').toLowerCase().includes(term))sc=10;
+    if(sc>0)hits.push([sc,e]);
+  }
+  hits.sort((a,b)=>b[0]-a[0]||a[1].name.localeCompare(b[1].name));
+  sHits=hits.slice(0,12).map(h=>h[1]);sIdx=-1;
+  box.innerHTML=sHits.length?sHits.map((e,i)=>`<a href="#/e/${e.slug}" data-i="${i}"><span class="rn">${esc(e.name)}</span><span class="rt">${esc(TYPE_LABEL[e.type]||e.type)}</span></a>`).join('')
+    :`<a style="cursor:default"><span class="rn" style="color:var(--muted)">No matches</span></a>`;
+  box.classList.add('open');
+}
+
+// ── page wiring ────────────────────────────────────────────────────────
+function wirePage(){
+  const savebtn=document.getElementById('savebtn');
+  if(savebtn){const slug=location.hash.split('/')[2];savebtn.onclick=()=>doSave(decodeURIComponent(slug));
+    const f=document.getElementById('editform');if(f)f.addEventListener('submit',e=>{e.preventDefault();doSave(decodeURIComponent(slug));});}
+  // people filter
+  const pf=document.getElementById('pfilter'),ps=document.getElementById('pseason');
+  if(pf||ps){
+    const apply=()=>{const t=(pf.value||'').toLowerCase(),se=ps.value?parseInt(ps.value):0;
+      let list=DATA.entities.filter(e=>e.type==='person');
+      if(t)list=list.filter(e=>e.name.toLowerCase().includes(t)||(e.description||'').toLowerCase().includes(t));
+      if(se)list=list.filter(e=>(e.seasons||[]).includes(se));
+      list.sort((a,b)=>a.name.localeCompare(b.name));
+      document.getElementById('pgrid').innerHTML=list.map(cardOf).join('');
+      document.getElementById('pcount').textContent=list.length;};
+    pf&&pf.addEventListener('input',apply);ps&&ps.addEventListener('change',apply);
+  }
+  // streets explorer
+  const stbody=document.getElementById('stbody');
+  if(stbody){
+    const sf=document.getElementById('sfilter'),sc=document.getElementById('scat'),sn=document.getElementById('sneigh');
+    const render=()=>{
+      const t=(sf.value||'').toLowerCase(),cat=sc.value,ne=sn.value;
+      let list=DATA.entities.filter(e=>e.type==='street');
+      if(cat)list=list.filter(e=>e.category===cat);
+      if(t)list=list.filter(e=>e.name.toLowerCase().includes(t)||(e.meaning||'').toLowerCase().includes(t));
+      if(ne)list=list.filter(e=>streetNeighNames(e.slug).some(n=>n.name===ne));
+      list.sort((a,b)=>a.name.localeCompare(b.name));
+      document.getElementById('scount').textContent=list.length+' streets';
+      stbody.innerHTML=list.slice(0,400).map(e=>{
+        const ns=streetNeighNames(e.slug);
+        return `<tr><td><a href="#/e/${e.slug}">${esc(e.name)}</a></td><td>${esc(e.street_type||'')}</td>
+          <td><span class="cat">${esc(e.category||'')}</span></td><td>${esc(e.meaning||'')}</td>
+          <td>${ns.map(n=>`<a href="#/e/${n.slug}">${esc(n.name)}</a>`).join(', ')}</td></tr>`;
+      }).join('')+(list.length>400?`<tr><td colspan="5" class="cat">Showing first 400 of ${list.length}. Refine your filters to see more.</td></tr>`:'');
+    };
+    [sf,sc,sn].forEach(el=>el&&el.addEventListener('input',render));
+    [sc,sn].forEach(el=>el&&el.addEventListener('change',render));
+    render();
+  }
+  const tb=document.getElementById('themebtn');if(tb)tb.onclick=toggleTheme;
+}
+
+function toggleTheme(){const r=document.documentElement;const cur=r.getAttribute('data-theme');
+  const next=cur==='dark'?'light':cur==='light'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark');
+  r.setAttribute('data-theme',next);try{localStorage.setItem('amparacan_theme',next);}catch(e){}}
+
+function closeMenu(){document.getElementById('sidebar').classList.remove('open');document.getElementById('scrim').classList.remove('open');}
+function openMenu(){document.getElementById('sidebar').classList.add('open');document.getElementById('scrim').classList.add('open');}
+
+// ── global listeners ───────────────────────────────────────────────────
+function initListeners(){
+  const q=document.getElementById('q');
+  q.addEventListener('input',()=>runSearch(q.value));
+  q.addEventListener('keydown',e=>{
+    const box=document.getElementById('results');
+    if(e.key==='ArrowDown'){e.preventDefault();sIdx=Math.min(sIdx+1,sHits.length-1);hi();}
+    else if(e.key==='ArrowUp'){e.preventDefault();sIdx=Math.max(sIdx-1,0);hi();}
+    else if(e.key==='Enter'){if(sHits[sIdx]){go('#/e/'+encodeURIComponent(sHits[sIdx].slug));q.value='';box.classList.remove('open');q.blur();}else if(sHits[0]){go('#/e/'+encodeURIComponent(sHits[0].slug));q.value='';box.classList.remove('open');q.blur();}}
+    else if(e.key==='Escape'){box.classList.remove('open');}
+  });
+  function hi(){const box=document.getElementById('results');[...box.querySelectorAll('a')].forEach((a,i)=>a.classList.toggle('active',i===sIdx));}
+  document.getElementById('results').addEventListener('click',()=>{setTimeout(()=>{document.getElementById('q').value='';document.getElementById('results').classList.remove('open');},0);});
+  document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.getElementById('results').classList.remove('open');});
+  document.getElementById('menubtn').addEventListener('click',openMenu);
+  document.getElementById('scrim').addEventListener('click',closeMenu);
+  // keyboard: "/" focuses search
+  document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();document.getElementById('q').focus();}});
+}
+
+// ── boot ───────────────────────────────────────────────────────────────
+async function boot(){
+  try{const t=localStorage.getItem('amparacan_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+  initListeners();
+  if(!location.hash)location.hash='#/';
+  route();
+  if(window.claude&&claude.use){
+    try{CAP=await claude.use('artifact');}catch(e){CAP=null;}
+    // A read-only view still resolves the namespace; the first publish that
+    // rejects not_writer downgrades us to local mode (see persist()).
+    if(CAP&&!LOCAL) WRITER=true;
+  }
+  renderNav();
+  route(); // re-render so Edit affordances reflect resolved capability
+}
+boot();
+})();
+</script>
