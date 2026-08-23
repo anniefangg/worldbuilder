@@ -207,6 +207,25 @@ td .cat{font-size:11px;color:var(--muted)}
 
 .empty{color:var(--muted);font-size:14px;padding:2rem 0}
 
+/* person photo + relations editor */
+.ib-photo{width:100%;display:block;aspect-ratio:4/5;object-fit:cover;background:var(--inset);border-bottom:1px solid var(--line)}
+.ib-photo.empty-ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;aspect-ratio:4/5}
+.photoedit{display:flex;gap:1rem;align-items:flex-start;margin-bottom:1rem}
+.photoedit .pv{width:104px;height:130px;border-radius:8px;object-fit:cover;background:var(--inset);
+  border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;text-align:center;flex-shrink:0;overflow:hidden}
+.photoedit .pv img{width:100%;height:100%;object-fit:cover}
+.rel-editor{border:1px solid var(--line2);border-radius:9px;padding:.9rem;background:var(--paper)}
+.rel-list{display:flex;flex-direction:column;gap:.4rem;margin-bottom:.7rem}
+.rel-item{display:flex;gap:.6rem;align-items:center;font-size:13px;background:var(--card);
+  border:1px solid var(--line2);border-radius:7px;padding:.35rem .5rem .35rem .7rem}
+.rel-item .rt{color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em;min-width:88px}
+.rel-item .rx{margin-left:auto;border:none;background:none;color:var(--danger);font-size:16px;line-height:1;padding:0 .3rem;cursor:pointer}
+.rel-add{display:grid;grid-template-columns:130px 1fr auto;gap:.5rem;align-items:center}
+.rel-add select,.rel-add input{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.4rem .55rem;font-size:13px;color:var(--ink)}
+@media(max-width:560px){.rel-add{grid-template-columns:1fr}}
+.relbox{display:flex;flex-direction:column;gap:.5rem}
+.relbox .conn .rel{min-width:96px}
+
 /* ── responsive ── */
 .menubtn{display:none}
 @media (max-width:880px){
@@ -400,7 +419,15 @@ function relsOf(slug){
   (RELS_B[slug]||[]).forEach(r=>out.push({dir:'in',rel:invRel(r.type),other:r.a,desc:r.description}));
   return out;
 }
-function invRel(t){return {'runs through':'streets here','located in':'contains','named after':'namesake of','member of party':'members'}[t]||t;}
+const REL_INV={'runs through':'streets here','located in':'contains','named after':'namesake of','member of party':'members',
+  'parent of':'child of','child of':'parent of','sibling of':'sibling of','spouse of':'spouse of','relative of':'relative of',
+  'mentor of':'student of','student of':'mentor of','ally of':'ally of','rival of':'rival of','associate of':'associate of',
+  'successor of':'predecessor of','predecessor of':'successor of'};
+function invRel(t){return REL_INV[t]||t;}
+// personal relationship types (both directions) — shown in a dedicated Relations panel
+const PERSON_RELS=['parent of','child of','sibling of','spouse of','relative of','mentor of','student of','ally of','rival of','associate of','successor of','predecessor of'];
+// types offered in the editor (a person "owns" these on their own page; inverses appear on the other page)
+const PERSON_REL_OPTS=['parent of','child of','sibling of','spouse of','relative of','mentor of','ally of','rival of','associate of','successor of'];
 
 function pageEntity(slug,params){
   const e=BY[slug];
@@ -414,8 +441,8 @@ function pageEntity(slug,params){
     ${WRITER||LOCAL||CAP?`<button class="btn small editbtn" onclick="location.hash='#/edit/${e.slug}'">✎ Edit</button>`:''}
     <p class="lead">${esc(e.description||'No description yet.')}</p>`;
   body+=typeSections(e,rels);
-  // connections
-  const shown=rels.filter(r=>BY[r.other]);
+  // connections (personal relations are shown separately for people)
+  const shown=rels.filter(r=>BY[r.other]&&!(e.type==='person'&&PERSON_RELS.includes(r.rel)));
   if(shown.length){
     body+=`<h2 class="sec">Connections</h2><div class="conns">`+
       shown.slice(0,40).map(r=>`<div class="conn"><span class="rel">${esc(r.rel)}</span><span>${link(r.other)}${r.desc?` <span class="cat">— ${esc(r.desc)}</span>`:''}</span></div>`).join('')+
@@ -444,10 +471,18 @@ function cap1(s){return s?s[0].toUpperCase()+s.slice(1):s;}
 function infobox(e,rels){
   let rows='';
   const R=(k,v)=>{if(v!=null&&v!=='')rows+=`<div class="row"><dt>${esc(k)}</dt><dd>${v}</dd></div>`;};
+  let photo='';
   if(e.type==='person'){
+    if(e.photo)photo=`<img class="ib-photo" src="${e.photo}" alt="Portrait of ${esc(e.name)}">`;
+    const life=[e.birth_year,e.death_year].some(x=>x!=null)?`${e.birth_year!=null?e.birth_year:'?'}–${e.death_year!=null?e.death_year:(e.birth_year!=null?'present':'?')}`:'';
+    R('Born',life);
+    R('Birthplace',e.origin_city?esc(e.origin_city):(e.origin==='foreign'?'Foreign':''));
     R('Occupation',e.occupation?esc(e.occupation):'');
+    R('Education',e.education?esc(e.education):'');
+    R('Party',e.party&&BY[e.party]?link(e.party):(e.party?esc(e.party):''));
+    R('Role',e.political_role?esc(e.political_role):'');
+    R('Notable for',e.notable_for?esc(e.notable_for):'');
     R('Seasons',e.seasons&&e.seasons.length?`<div class="chips">${e.seasons.map(s=>`<a class="chip accent" href="#/seasons">${s}</a>`).join('')}</div>`:'');
-    R('Origin',e.origin_city?esc(e.origin_city):(e.origin==='foreign'?'Foreign':''));
     const terms=DATA.heads_of_state.filter(h=>h.person===e.slug);
     if(terms.length)R('In office',terms.map(t=>`${t.start}–${t.end}`).join(', '));
   }else if(e.type==='street'){
@@ -467,7 +502,7 @@ function infobox(e,rels){
     R('Seats',e.seats!=null?e.seats:'');R('Vote',e.vote_pct!=null?e.vote_pct+'%':'');
     R('Votes',e.constituency?fmt(e.constituency):'');R('Founded',e.year_est);R('Status',esc(e.status));
   }
-  return `<aside class="infobox"><div class="ib-head"><div class="ib-type">${esc(TYPE_LABEL[e.type]||e.type)}</div>
+  return `<aside class="infobox">${photo}<div class="ib-head"><div class="ib-type">${esc(TYPE_LABEL[e.type]||e.type)}</div>
     <div class="ib-name">${esc(e.name)}</div></div><dl>${rows||'<div class="row"><dd style="color:var(--muted)">No structured facts yet.</dd></div>'}</dl></aside>`;
 }
 
@@ -484,6 +519,10 @@ function typeSections(e,rels){
     if(mem.length){h+=`<h2 class="sec">Heads of state <span class="count">${mem.length}</span></h2><div class="conns">`+mem.map(x=>`<div class="conn"><span class="rel">${esc(x.d||'')}</span><span>${link(x.s)}</span></div>`).join('')+`</div>`;}
   }
   if(e.type==='person'){
+    if(e.bio){h+=`<h2 class="sec">Biography</h2>`+e.bio.split(/\n\s*\n/).map(para=>`<p>${esc(para)}</p>`).join('');}
+    const prs=relsOf(e.slug).filter(r=>PERSON_RELS.includes(r.rel)&&BY[r.other]&&BY[r.other].type==='person');
+    if(prs.length){h+=`<h2 class="sec">Relations <span class="count">${prs.length}</span></h2><div class="relbox">`+
+      prs.map(r=>`<div class="conn"><span class="rel">${esc(r.rel)}</span><span>${link(r.other)}${r.desc?` <span class="cat">— ${esc(r.desc)}</span>`:''}</span></div>`).join('')+`</div>`;}
     const terms=DATA.heads_of_state.filter(h=>h.person===e.slug).sort((a,b)=>a.start-b.start);
     if(terms.length){h+=`<h2 class="sec">Terms in office</h2><div class="conns">`+terms.map(t=>`<div class="conn"><span class="rel mono">${t.start}–${t.end}</span><span>${t.term?'Term '+t.term+' · ':''}${t.occupation?esc(t.occupation):''}${t.party&&BY[t.party]?' · '+link(t.party):''}${t.notes?` <span class="cat">— ${esc(t.notes)}</span>`:''}</span></div>`).join('')+`</div>`;}
     const named=(RELS_B[e.slug]||[]).filter(r=>r.type==='named after').map(r=>r.a).filter(s=>BY[s]);
@@ -579,7 +618,7 @@ function pageSeasons(){
 
 // ── EDIT ───────────────────────────────────────────────────────────────
 const EDIT_FIELDS={
-  person:[['name','Name','text'],['description','Description','textarea'],['occupation','Occupation','text'],['origin_city','Origin city','text'],['seasons','Seasons (comma-separated numbers)','seasons']],
+  person:[['name','Name','text'],['description','Short description','textarea'],['bio','Biography','textarea'],['birth_year','Born (year)','number'],['death_year','Died (year)','number'],['origin_city','Birthplace','text'],['education','Education','text'],['party','Political party','party'],['political_role','Political role','text'],['notable_for','Notable for','text'],['occupation','Occupation','text'],['seasons','Seasons (comma-separated numbers)','seasons']],
   street:[['name','Name','text'],['description','Description','textarea'],['street_type','Street type','text'],['category','Category','text'],['meaning','Meaning / etymology','text'],['note','Note','textarea']],
   place:[['name','Name','text'],['description','Description','textarea'],['place_type','Kind','text'],['population','Population','number'],['founded_decade','Founded (decade)','text'],['peak_decade','Grew fastest (decade)','text'],['typology','Typology','text']],
   political_party:[['name','Name','text'],['description','Description','textarea'],['abbreviation','Abbreviation','text'],['alignment','Alignment','text'],['ideology','Ideology','text'],['seats','Seats','number'],['vote_pct','Vote %','number'],['year_est','Founded (year)','number'],['status','Status','text']],
@@ -588,26 +627,83 @@ function pageEdit(slug){
   const e=BY[slug];
   if(!e)return `<div class="empty">No such article.</div>`;
   const fields=EDIT_FIELDS[e.type]||[['name','Name','text'],['description','Description','textarea']];
+  const partyNames=DATA.entities.filter(x=>x.type==='political_party').map(x=>x.name);
   const inp=([k,label,kind])=>{
     let val=e[k]; if(kind==='seasons')val=(e.seasons||[]).join(', ');
+    if(kind==='party')val=e.party&&BY[e.party]?BY[e.party].name:(e.party||'');
     val=val==null?'':val;
     let ctl;
     if(kind==='textarea')ctl=`<textarea id="f_${k}">${esc(val)}</textarea>`;
+    else if(kind==='party')ctl=`<input id="f_${k}" list="partylist" value="${esc(val)}" placeholder="Type a party name…">`;
     else ctl=`<input id="f_${k}" type="${kind==='number'?'number':'text'}" value="${esc(val)}">`;
-    return `<div class="field"><label for="f_${k}">${esc(label)}</label>${ctl}</div>`;
+    const hint=kind==='party'?`<div class="hint">Links to a party page if the name matches one.</div>`
+      :k==='bio'?`<div class="hint">Full biography. Blank lines separate paragraphs.</div>`:'';
+    return `<div class="field"><label for="f_${k}">${esc(label)}</label>${ctl}${hint}</div>`;
   };
+  // person-only: photo uploader + relations editor
+  let extra='';
+  if(e.type==='person'){
+    EDIT_PHOTO=e.photo||null;
+    EDIT_RELS=(RELS_A[e.slug]||[]).filter(r=>PERSON_RELS.includes(r.type)).map(r=>({b:r.b,type:r.type,description:r.description||''}));
+    const peopleNames=DATA.entities.filter(x=>x.type==='person'&&x.slug!==e.slug).map(x=>x.name);
+    extra=`
+    <div class="field"><label>Photo</label>
+      <div class="photoedit">
+        <div class="pv" id="photoPrev">${EDIT_PHOTO?`<img src="${EDIT_PHOTO}" alt="">`:'No photo'}</div>
+        <div>
+          <input type="file" accept="image/*" id="photoInput" style="font-size:13px">
+          <div class="hint">Upload a portrait — it is stored inside the wiki (downscaled). External image links won't load.</div>
+          <button type="button" class="btn small ghost" id="photoClear" style="margin-top:.5rem">Remove photo</button>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>Relations</label>
+      <div class="rel-editor">
+        <div class="rel-list" id="relList"></div>
+        <div class="rel-add">
+          <select id="relType">${PERSON_REL_OPTS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+          <input id="relWho" list="peoplelist" placeholder="Person's name…">
+          <button type="button" class="btn small" id="relAdd">Add</button>
+        </div>
+        <div class="hint" style="margin-top:.5rem">Links this person to another. The reverse link appears automatically on the other person's page.</div>
+      </div>
+    </div>
+    <datalist id="peoplelist">${peopleNames.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`;
+  }
   return `<div class="crumbs"><a href="#/e/${e.slug}">${esc(e.name)}</a><span class="sep">›</span><span>Edit</span></div>
     <div class="eyebrow">Editing ${esc(TYPE_LABEL[e.type])}</div>
     <h1 class="title">${esc(e.name)}</h1>
     <p class="lead" style="font-size:.95rem">Fields are structured, not free text — the same record feeds every page that mentions this ${esc(TYPE_LABEL[e.type].toLowerCase())}. ${WRITER?'Saving publishes a new shared version.':LOCAL||CAP?'Saving stores your changes on this device.':''}</p>
     <form class="editform" id="editform" onsubmit="return false">
       ${fields.map(inp).join('')}
+      ${extra}
+      <datalist id="partylist">${partyNames.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
       <div class="btns">
         <button class="btn primary" id="savebtn" type="submit">Save changes</button>
         <a class="btn ghost" href="#/e/${e.slug}">Cancel</a>
         <span id="savemsg" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </form>`;
+}
+let EDIT_PHOTO=null, EDIT_RELS=[];
+function renderRelList(){
+  const el=document.getElementById('relList');if(!el)return;
+  el.innerHTML=EDIT_RELS.length?EDIT_RELS.map((r,i)=>{
+    const nm=BY[r.b]?BY[r.b].name:r.b;
+    return `<div class="rel-item"><span class="rt">${esc(r.type)}</span><span>${esc(nm)}${r.description?` — ${esc(r.description)}`:''}</span><button type="button" class="rx" data-i="${i}" aria-label="Remove">×</button></div>`;
+  }).join(''):`<div class="hint">No relations yet.</div>`;
+  el.querySelectorAll('.rx').forEach(b=>b.onclick=()=>{EDIT_RELS.splice(+b.dataset.i,1);renderRelList();});
+}
+function downscaleImage(file,cb){
+  const fr=new FileReader();
+  fr.onload=()=>{const img=new Image();img.onload=()=>{
+    const max=560;let{width:w,height:h}=img;
+    if(w>max||h>max){const s=max/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    try{cb(c.toDataURL('image/jpeg',0.82));}catch(e){cb(fr.result);}
+  };img.onerror=()=>cb(null);img.src=fr.result;};
+  fr.onerror=()=>cb(null);fr.readAsDataURL(file);
 }
 
 function doSave(slug){
@@ -619,15 +715,40 @@ function doSave(slug){
     let ov=e[k];
     if(kind==='seasons'){nv=nv.split(',').map(x=>parseInt(x.trim(),10)).filter(n=>!isNaN(n));
       if(JSON.stringify(nv)!==JSON.stringify(ov||[])){changes.push([k,(ov||[]).join(', '),nv.join(', ')]);e.seasons=nv;}return;}
+    if(kind==='party'){ // resolve typed party name to an entity slug
+      const nm=nv.trim();
+      const match=DATA.entities.find(x=>x.type==='political_party'&&x.name.toLowerCase()===nm.toLowerCase());
+      const newVal=match?match.slug:(nm||null);
+      const oldName=ov&&BY[ov]?BY[ov].name:(ov||'');
+      const newName=match?match.name:nm;
+      if(String(newVal||'')!==String(ov||'')){changes.push(['party',oldName,newName]);e.party=newVal;}
+      return;}
     if(kind==='number'){nv=nv===''?null:Number(nv);}
     ov=ov==null?'':ov; const cmp=nv==null?'':nv;
     if(String(cmp)!==String(ov)){changes.push([k,String(ov),String(cmp)]);e[k]=nv;}
   });
+  // photo
+  if(e.type==='person'&&EDIT_PHOTO!==(e.photo||null)){
+    changes.push(['photo',e.photo?'(image)':'(none)',EDIT_PHOTO?'(image)':'(none)']);
+    if(EDIT_PHOTO)e.photo=EDIT_PHOTO;else delete e.photo;
+  }
+  // relations: replace this person's owned personal relations with the edited set
+  if(e.type==='person'){
+    const before=(RELS_A[slug]||[]).filter(r=>PERSON_RELS.includes(r.type)).map(r=>r.type+'→'+r.b).sort().join('|');
+    const after=EDIT_RELS.map(r=>r.type+'→'+r.b).sort().join('|');
+    if(before!==after){
+      DATA.relationships=DATA.relationships.filter(r=>!(r.a===slug&&PERSON_RELS.includes(r.type)));
+      EDIT_RELS.forEach(r=>DATA.relationships.push({a:slug,b:r.b,type:r.type,description:r.description||''}));
+      const label=EDIT_RELS.map(r=>`${r.type} ${BY[r.b]?BY[r.b].name:r.b}`).join('; ');
+      changes.push(['relations','(updated)',label||'(none)']);
+    }
+  }
   if(!changes.length){document.getElementById('savemsg').textContent='No changes to save.';return;}
   const now=new Date().toISOString();
   changes.forEach(([f,o,n])=>DATA.revisions.push({entity:slug,field:f,old:o,new:n,at:now}));
   reindex();
-  persist(()=>{go('#/e/'+encodeURIComponent(slug));});
+  go('#/e/'+encodeURIComponent(slug)); // navigate first so a post-publish reload lands on the article
+  persist();
 }
 
 // ── HISTORY ────────────────────────────────────────────────────────────
@@ -708,6 +829,26 @@ function wirePage(){
   const savebtn=document.getElementById('savebtn');
   if(savebtn){const slug=location.hash.split('/')[2];savebtn.onclick=()=>doSave(decodeURIComponent(slug));
     const f=document.getElementById('editform');if(f)f.addEventListener('submit',e=>{e.preventDefault();doSave(decodeURIComponent(slug));});}
+  // person edit: photo + relations
+  const photoInput=document.getElementById('photoInput');
+  if(photoInput){
+    renderRelList();
+    photoInput.addEventListener('change',ev=>{const file=ev.target.files&&ev.target.files[0];if(!file)return;
+      downscaleImage(file,url=>{if(!url){document.getElementById('savemsg').textContent='Could not read that image.';return;}
+        EDIT_PHOTO=url;document.getElementById('photoPrev').innerHTML=`<img src="${url}" alt="">`;});});
+    const pc=document.getElementById('photoClear');if(pc)pc.onclick=()=>{EDIT_PHOTO=null;document.getElementById('photoPrev').textContent='No photo';photoInput.value='';};
+    const relAdd=document.getElementById('relAdd');
+    if(relAdd)relAdd.onclick=()=>{
+      const type=document.getElementById('relType').value;
+      const who=document.getElementById('relWho').value.trim();
+      if(!who)return;
+      const match=DATA.entities.find(x=>x.type==='person'&&x.name.toLowerCase()===who.toLowerCase());
+      if(!match){document.getElementById('savemsg').textContent=`No person named “${who}”. Pick an existing person.`;return;}
+      document.getElementById('savemsg').textContent='';
+      if(!EDIT_RELS.some(r=>r.type===type&&r.b===match.slug))EDIT_RELS.push({type,b:match.slug,description:''});
+      document.getElementById('relWho').value='';renderRelList();
+    };
+  }
   // people filter
   const pf=document.getElementById('pfilter'),ps=document.getElementById('pseason');
   if(pf||ps){
