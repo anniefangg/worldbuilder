@@ -300,21 +300,47 @@ for st in STREETS:
 # ── PORTRAITS (from exported Characters xlsx tabs) ─────────────────────────
 def _norm(s):
     return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode().lower().strip()
+def _lev1(a, b):  # True if edit distance between a and b is <= 1
+    if a == b: return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1: return False
+    if la == lb:  # single substitution
+        return sum(x != y for x, y in zip(a, b)) == 1
+    if la > lb: a, b, la, lb = b, a, lb, la   # ensure a shorter
+    i = j = 0; diff = 0
+    while i < la and j < lb:
+        if a[i] == b[j]: i += 1; j += 1
+        else:
+            diff += 1; j += 1
+            if diff > 1: return False
+    return True
+
+# era context for people who only appear here as portraits
+ERA = {
+ "Pirates era":      ("A pirate-era figure of Amparacán (17th–early 18th century).", [2]),
+ "Legitimation era": ("A figure of Amparacán's colonial legitimation era (18th century).", [4]),
+ "Independence era": ("A figure of Amparacán's independence era (early–mid 19th century).", [6]),
+ "Early republic":   ("A figure of Amparacán's early republic.", [7]),
+ "Sheet9":           ("A figure of Amparacán's history.", []),
+}
 PORT_PATH = "/home/user/worldbuilder/data/portraits.json"
 if os.path.exists(PORT_PATH):
     portraits = json.load(open(PORT_PATH))
-    pmap = {}
-    for e in entities.values():
-        if e["type"] == "person":
-            pmap.setdefault(_norm(e["name"]), e["slug"])
+    people_norms = {_norm(e["name"]): e["slug"] for e in entities.values() if e["type"] == "person"}
     matched = new = 0
-    for nm, uri in portraits.items():
-        slug = pmap.get(_norm(nm))
+    for rec in portraits.values():
+        nm, uri, sheet = rec["name"], rec["uri"], rec.get("sheet", "")
+        k = _norm(nm)
+        slug = people_norms.get(k)
+        if not slug:  # fuzzy fallback: catch spelling variants (Abarco/Abaco)
+            for kk, sl in people_norms.items():
+                if _lev1(k, kk): slug = sl; break
         if slug:
             entities[slug]["photo"] = uri; matched += 1
-        else:  # a portrait for someone not yet in the wiki — add them
-            s = add(nm, "person", "A pirate-era figure of Amparacán.", seasons=[2], photo=uri)
-            pmap[_norm(nm)] = s; new += 1
+        else:
+            desc, seasons = ERA.get(sheet, ("A figure of Amparacán's history.", []))
+            s = add(nm, "person", desc, seasons=seasons, photo=uri)
+            people_norms[k] = s; new += 1
     print(f"portraits: matched {matched}, added {new} new people")
 
 # ── finalise ──────────────────────────────────────────────────────────────
