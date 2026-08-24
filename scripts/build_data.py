@@ -343,12 +343,51 @@ if os.path.exists(PORT_PATH):
             people_norms[k] = s; new += 1
     print(f"portraits: matched {matched}, added {new} new people")
 
+# ── TIMELINE / CHRONOLOGY ──────────────────────────────────────────────────
+chronology = []
+TL_PATH = "/home/user/worldbuilder/data/timeline_raw.json"
+if os.path.exists(TL_PATH):
+    tl = json.load(open(TL_PATH))
+    # candidate entity names to auto-link inside event text (people + places);
+    # only multi-word or reasonably long names, to avoid noisy matches
+    cand = []
+    for e in entities.values():
+        if e["type"] in ("person", "place"):
+            nm = e["name"]
+            if len(nm) >= 6 or len(nm.split()) >= 2:
+                cand.append((nm, e["slug"]))
+    cand.sort(key=lambda x: -len(x[0]))
+    linked = 0
+    for ev in tl:
+        text = ev["text"]; claimed = [False]*len(text); spans = []; refs = set()
+        for nm, slug in cand:
+            start = 0
+            while True:
+                i = text.find(nm, start)
+                if i < 0: break
+                j = i + len(nm); start = j
+                if i > 0 and text[i-1].isalnum(): continue
+                if j < len(text) and text[j].isalnum(): continue
+                if any(claimed[i:j]): continue
+                for k in range(i, j): claimed[k] = True
+                spans.append((i, j)); refs.add(slug)
+        spans.sort()
+        out = []; pos = 0
+        for i, j in spans:
+            out.append(text[pos:i]); out.append("[[" + text[i:j] + "]]"); pos = j
+        out.append(text[pos:])
+        if spans: linked += 1
+        chronology.append({"y": ev["y"], "label": ev["label"], "text": "".join(out),
+                           "approx": ev.get("approx", False), "refs": sorted(refs)})
+    print(f"chronology: {len(chronology)} events, {linked} auto-linked to entities")
+
 # ── finalise ──────────────────────────────────────────────────────────────
 data = {
     "meta": {"title":"Amparacán","subtitle":"A wiki of the island city-state, 1650s–2060s"},
     "entities": list(entities.values()),
     "relationships": rels,
     "heads_of_state": heads,
+    "chronology": chronology,
 }
 json.dump(data, open("/home/user/worldbuilder/data/wiki_data.json","w"),
           ensure_ascii=False, separators=(",",":"))

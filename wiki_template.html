@@ -226,6 +226,14 @@ td .cat{font-size:11px;color:var(--muted)}
 .relbox{display:flex;flex-direction:column;gap:.5rem}
 .relbox .conn .rel{min-width:96px}
 .redlink{color:var(--danger);border-bottom:1px dotted var(--danger);cursor:help;opacity:.85}
+.muted-sub{font-size:12.5px;color:var(--muted);margin:-.5rem 0 .8rem}
+.chron{display:flex;flex-direction:column;border-left:2px solid var(--line);margin-left:.3rem}
+.cev{display:grid;grid-template-columns:70px 1fr;gap:.9rem;padding:.4rem 0 .4rem 1rem;position:relative;align-items:baseline}
+.cev::before{content:"";position:absolute;left:-5px;top:.75rem;width:8px;height:8px;border-radius:50%;background:var(--accent);border:2px solid var(--paper)}
+.cev .cy{font-size:12.5px;color:var(--accent);white-space:nowrap;font-weight:500;padding-top:1px}
+.cev .cy.approx{color:var(--muted)}
+.cev .ct{color:var(--ink2);font-size:14px}
+@media(max-width:560px){.cev{grid-template-columns:56px 1fr;gap:.5rem}}
 
 /* ── responsive ── */
 .menubtn{display:none}
@@ -300,6 +308,7 @@ function reindex(){
 }
 reindex();
 DATA.revisions=DATA.revisions||[];
+DATA.chronology=DATA.chronology||[];
 
 const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation'};
 const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations'};
@@ -347,6 +356,7 @@ function route(){
   else if(parts[0]==='type'){ html=pageType(parts[1]); }
   else if(parts[0]==='streets'){ html=pageStreets(params); }
   else if(parts[0]==='timeline'){ html=pageTimeline(); }
+  else if(parts[0]==='chronology'){ html=pageChronology(); }
   else if(parts[0]==='seasons'){ html=pageSeasons(); }
   else if(parts[0]==='random'){ const e=DATA.entities[Math.floor(Math.random()*DATA.entities.length)]; go('#/e/'+encodeURIComponent(e.slug)); return; }
   else html=`<div class="empty">Page not found. <a href="#/">Return to the overview.</a></div>`;
@@ -369,6 +379,7 @@ function renderNav(){
     ['#/type/political_party','Parties',c.political_party],
   ];
   const items2=[
+    ['#/chronology','Chronology',(DATA.chronology||[]).length],
     ['#/timeline','Heads of state',DATA.heads_of_state.length],
     ['#/seasons','Seasons','11'],
     ['#/random','Random article',''],
@@ -463,6 +474,13 @@ function pageEntity(slug,params){
   if(e.bio){body+=`<h2 class="sec">${e.type==='person'?'Biography':'Overview'}</h2>`+
     e.bio.split(/\n\s*\n/).map(para=>`<p>${wikitext(para)}</p>`).join('');}
   body+=typeSections(e,rels);
+  // chronology events mentioning this entity
+  const evs=entityEvents(slug);
+  if(evs.length){
+    body+=`<h2 class="sec">In the chronology <span class="count">${evs.length}</span></h2><div class="chron">`+
+      evs.map(ev=>`<div class="cev"><span class="cy mono${ev.approx?' approx':''}">${esc(ev.label)}</span><span class="ct">${wikitext(ev.text)}</span></div>`).join('')+
+      `</div>`;
+  }
   // connections (personal relations are shown separately for people)
   const shown=rels.filter(r=>BY[r.other]&&!(e.type==='person'&&PERSON_RELS.includes(r.rel)));
   if(shown.length){
@@ -619,6 +637,33 @@ function pageTimeline(){
     </div>`;
   });
   return h+`</div>`;
+}
+
+// ── CHRONOLOGY ─────────────────────────────────────────────────────────
+const ERAS=[
+  [-9999,1517,'Maya era','Maya trade outpost, pilgrimage and abandonment'],
+  [1518,1554,'Spanish contact','Passing expeditions and the first refugees'],
+  [1555,1717,'Smugglers & pirates','From Vázquez Merayo’s haven to the Pirates’ War'],
+  [1718,1820,'Legitimation & colony','A chartered city under the Spanish crown'],
+  [1821,2100,'Independence & republic','Sovereignty, constitutions and modern politics'],
+];
+function pageChronology(){
+  const ev=(DATA.chronology||[]).slice().sort((a,b)=>a.y-b.y);
+  let h=`<div class="eyebrow">${ev.length?ev[0].label+' – '+ev[ev.length-1].label:''}</div>
+    <h1 class="title">Chronology of Amparacán</h1>
+    <p class="lead">A year-by-year record of the island's history — ${ev.length} events, with people and places linked to their articles.</p>`;
+  ERAS.forEach(([a,b,title,sub])=>{
+    const rows=ev.filter(e=>e.y>=a&&e.y<=b);
+    if(!rows.length)return;
+    h+=`<h2 class="sec">${esc(title)} <span class="count">${rows.length}</span></h2>
+      <div class="muted-sub">${esc(sub)}</div><div class="chron">`+
+      rows.map(e=>`<div class="cev"><span class="cy mono${e.approx?' approx':''}">${esc(e.label)}</span><span class="ct">${wikitext(e.text)}</span></div>`).join('')+
+      `</div>`;
+  });
+  return h;
+}
+function entityEvents(slug){
+  return (DATA.chronology||[]).filter(e=>(e.refs||[]).includes(slug)).sort((a,b)=>a.y-b.y);
 }
 
 // ── SEASONS ────────────────────────────────────────────────────────────
@@ -794,7 +839,7 @@ function pageHistory(slug){
 function fullDocument(){
   const css=document.getElementById('appstyle').textContent;
   const js=document.getElementById('appcode').textContent;
-  const dataStr=JSON.stringify({meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,revisions:DATA.revisions}).replace(/</g,'\u003c');
+  const dataStr=JSON.stringify({meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,chronology:DATA.chronology,revisions:DATA.revisions}).replace(/</g,'\u003c');
   const S='scr'+'ipt';
   // clone the static chrome and blank the dynamic regions (repopulated on load)
   const shell=document.querySelector('.shell').cloneNode(true);
@@ -828,7 +873,7 @@ function persist(done){
     saveLocal();setStatus('Saved on this device','saved');done&&done();
   }
 }
-function saveLocal(){try{localStorage.setItem(LSKEY,JSON.stringify({__local:true,data:{meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,revisions:DATA.revisions}}));}catch(e){}}
+function saveLocal(){try{localStorage.setItem(LSKEY,JSON.stringify({__local:true,data:{meta:DATA.meta,entities:DATA.entities,relationships:DATA.relationships,heads_of_state:DATA.heads_of_state,chronology:DATA.chronology,revisions:DATA.revisions}}));}catch(e){}}
 
 // ── search ─────────────────────────────────────────────────────────────
 let sIdx=-1,sHits=[];
