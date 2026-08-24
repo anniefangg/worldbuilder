@@ -235,6 +235,42 @@ td .cat{font-size:11px;color:var(--muted)}
 .cev .ct{color:var(--ink2);font-size:14px}
 @media(max-width:560px){.cev{grid-template-columns:56px 1fr;gap:.5rem}}
 
+/* avatars / thumbnails */
+.avatar{border-radius:50%;object-fit:cover;background:var(--inset);display:inline-flex;
+  align-items:center;justify-content:center;flex-shrink:0;vertical-align:middle;border:1px solid var(--line2)}
+.avatar.ph{color:var(--muted);font-weight:600;letter-spacing:.02em}
+.ecard.person .pcard-top{display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem}
+.ecard.person .pcard-top .en{margin:0}
+td .avatar{margin:0}
+
+/* index toolbar: view toggle + column menu */
+.idxbar{gap:.45rem}
+.idxbar select,.idxbar input{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:.4rem .55rem;font-size:12.5px;color:var(--ink)}
+.ckbox{display:inline-flex;align-items:center;gap:.35rem;font-size:12.5px;color:var(--ink2);border:1px solid var(--line);border-radius:7px;padding:.35rem .55rem;background:var(--card)}
+.viewtoggle{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.viewtoggle button{background:var(--card);border:none;color:var(--muted);padding:.35rem .55rem;font-size:14px;line-height:1}
+.viewtoggle button+button{border-left:1px solid var(--line)}
+.viewtoggle button.on{background:var(--accent);color:#fff}
+.colmenu-wrap{position:relative}
+.colmenu{position:absolute;top:calc(100% + 4px);right:0;background:var(--card);border:1px solid var(--line);
+  border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,.18);padding:.4rem;min-width:170px;z-index:30;display:none}
+.colmenu.open{display:block}
+.colmenu .ckrow{display:flex;align-items:center;gap:.5rem;font-size:13px;color:var(--ink2);padding:.32rem .45rem;border-radius:6px;cursor:pointer}
+.colmenu .ckrow:hover{background:var(--inset)}
+
+/* collapsible sidebar */
+.sbcollapse{position:absolute;top:.7rem;right:.7rem;background:none;border:1px solid var(--line);
+  border-radius:6px;color:var(--muted);width:24px;height:24px;line-height:1;font-size:13px;padding:0}
+.sbcollapse:hover{color:var(--ink);border-color:var(--accent)}
+.sidebar{position:sticky} /* base already sticky; ensure relative context for the button */
+.sbexpand{display:none;position:fixed;top:.8rem;left:.8rem;z-index:60;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;color:var(--ink2);width:32px;height:32px;font-size:15px;line-height:1}
+.sbexpand:hover{border-color:var(--accent);color:var(--ink)}
+body.sbc .shell{grid-template-columns:0 minmax(0,1fr)}
+body.sbc .sidebar{display:none}
+@media (min-width:881px){ body.sbc .sbexpand{display:inline-flex;align-items:center;justify-content:center} }
+@media (max-width:880px){ .sbcollapse{display:none} .sbexpand{display:none!important} body.sbc .shell{grid-template-columns:1fr} body.sbc .sidebar{display:flex} }
+
 /* ── responsive ── */
 .menubtn{display:none}
 @media (max-width:880px){
@@ -253,8 +289,10 @@ td .cat{font-size:11px;color:var(--muted)}
 
 <button class="menubtn" id="menubtn" aria-label="Open menu">☰ Menu</button>
 <div class="scrim" id="scrim"></div>
+<button class="sbexpand" id="sbexpand" aria-label="Show navigation" title="Show navigation">»</button>
 <div class="shell">
   <aside class="sidebar" id="sidebar">
+    <button class="sbcollapse" id="sbcollapse" aria-label="Collapse navigation" title="Collapse navigation">«</button>
     <a class="brand" href="#/">
       <div class="mark">Ampara<em>cán</em></div>
       <div class="tag">A wiki of the island city-state · 1650s–2060s</div>
@@ -570,37 +608,137 @@ function typeSections(e,rels){
 }
 
 // ── TYPE INDEX ─────────────────────────────────────────────────────────
-function pageType(type){
-  if(type==='place')return pagePlaces();
-  const list=DATA.entities.filter(e=>e.type===type).sort((a,b)=>a.name.localeCompare(b.name));
-  if(!list.length)return `<div class="empty">Nothing here yet.</div>`;
-  if(type==='person')return pagePeople(list);
-  return `<div class="eyebrow">Index</div><h1 class="title">${esc(TYPE_PLURAL[type]||type)}</h1>
-    <div class="toolbar"><span class="count">${list.length} articles</span></div>
-    <div class="cardgrid">`+list.map(cardOf).join('')+`</div>`;
-}
 function cardOf(e){return `<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${esc(e.description||subtitleFor(e))}</div></a>`;}
 
-function pagePeople(list){
-  return `<div class="eyebrow">Index</div><h1 class="title">People</h1>
-   <div class="toolbar">
-     <input id="pfilter" placeholder="Filter people…" style="min-width:200px">
-     <select id="pseason"><option value="">All seasons</option>${Array.from({length:11},(_,i)=>`<option value="${i+1}">Season ${i+1}</option>`).join('')}</select>
-     <span class="count" id="pcount">${list.length}</span>
-   </div>
-   <div class="cardgrid" id="pgrid">${list.map(cardOf).join('')}</div>`;
-}
+// ── generic INDEX: cards/list toggle, filters, custom columns ───────────
+function initials(nm){return (nm||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();}
+function avatarImg(e,size){size=size||28;const s=`width:${size}px;height:${size}px`;
+  return e.photo?`<img class="avatar" style="${s}" src="${e.photo}" alt="">`:`<span class="avatar ph" style="${s};font-size:${Math.round(size*0.36)}px">${esc(initials(e.name))}</span>`;}
+function decOf(y){return y!=null&&y!==''?Math.floor(y/10)*10+'s':'';}
+function distinctVals(type,field){return [...new Set(DATA.entities.filter(e=>e.type===type&&e[field]!=null&&e[field]!=='').map(e=>e[field]))].sort((a,b)=>String(a).localeCompare(String(b)));}
+function personCard(e){return `<a class="ecard person" href="#/e/${e.slug}"><div class="pcard-top">${avatarImg(e,44)}<div class="en">${esc(e.name)}</div></div><div class="ed">${esc(e.description||subtitleFor(e))}</div></a>`;}
+function placeCard(e){return `<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${e.population?'Pop. '+fmt(e.population)+' · ':''}${esc(e.founded_decade?('est. '+e.founded_decade):(e.typology||e.province_of||cap1(e.place_type||'')))}</div></a>`;}
 
-function pagePlaces(){
-  const groups=[['province','Provinces'],['neighbourhood','City neighbourhoods'],['settlement','Outer-island settlements']];
-  let h=`<div class="eyebrow">Index</div><h1 class="title">Places</h1>`;
-  groups.forEach(([pt,label])=>{
-    const list=DATA.entities.filter(e=>e.type==='place'&&e.place_type===pt).sort((a,b)=>(b.population||0)-(a.population||0)||a.name.localeCompare(b.name));
-    if(!list.length)return;
-    h+=`<h2 class="sec">${label} <span class="count">${list.length}</span></h2><div class="cardgrid">`+
-      list.map(e=>`<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${e.population?'Pop. '+fmt(e.population)+' · ':''}${esc(e.founded_decade?('est. '+e.founded_decade):(e.typology||e.province_of||''))}</div></a>`).join('')+`</div>`;
-  });
-  return h;
+const INDEX_CFG={
+ person:{ title:'People',
+  filters:[
+   {key:'q',kind:'text',label:'name or role…',test:(e,v)=>!v||(e.name+' '+(e.description||'')+' '+(e.occupation||'')+' '+(e.notable_for||'')).toLowerCase().includes(v.toLowerCase())},
+   {key:'season',kind:'select',label:'Season',opts:()=>Array.from({length:11},(_,i)=>[String(i+1),'Season '+(i+1)]),test:(e,v)=>!v||(e.seasons||[]).includes(+v)},
+   {key:'decade',kind:'select',label:'Born',opts:()=>[...new Set(DATA.entities.filter(e=>e.type==='person'&&e.birth_year!=null).map(e=>decOf(e.birth_year)))].sort().map(d=>[d,d]),test:(e,v)=>!v||decOf(e.birth_year)===v},
+   {key:'occ',kind:'select',label:'Occupation',opts:()=>distinctVals('person','occupation').map(x=>[x,x]),test:(e,v)=>!v||(e.occupation||'')===v},
+   {key:'origin',kind:'select',label:'Birthplace',opts:()=>distinctVals('person','origin_city').map(x=>[x,x]),test:(e,v)=>!v||(e.origin_city||'')===v},
+   {key:'photo',kind:'bool',label:'Has portrait',test:(e,v)=>!v||!!e.photo},
+  ],
+  columns:[
+   {key:'photo',label:'',pinned:false,def:true,cell:e=>avatarImg(e,26)},
+   {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
+   {key:'occupation',label:'Occupation',def:true,cell:e=>esc(e.occupation||'')},
+   {key:'seasons',label:'Seasons',def:true,cell:e=>(e.seasons||[]).join(', ')},
+   {key:'born',label:'Born',def:true,cell:e=>e.birth_year!=null?e.birth_year:''},
+   {key:'died',label:'Died',def:false,cell:e=>e.death_year!=null?e.death_year:''},
+   {key:'origin_city',label:'Birthplace',def:false,cell:e=>esc(e.origin_city||'')},
+   {key:'party',label:'Party',def:false,cell:e=>e.party&&BY[e.party]?link(e.party):''},
+   {key:'notable_for',label:'Notable for',def:false,cell:e=>esc(e.notable_for||'')},
+  ], card:personCard },
+ place:{ title:'Places',
+  filters:[
+   {key:'q',kind:'text',label:'name…',test:(e,v)=>!v||(e.name+' '+(e.description||'')).toLowerCase().includes(v.toLowerCase())},
+   {key:'kind',kind:'select',label:'Kind',opts:()=>[['province','Province'],['neighbourhood','Neighbourhood'],['settlement','Settlement']],test:(e,v)=>!v||e.place_type===v},
+   {key:'decade',kind:'select',label:'Founded',opts:()=>distinctVals('place','founded_decade').map(x=>[x,x]),test:(e,v)=>!v||e.founded_decade===v},
+   {key:'prov',kind:'select',label:'Within',opts:()=>[...new Set(DATA.entities.filter(e=>e.type==='place'&&e.parent&&BY[e.parent]).map(e=>BY[e.parent].name))].sort().map(x=>[x,x]),test:(e,v)=>!v||(e.parent&&BY[e.parent]&&BY[e.parent].name===v)},
+  ],
+  columns:[
+   {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
+   {key:'kind',label:'Kind',def:true,cell:e=>cap1(e.place_type||'')},
+   {key:'population',label:'Population',def:true,cell:e=>e.population?fmt(e.population):''},
+   {key:'founded_decade',label:'Founded',def:true,cell:e=>esc(e.founded_decade||'')},
+   {key:'peak_decade',label:'Grew fastest',def:false,cell:e=>esc(e.peak_decade||'')},
+   {key:'within',label:'Within',def:false,cell:e=>e.parent&&BY[e.parent]?link(e.parent):''},
+   {key:'typology',label:'Typology',def:false,cell:e=>esc(e.typology||'')},
+  ], card:placeCard, sort:(a,b)=>(b.population||0)-(a.population||0)||a.name.localeCompare(b.name) },
+ political_party:{ title:'Political parties',
+  filters:[
+   {key:'q',kind:'text',label:'name…',test:(e,v)=>!v||(e.name+' '+(e.abbreviation||'')+' '+(e.ideology||'')).toLowerCase().includes(v.toLowerCase())},
+   {key:'align',kind:'select',label:'Alignment',opts:()=>distinctVals('political_party','alignment').map(x=>[x,x]),test:(e,v)=>!v||e.alignment===v},
+   {key:'status',kind:'select',label:'Status',opts:()=>distinctVals('political_party','status').map(x=>[x,x]),test:(e,v)=>!v||e.status===v},
+  ],
+  columns:[
+   {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
+   {key:'abbreviation',label:'Abbr.',def:true,cell:e=>`<span class="mono">${esc(e.abbreviation||'')}</span>`},
+   {key:'alignment',label:'Alignment',def:true,cell:e=>esc(e.alignment||'')},
+   {key:'seats',label:'Seats',def:true,cell:e=>e.seats!=null?e.seats:''},
+   {key:'vote_pct',label:'Vote %',def:false,cell:e=>e.vote_pct!=null?e.vote_pct+'%':''},
+   {key:'year_est',label:'Founded',def:false,cell:e=>e.year_est||''},
+   {key:'status',label:'Status',def:true,cell:e=>esc(e.status||'')},
+   {key:'ideology',label:'Ideology',def:false,cell:e=>esc(e.ideology||'')},
+  ], card:cardOf },
+};
+
+function loadIdxPref(type){
+  const cfg=INDEX_CFG[type]; let p={};
+  try{p=JSON.parse(localStorage.getItem('amparacan_idx_'+type)||'{}');}catch(e){}
+  const cols={}; cfg.columns.forEach(c=>{if(!c.pinned)cols[c.key]=(p.cols&&c.key in p.cols)?!!p.cols[c.key]:!!c.def;});
+  return {view:p.view==='list'?'list':'cards',cols};
+}
+function saveIdxPref(type,pref){try{localStorage.setItem('amparacan_idx_'+type,JSON.stringify(pref));}catch(e){}}
+
+function filterControl(f){
+  if(f.kind==='text')return `<input id="flt_${f.key}" placeholder="${esc(f.label)}" autocomplete="off" style="min-width:170px">`;
+  if(f.kind==='bool')return `<label class="ckbox"><input type="checkbox" id="flt_${f.key}"> ${esc(f.label)}</label>`;
+  const opts=(f.opts?f.opts():[]);
+  return `<select id="flt_${f.key}"><option value="">${esc(f.label)}: all</option>${opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select>`;
+}
+function pageType(type){
+  const cfg=INDEX_CFG[type];
+  if(!cfg){const list=DATA.entities.filter(e=>e.type===type).sort((a,b)=>a.name.localeCompare(b.name));
+    return `<div class="eyebrow">Index</div><h1 class="title">${esc(TYPE_PLURAL[type]||type)}</h1><div class="cardgrid">`+list.map(cardOf).join('')+`</div>`;}
+  const pref=loadIdxPref(type);
+  const colMenu=cfg.columns.filter(c=>!c.pinned).map(c=>`<label class="ckrow"><input type="checkbox" data-col="${c.key}" ${pref.cols[c.key]?'checked':''}> ${esc(c.label||c.key)||'Portrait'}</label>`).join('');
+  return `<div class="eyebrow">Index</div><h1 class="title">${esc(cfg.title)}</h1>
+   <div class="toolbar idxbar">
+     ${cfg.filters.map(filterControl).join('')}
+     <div class="viewtoggle" id="viewtoggle" role="group" aria-label="View">
+       <button type="button" data-v="cards" class="${pref.view==='cards'?'on':''}" title="Card view" aria-label="Card view">▦</button>
+       <button type="button" data-v="list" class="${pref.view==='list'?'on':''}" title="List view" aria-label="List view">☰</button>
+     </div>
+     <div class="colmenu-wrap" id="colwrap" style="${pref.view==='list'?'':'display:none'}">
+       <button class="btn small" id="colbtn" type="button">Columns ▾</button>
+       <div class="colmenu" id="colmenu">${colMenu}</div>
+     </div>
+     <span class="count" id="idxcount"></span>
+   </div>
+   <div id="idxbody" data-type="${type}"></div>`;
+}
+function renderIndexBody(type){
+  const cfg=INDEX_CFG[type]; const pref=loadIdxPref(type);
+  let list=DATA.entities.filter(e=>e.type===type);
+  cfg.filters.forEach(f=>{const el=document.getElementById('flt_'+f.key);if(!el)return;
+    const v=f.kind==='bool'?el.checked:el.value; list=list.filter(e=>f.test(e,v));});
+  list.sort(cfg.sort||((a,b)=>a.name.localeCompare(b.name)));
+  const cnt=document.getElementById('idxcount'); if(cnt)cnt.textContent=list.length;
+  const body=document.getElementById('idxbody'); if(!body)return;
+  if(!list.length){body.innerHTML=`<div class="empty">No matches. Adjust the filters.</div>`;return;}
+  if(pref.view==='list'){
+    const cols=cfg.columns.filter(c=>c.pinned||pref.cols[c.key]);
+    body.innerHTML=`<div class="tablewrap"><table><thead><tr>${cols.map(c=>`<th>${esc(c.label||'')}</th>`).join('')}</tr></thead><tbody>`+
+      list.map(e=>`<tr>${cols.map(c=>`<td>${c.cell(e)}</td>`).join('')}</tr>`).join('')+`</tbody></table></div>`;
+  }else body.innerHTML=`<div class="cardgrid">`+list.map(cfg.card).join('')+`</div>`;
+}
+function wireIndex(){
+  const body=document.getElementById('idxbody'); if(!body)return;
+  const type=body.dataset.type; const cfg=INDEX_CFG[type]; if(!cfg)return;
+  cfg.filters.forEach(f=>{const el=document.getElementById('flt_'+f.key);if(el)el.addEventListener(f.kind==='text'?'input':'change',()=>renderIndexBody(type));});
+  document.querySelectorAll('#viewtoggle button').forEach(b=>b.onclick=()=>{
+    const pref=loadIdxPref(type); pref.view=b.dataset.v; saveIdxPref(type,pref);
+    document.querySelectorAll('#viewtoggle button').forEach(x=>x.classList.toggle('on',x===b));
+    document.getElementById('colwrap').style.display=pref.view==='list'?'':'none';
+    renderIndexBody(type);});
+  const colbtn=document.getElementById('colbtn');
+  if(colbtn){colbtn.onclick=e=>{e.stopPropagation();document.getElementById('colmenu').classList.toggle('open');};
+    document.querySelectorAll('#colmenu input').forEach(cb=>cb.onchange=()=>{
+      const pref=loadIdxPref(type); pref.cols[cb.dataset.col]=cb.checked; saveIdxPref(type,pref); renderIndexBody(type);});
+  }
+  renderIndexBody(type);
 }
 
 // ── STREETS EXPLORER ───────────────────────────────────────────────────
@@ -843,17 +981,19 @@ function fullDocument(){
   const S='scr'+'ipt';
   // clone the static chrome and blank the dynamic regions (repopulated on load)
   const shell=document.querySelector('.shell').cloneNode(true);
+  shell.className='shell';   // neutral collapse state in the published doc
   const blank=(sel,cls)=>{const el=shell.querySelector(sel);if(el){el.innerHTML='';if(cls)el.className=cls;}};
   blank('#view'); blank('#nav'); blank('#sbfoot'); blank('#results','results');
   const sb=shell.querySelector('#sidebar'); if(sb)sb.className='sidebar';
   const menu=document.getElementById('menubtn').cloneNode(true);
   const scrim=document.getElementById('scrim').cloneNode(true); scrim.className='scrim';
+  const expand=document.getElementById('sbexpand').cloneNode(true);
   const fontLink='<link rel="stylesheet" href="'+FONTS+'">';
   return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Amparacán</title>'+
     fontLink+'</head><body>'+
     '<style id="appstyle">'+css+'</style>'+
-    menu.outerHTML+scrim.outerHTML+shell.outerHTML+
+    menu.outerHTML+scrim.outerHTML+expand.outerHTML+shell.outerHTML+
     '<'+S+' id="wikidata" type="application/json">'+dataStr+'</'+S+'>'+
     '<'+S+' id="appcode">'+js+'</'+S+'>'+
     '</body></html>';
@@ -922,18 +1062,8 @@ function wirePage(){
       document.getElementById('relWho').value='';renderRelList();
     };
   }
-  // people filter
-  const pf=document.getElementById('pfilter'),ps=document.getElementById('pseason');
-  if(pf||ps){
-    const apply=()=>{const t=(pf.value||'').toLowerCase(),se=ps.value?parseInt(ps.value):0;
-      let list=DATA.entities.filter(e=>e.type==='person');
-      if(t)list=list.filter(e=>e.name.toLowerCase().includes(t)||(e.description||'').toLowerCase().includes(t));
-      if(se)list=list.filter(e=>(e.seasons||[]).includes(se));
-      list.sort((a,b)=>a.name.localeCompare(b.name));
-      document.getElementById('pgrid').innerHTML=list.map(cardOf).join('');
-      document.getElementById('pcount').textContent=list.length;};
-    pf&&pf.addEventListener('input',apply);ps&&ps.addEventListener('change',apply);
-  }
+  // generic index (people / places / parties): filters, view toggle, columns
+  wireIndex();
   // streets explorer
   const stbody=document.getElementById('stbody');
   if(stbody){
@@ -966,6 +1096,8 @@ function toggleTheme(){const r=document.documentElement;const cur=r.getAttribute
 
 function closeMenu(){document.getElementById('sidebar').classList.remove('open');document.getElementById('scrim').classList.remove('open');}
 function openMenu(){document.getElementById('sidebar').classList.add('open');document.getElementById('scrim').classList.add('open');}
+function setSidebar(collapsed){document.body.classList.toggle('sbc',collapsed);
+  try{localStorage.setItem('amparacan_sb',collapsed?'1':'0');}catch(e){}}
 
 // ── global listeners ───────────────────────────────────────────────────
 function initListeners(){
@@ -983,6 +1115,8 @@ function initListeners(){
   document.addEventListener('click',e=>{if(!e.target.closest('.search'))document.getElementById('results').classList.remove('open');});
   document.getElementById('menubtn').addEventListener('click',openMenu);
   document.getElementById('scrim').addEventListener('click',closeMenu);
+  document.getElementById('sbcollapse').addEventListener('click',()=>setSidebar(true));
+  document.getElementById('sbexpand').addEventListener('click',()=>setSidebar(false));
   // keyboard: "/" focuses search
   document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();document.getElementById('q').focus();}});
 }
@@ -990,6 +1124,7 @@ function initListeners(){
 // ── boot ───────────────────────────────────────────────────────────────
 async function boot(){
   try{const t=localStorage.getItem('amparacan_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}
+  try{if(localStorage.getItem('amparacan_sb')==='1')document.body.classList.add('sbc');}catch(e){}
   initListeners();
   if(!location.hash)location.hash='#/';
   route();
