@@ -400,6 +400,16 @@ for e in entities.values():
     if e["name"] in WIKIPEDIA:
         e["wikipedia"] = WIKIPEDIA[e["name"]]
 
+# use real Wikipedia lead images as portraits where we fetched them
+WIMG_PATH = "/home/user/worldbuilder/data/wiki_images.json"
+if os.path.exists(WIMG_PATH):
+    wimg = json.load(open(WIMG_PATH))
+    n = 0
+    for e in entities.values():
+        if e["type"] == "person" and not e.get("photo") and e["name"] in wimg and wimg[e["name"]]:
+            e["photo"] = wimg[e["name"]]; n += 1
+    if n: print(f"wikipedia images: applied {n}")
+
 # ── finalise ──────────────────────────────────────────────────────────────
 data = {
     "meta": {"title":"Amparacán","subtitle":"A wiki of the island city-state, 1650s–2060s"},

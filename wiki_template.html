@@ -287,6 +287,22 @@ table.bulk td{padding:.28rem .4rem;vertical-align:middle}
   box-shadow:0 12px 34px rgba(0,0,0,.24);padding:.55rem .7rem .55rem 1rem;font-size:13px}
 .bulkbar[hidden]{display:none}
 .bulkbar #bulkcount{color:var(--ink2);font-variant-numeric:tabular-nums;font-weight:500}
+/* link editor context menu */
+.linkmenu{position:fixed;z-index:90;min-width:236px;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.28);padding:.35rem;font-size:13px}
+.linkmenu .lm-head{font-size:11px;color:var(--muted);padding:.35rem .5rem .3rem;text-transform:uppercase;letter-spacing:.05em}
+.linkmenu .lm-opt{display:block;width:100%;text-align:left;background:none;border:none;color:var(--ink);
+  padding:.5rem .55rem;border-radius:7px;font-size:13px}
+.linkmenu .lm-opt:hover{background:var(--inset)}
+.linkmenu .lm-back{color:var(--muted);font-size:12px}
+.linkmenu input{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:7px;
+  padding:.4rem .55rem;font-size:13px;color:var(--ink);margin:.15rem 0 .35rem}
+.linkmenu .lm-results{max-height:210px;overflow-y:auto}
+.linkmenu .lm-res{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline;width:100%;
+  background:none;border:none;color:var(--ink);padding:.42rem .55rem;border-radius:7px;text-align:left}
+.linkmenu .lm-res:hover{background:var(--inset)}
+.linkmenu .lm-res .lm-t{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
+.linkmenu .lm-empty{color:var(--muted);font-size:12px;padding:.4rem .55rem}
 
 /* collapsible sidebar */
 .sbcollapse{position:absolute;top:.7rem;right:.7rem;background:none;border:1px solid var(--line);
@@ -412,18 +428,23 @@ function linkifyExternal(text){
   return out+esc(text.slice(pos));
 }
 function extLink(url,label){return `<a class="extlink" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}<span class="ext">↗</span></a>`;}
-// render free text: [[Name]] / [[Name|label]] → article links; real-world terms → Wikipedia
+// render free text: [[Name]]/[[Name|label]] → article links; [label](url) →
+// free-form external links; known real-world terms → Wikipedia
 function wikitext(str){
   if(str==null||str==='')return '';
-  return String(str).split(/(\[\[[^\]]+\]\])/g).map(seg=>{
-    const m=seg.match(/^\[\[([^\]]+)\]\]$/);
-    if(!m)return linkifyExternal(seg);
-    let inner=m[1],pipe=inner.indexOf('|');
-    let target=(pipe>=0?inner.slice(0,pipe):inner).trim();
-    let label=(pipe>=0?inner.slice(pipe+1):inner).trim();
-    const slug=BY_NAME[target.toLowerCase()];
-    if(slug)return `<a href="#/e/${slug}">${esc(label)}</a>`;
-    return `<span class="redlink" title="No article named “${esc(target)}” yet">${esc(label)}</span>`;
+  return String(str).split(/(\[\[[^\]]+\]\]|\[[^\]\[]+\]\((?:https?:\/\/|mailto:)[^)\s]+\))/g).map(seg=>{
+    let m=seg.match(/^\[\[([^\]]+)\]\]$/);
+    if(m){
+      let inner=m[1],pipe=inner.indexOf('|');
+      let target=(pipe>=0?inner.slice(0,pipe):inner).trim();
+      let label=(pipe>=0?inner.slice(pipe+1):inner).trim();
+      const slug=BY_NAME[target.toLowerCase()];
+      if(slug)return `<a href="#/e/${slug}">${esc(label)}</a>`;
+      return `<span class="redlink" title="No article named “${esc(target)}” yet">${esc(label)}</span>`;
+    }
+    m=seg.match(/^\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)$/);
+    if(m)return extLink(m[2],m[1]);
+    return linkifyExternal(seg);
   }).join('');
 }
 const fmt=n=>n==null||n===''?'':Number(n).toLocaleString('en-US');
@@ -478,7 +499,7 @@ function renderNav(){
   const c=counts(); const h=location.hash;
   const cur=(frag)=>h.startsWith(frag)?'active':'';
   const items=[
-    ['#/','Overview',''],
+    ['#/','Home',''],
     ['#/type/person','People',c.person],
     ['#/streets','Streets',c.street],
     ['#/type/place','Places',c.place],
@@ -902,6 +923,78 @@ function wireIndex(){
   renderIndexBody(type);
 }
 
+// ── link editor: right-click a selection to insert a link ───────────────
+function slugify(s){return String(s).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase()||'x';}
+function createStub(name,type){
+  let base=slugify(name),slug=base,i=2; while(BY[slug]){slug=base+'-'+i;i++;}
+  const e={slug,name,type,description:''}; DATA.entities.push(e); reindex(); return slug;
+}
+let LM={ta:null,start:0,end:0,sel:''};
+function closeLinkMenu(){const m=document.getElementById('linkmenu');if(m)m.remove();
+  document.removeEventListener('mousedown',lmOutside,true);document.removeEventListener('keydown',lmEsc,true);}
+function lmOutside(e){if(!e.target.closest('#linkmenu'))closeLinkMenu();}
+function lmEsc(e){if(e.key==='Escape')closeLinkMenu();}
+function lmInsert(text){const ta=LM.ta,v=ta.value;ta.value=v.slice(0,LM.start)+text+v.slice(LM.end);
+  const pos=LM.start+text.length;closeLinkMenu();ta.focus();ta.setSelectionRange(pos,pos);}
+function openLinkMenu(ta,x,y){
+  closeLinkMenu();
+  LM={ta,start:ta.selectionStart,end:ta.selectionEnd,sel:ta.value.slice(ta.selectionStart,ta.selectionEnd)};
+  const m=document.createElement('div');m.id='linkmenu';m.className='linkmenu';
+  m.style.left=Math.min(x,innerWidth-260)+'px';m.style.top=Math.min(y,innerHeight-40)+'px';
+  document.body.appendChild(m);
+  lmMain();
+  document.addEventListener('mousedown',lmOutside,true);document.addEventListener('keydown',lmEsc,true);
+}
+function lmMain(){
+  const m=document.getElementById('linkmenu');
+  m.innerHTML=`<div class="lm-head">Link “${esc(LM.sel.length>28?LM.sel.slice(0,28)+'…':LM.sel)}”</div>
+    <button class="lm-opt" data-a="existing">🔗 Link to an existing page…</button>
+    <button class="lm-opt" data-a="create">＋ Create new page &amp; link</button>
+    <button class="lm-opt" data-a="wiki">🌐 Link to Wikipedia</button>
+    <button class="lm-opt" data-a="url">↗ Other web link…</button>`;
+  m.querySelector('[data-a="existing"]').onclick=lmExisting;
+  m.querySelector('[data-a="create"]').onclick=lmCreate;
+  m.querySelector('[data-a="wiki"]').onclick=()=>{lmInsert(`[${LM.sel}](https://en.wikipedia.org/wiki/${encodeURIComponent(LM.sel.trim().replace(/\s+/g,'_'))})`);};
+  m.querySelector('[data-a="url"]').onclick=()=>{const u=prompt('Link URL:','https://');if(u&&/^(https?:\/\/|mailto:)/.test(u))lmInsert(`[${LM.sel}](${u.trim()})`);};
+}
+function lmLinkEntity(slug){const nm=BY[slug].name;
+  lmInsert(nm.toLowerCase()===LM.sel.trim().toLowerCase()?`[[${LM.sel}]]`:`[[${nm}|${LM.sel}]]`);}
+function lmExisting(){
+  const m=document.getElementById('linkmenu');
+  m.innerHTML=`<div class="lm-head">Link to which page?</div>
+    <input id="lmsearch" placeholder="Search articles…" autocomplete="off">
+    <div class="lm-results" id="lmresults"></div>
+    <button class="lm-opt lm-back" data-a="back">← Back</button>`;
+  m.querySelector('[data-a="back"]').onclick=lmMain;
+  const inp=m.querySelector('#lmsearch'),res=m.querySelector('#lmresults');
+  const render=()=>{const t=inp.value.trim().toLowerCase()||LM.sel.trim().toLowerCase();
+    let hits=DATA.entities.filter(e=>e.name.toLowerCase().includes(t)).slice(0,8);
+    res.innerHTML=hits.length?hits.map(e=>`<button class="lm-res" data-slug="${e.slug}"><span>${esc(e.name)}</span><span class="lm-t">${esc(TYPE_LABEL[e.type]||e.type)}</span></button>`).join(''):`<div class="lm-empty">No matches</div>`;
+    res.querySelectorAll('.lm-res').forEach(b=>b.onclick=()=>lmLinkEntity(b.dataset.slug));};
+  inp.addEventListener('input',render);render();inp.focus();
+}
+function lmCreate(){
+  const m=document.getElementById('linkmenu');
+  m.innerHTML=`<div class="lm-head">Create “${esc(LM.sel.length>24?LM.sel.slice(0,24)+'…':LM.sel)}” as…</div>
+    <button class="lm-opt" data-t="person">A person</button>
+    <button class="lm-opt" data-t="place">A place</button>
+    <button class="lm-opt" data-t="street">A street</button>
+    <button class="lm-opt" data-t="political_party">A political party</button>
+    <button class="lm-opt lm-back" data-a="back">← Back</button>`;
+  m.querySelector('[data-a="back"]').onclick=lmMain;
+  m.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{
+    const nm=LM.sel.trim(); if(!nm)return;
+    const existing=BY_NAME[nm.toLowerCase()];
+    const slug=existing||createStub(nm,b.dataset.t);
+    lmInsert(`[[${nm}]]`);
+  });
+}
+function attachLinkMenu(ta){
+  ta.addEventListener('contextmenu',e=>{
+    if(ta.selectionStart!==ta.selectionEnd){e.preventDefault();openLinkMenu(ta,e.clientX,e.clientY);}
+  });
+}
+
 // ── STREETS EXPLORER ───────────────────────────────────────────────────
 function pageStreets(params){
   const all=DATA.entities.filter(e=>e.type==='street');
@@ -1000,7 +1093,7 @@ function pageEdit(slug){
     if(kind==='textarea')ctl=`<textarea id="f_${k}">${esc(val)}</textarea>`;
     else if(kind==='party')ctl=`<input id="f_${k}" list="partylist" value="${esc(val)}" placeholder="Type a party name…">`;
     else ctl=`<input id="f_${k}" type="${kind==='number'?'number':'text'}" value="${esc(val)}">`;
-    const linkHint='Use <span class="mono">[[Name]]</span> to link to another article.';
+    const linkHint='Select text and right-click to insert a link. Or type <span class="mono">[[Name]]</span> for an article and <span class="mono">[label](https://…)</span> for a web link.';
     const hint=kind==='party'?`<div class="hint">Links to a party page if the name matches one.</div>`
       :k==='bio'?`<div class="hint">Blank lines separate paragraphs. ${linkHint}</div>`
       :k==='description'?`<div class="hint">${linkHint}</div>`:'';
@@ -1202,7 +1295,9 @@ function runSearch(term){
 function wirePage(){
   const savebtn=document.getElementById('savebtn');
   if(savebtn){const slug=location.hash.split('/')[2];savebtn.onclick=()=>doSave(decodeURIComponent(slug));
-    const f=document.getElementById('editform');if(f)f.addEventListener('submit',e=>{e.preventDefault();doSave(decodeURIComponent(slug));});}
+    const f=document.getElementById('editform');if(f)f.addEventListener('submit',e=>{e.preventDefault();doSave(decodeURIComponent(slug));});
+    // right-click a highlighted selection in the text fields to insert a link
+    document.querySelectorAll('#editform textarea').forEach(attachLinkMenu);}
   // person edit: photo + relations
   const photoInput=document.getElementById('photoInput');
   if(photoInput){
