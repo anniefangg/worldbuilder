@@ -303,6 +303,11 @@ table.bulk td{padding:.28rem .4rem;vertical-align:middle}
 .linkmenu .lm-res:hover{background:var(--inset)}
 .linkmenu .lm-res .lm-t{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
 .linkmenu .lm-empty{color:var(--muted);font-size:12px;padding:.4rem .55rem}
+.lmtoast{position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%) translateY(8px);z-index:95;
+  background:var(--ink);color:var(--paper);font-size:13px;padding:.55rem .9rem;border-radius:8px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+.lmtoast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+[data-edit]{cursor:auto}
 
 /* collapsible sidebar */
 .sbcollapse{position:absolute;top:.7rem;right:.7rem;background:none;border:1px solid var(--line);
@@ -617,15 +622,15 @@ function pageEntity(slug,params){
     <div class="eyebrow">${esc(subtitleFor(e))}</div>
     <h1 class="title">${esc(e.name)}</h1>
     ${WRITER||LOCAL||CAP?`<button class="btn small editbtn" onclick="location.hash='#/edit/${e.slug}'">✎ Edit</button>`:''}
-    <p class="lead">${wikitext(e.description)||'No description yet.'}</p>`;
-  if(e.bio){body+=`<h2 class="sec">${e.type==='person'?'Biography':'Overview'}</h2>`+
-    e.bio.split(/\n\s*\n/).map(para=>`<p>${wikitext(para)}</p>`).join('');}
+    <p class="lead"${e.description?` data-edit="desc:${e.slug}"`:''}>${wikitext(e.description)||'No description yet.'}</p>`;
+  if(e.bio){body+=`<h2 class="sec">${e.type==='person'?'Biography':'Overview'}</h2><div data-edit="bio:${e.slug}">`+
+    e.bio.split(/\n\s*\n/).map(para=>`<p>${wikitext(para)}</p>`).join('')+`</div>`;}
   body+=typeSections(e,rels);
   // chronology events mentioning this entity
   const evs=entityEvents(slug);
   if(evs.length){
     body+=`<h2 class="sec">In the chronology <span class="count">${evs.length}</span></h2><div class="chron">`+
-      evs.map(ev=>`<div class="cev"><span class="cy mono${ev.approx?' approx':''}">${esc(ev.label)}</span><span class="ct">${wikitext(ev.text)}</span></div>`).join('')+
+      evs.map(o=>`<div class="cev"><span class="cy mono${o.e.approx?' approx':''}">${esc(o.e.label)}</span><span class="ct" data-edit="chron:${o.i}">${wikitext(o.e.text)}</span></div>`).join('')+
       `</div>`;
   }
   // connections (personal relations are shown separately for people)
@@ -929,21 +934,43 @@ function createStub(name,type){
   let base=slugify(name),slug=base,i=2; while(BY[slug]){slug=base+'-'+i;i++;}
   const e={slug,name,type,description:''}; DATA.entities.push(e); reindex(); return slug;
 }
-let LM={ta:null,start:0,end:0,sel:''};
+// LM works in two modes: 'ta' (a textarea in an edit form) and 'src'
+// (a rendered free-text region on any page — chronology, description, bio).
+let LM=null;
 function closeLinkMenu(){const m=document.getElementById('linkmenu');if(m)m.remove();
   document.removeEventListener('mousedown',lmOutside,true);document.removeEventListener('keydown',lmEsc,true);}
 function lmOutside(e){if(!e.target.closest('#linkmenu'))closeLinkMenu();}
 function lmEsc(e){if(e.key==='Escape')closeLinkMenu();}
-function lmInsert(text){const ta=LM.ta,v=ta.value;ta.value=v.slice(0,LM.start)+text+v.slice(LM.end);
-  const pos=LM.start+text.length;closeLinkMenu();ta.focus();ta.setSelectionRange(pos,pos);}
-function openLinkMenu(ta,x,y){
-  closeLinkMenu();
-  LM={ta,start:ta.selectionStart,end:ta.selectionEnd,sel:ta.value.slice(ta.selectionStart,ta.selectionEnd)};
+function toast(msg){let t=document.getElementById('lmtoast');
+  if(!t){t=document.createElement('div');t.id='lmtoast';t.className='lmtoast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2800);}
+function repositionMenu(){const m=document.getElementById('linkmenu');if(!m||!LM)return;
+  const w=m.offsetWidth||240,h=m.offsetHeight||160;
+  m.style.left=Math.max(8,Math.min(LM.mx,innerWidth-w-8))+'px';
+  m.style.top=Math.max(8,Math.min(LM.my,innerHeight-h-8))+'px';}
+function spawnMenu(x,y){closeLinkMenu();LM.mx=x;LM.my=y;
   const m=document.createElement('div');m.id='linkmenu';m.className='linkmenu';
-  m.style.left=Math.min(x,innerWidth-260)+'px';m.style.top=Math.min(y,innerHeight-40)+'px';
-  document.body.appendChild(m);
-  lmMain();
-  document.addEventListener('mousedown',lmOutside,true);document.addEventListener('keydown',lmEsc,true);
+  m.style.left='0px';m.style.top='0px';m.style.visibility='hidden';
+  document.body.appendChild(m);lmMain();m.style.visibility='';
+  document.addEventListener('mousedown',lmOutside,true);document.addEventListener('keydown',lmEsc,true);}
+function openLinkMenu(ta,x,y){LM={mode:'ta',ta,start:ta.selectionStart,end:ta.selectionEnd,sel:ta.value.slice(ta.selectionStart,ta.selectionEnd)};spawnMenu(x,y);}
+function openLinkMenuSrc(x,y,source,setter,sel){LM={mode:'src',source,setter,sel};spawnMenu(x,y);}
+// find the first PLAIN-text occurrence of sel in source (outside existing links)
+function findPlainRange(source,sel){
+  const re=/(\[\[[^\]]+\]\]|\[[^\]\[]+\]\((?:https?:\/\/|mailto:)[^)\s]+\))/g;
+  let last=0,m;const plains=[];
+  while((m=re.exec(source))){if(m.index>last)plains.push({s:last,t:source.slice(last,m.index)});last=m.index+m[0].length;}
+  if(last<source.length)plains.push({s:last,t:source.slice(last)});
+  for(const p of plains){const i=p.t.indexOf(sel);if(i>=0){const start=p.s+i;return{ok:true,start,end:start+sel.length};}}
+  return{ok:false};
+}
+function lmReplace(text){
+  if(!LM)return;
+  if(LM.mode==='ta'){const ta=LM.ta,v=ta.value;ta.value=v.slice(0,LM.start)+text+v.slice(LM.end);
+    const pos=LM.start+text.length;closeLinkMenu();ta.focus();ta.setSelectionRange(pos,pos);}
+  else{const r=findPlainRange(LM.source,LM.sel);closeLinkMenu();
+    if(!r.ok){toast('Select a plain word that isn’t already a link.');return;}
+    LM.setter(LM.source.slice(0,r.start)+text+LM.source.slice(r.end));}
 }
 function lmMain(){
   const m=document.getElementById('linkmenu');
@@ -954,11 +981,12 @@ function lmMain(){
     <button class="lm-opt" data-a="url">↗ Other web link…</button>`;
   m.querySelector('[data-a="existing"]').onclick=lmExisting;
   m.querySelector('[data-a="create"]').onclick=lmCreate;
-  m.querySelector('[data-a="wiki"]').onclick=()=>{lmInsert(`[${LM.sel}](https://en.wikipedia.org/wiki/${encodeURIComponent(LM.sel.trim().replace(/\s+/g,'_'))})`);};
-  m.querySelector('[data-a="url"]').onclick=()=>{const u=prompt('Link URL:','https://');if(u&&/^(https?:\/\/|mailto:)/.test(u))lmInsert(`[${LM.sel}](${u.trim()})`);};
+  m.querySelector('[data-a="wiki"]').onclick=()=>{lmReplace(`[${LM.sel}](https://en.wikipedia.org/wiki/${encodeURIComponent(LM.sel.trim().replace(/\s+/g,'_'))})`);};
+  m.querySelector('[data-a="url"]').onclick=()=>{const u=prompt('Link URL:','https://');if(u&&/^(https?:\/\/|mailto:)/.test(u))lmReplace(`[${LM.sel}](${u.trim()})`);};
+  repositionMenu();
 }
 function lmLinkEntity(slug){const nm=BY[slug].name;
-  lmInsert(nm.toLowerCase()===LM.sel.trim().toLowerCase()?`[[${LM.sel}]]`:`[[${nm}|${LM.sel}]]`);}
+  lmReplace(nm.toLowerCase()===LM.sel.trim().toLowerCase()?`[[${LM.sel}]]`:`[[${nm}|${LM.sel}]]`);}
 function lmExisting(){
   const m=document.getElementById('linkmenu');
   m.innerHTML=`<div class="lm-head">Link to which page?</div>
@@ -971,7 +999,7 @@ function lmExisting(){
     let hits=DATA.entities.filter(e=>e.name.toLowerCase().includes(t)).slice(0,8);
     res.innerHTML=hits.length?hits.map(e=>`<button class="lm-res" data-slug="${e.slug}"><span>${esc(e.name)}</span><span class="lm-t">${esc(TYPE_LABEL[e.type]||e.type)}</span></button>`).join(''):`<div class="lm-empty">No matches</div>`;
     res.querySelectorAll('.lm-res').forEach(b=>b.onclick=()=>lmLinkEntity(b.dataset.slug));};
-  inp.addEventListener('input',render);render();inp.focus();
+  inp.addEventListener('input',render);render();repositionMenu();inp.focus();
 }
 function lmCreate(){
   const m=document.getElementById('linkmenu');
@@ -984,15 +1012,39 @@ function lmCreate(){
   m.querySelector('[data-a="back"]').onclick=lmMain;
   m.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{
     const nm=LM.sel.trim(); if(!nm)return;
-    const existing=BY_NAME[nm.toLowerCase()];
-    const slug=existing||createStub(nm,b.dataset.t);
-    lmInsert(`[[${nm}]]`);
+    if(!BY_NAME[nm.toLowerCase()])createStub(nm,b.dataset.t);
+    lmReplace(`[[${nm}]]`);
   });
+  repositionMenu();
 }
 function attachLinkMenu(ta){
   ta.addEventListener('contextmenu',e=>{
     if(ta.selectionStart!==ta.selectionEnd){e.preventDefault();openLinkMenu(ta,e.clientX,e.clientY);}
   });
+}
+// editable rendered regions (chronology / description / bio) ------------
+function chronRefs(text){const refs=new Set();
+  String(text).replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g,(_,nm)=>{const s=BY_NAME[nm.trim().toLowerCase()];if(s)refs.add(s);return _;});
+  return[...refs];}
+function persistAndRerender(){persist();route();}
+function resolveEditRegion(key){
+  const i=key.indexOf(':'),t=key.slice(0,i),id=key.slice(i+1);
+  if(t==='chron'){const e=DATA.chronology[+id];if(!e)return null;
+    return{source:e.text,setter:ns=>{e.text=ns;e.refs=chronRefs(ns);persistAndRerender();}};}
+  if(t==='desc'){const e=BY[id];if(!e)return null;
+    return{source:e.description||'',setter:ns=>{const ov=e.description||'';if(ns!==ov){DATA.revisions.push({entity:id,field:'description',old:ov,new:ns,at:new Date().toISOString()});e.description=ns;}persistAndRerender();}};}
+  if(t==='bio'){const e=BY[id];if(!e)return null;
+    return{source:e.bio||'',setter:ns=>{const ov=e.bio||'';if(ns!==ov){DATA.revisions.push({entity:id,field:'bio',old:ov,new:ns,at:new Date().toISOString()});e.bio=ns;}persistAndRerender();}};}
+  return null;}
+function selectionLinkMenu(x,y){
+  const s=window.getSelection();if(!s||s.isCollapsed)return false;
+  const txt=s.toString();if(!txt.trim())return false;
+  const an=s.anchorNode,fn=s.focusNode;
+  const ea=an&&(an.nodeType===3?an.parentElement:an);const ef=fn&&(fn.nodeType===3?fn.parentElement:fn);
+  if(!ea||!ef)return false;
+  const el=ea.closest('[data-edit]');if(!el||el!==ef.closest('[data-edit]'))return false;
+  const rr=resolveEditRegion(el.dataset.edit);if(!rr)return false;
+  openLinkMenuSrc(x,y,rr.source,rr.setter,txt);return true;
 }
 
 // ── STREETS EXPLORER ───────────────────────────────────────────────────
@@ -1040,22 +1092,24 @@ const ERAS=[
   [1821,2100,'Independence & republic','Sovereignty, constitutions and modern politics'],
 ];
 function pageChronology(){
-  const ev=(DATA.chronology||[]).slice().sort((a,b)=>a.y-b.y);
-  let h=`<div class="eyebrow">${ev.length?ev[0].label+' – '+ev[ev.length-1].label:''}</div>
+  const ev=(DATA.chronology||[]).map((e,i)=>({e,i})).sort((a,b)=>a.e.y-b.e.y);
+  const canEdit=WRITER||LOCAL||CAP;
+  let h=`<div class="eyebrow">${ev.length?ev[0].e.label+' – '+ev[ev.length-1].e.label:''}</div>
     <h1 class="title">Chronology of Amparacán</h1>
-    <p class="lead">A year-by-year record of the island's history — ${ev.length} events, with people and places linked to their articles.</p>`;
+    <p class="lead">A year-by-year record of the island's history — ${ev.length} events, with people and places linked to their articles.</p>
+    ${canEdit?`<div class="note" style="margin-top:0"><strong>Tip:</strong> highlight any text below and right-click to turn it into a link — to an article, a new page, or Wikipedia.</div>`:''}`;
   ERAS.forEach(([a,b,title,sub])=>{
-    const rows=ev.filter(e=>e.y>=a&&e.y<=b);
+    const rows=ev.filter(o=>o.e.y>=a&&o.e.y<=b);
     if(!rows.length)return;
     h+=`<h2 class="sec">${esc(title)} <span class="count">${rows.length}</span></h2>
       <div class="muted-sub">${esc(sub)}</div><div class="chron">`+
-      rows.map(e=>`<div class="cev"><span class="cy mono${e.approx?' approx':''}">${esc(e.label)}</span><span class="ct">${wikitext(e.text)}</span></div>`).join('')+
+      rows.map(o=>`<div class="cev"><span class="cy mono${o.e.approx?' approx':''}">${esc(o.e.label)}</span><span class="ct" data-edit="chron:${o.i}">${wikitext(o.e.text)}</span></div>`).join('')+
       `</div>`;
   });
   return h;
 }
 function entityEvents(slug){
-  return (DATA.chronology||[]).filter(e=>(e.refs||[]).includes(slug)).sort((a,b)=>a.y-b.y);
+  return (DATA.chronology||[]).map((e,i)=>({e,i})).filter(o=>(o.e.refs||[]).includes(slug)).sort((a,b)=>a.e.y-b.e.y);
 }
 
 // ── SEASONS ────────────────────────────────────────────────────────────
@@ -1373,6 +1427,13 @@ function initListeners(){
   document.getElementById('scrim').addEventListener('click',closeMenu);
   document.getElementById('sbcollapse').addEventListener('click',()=>setSidebar(true));
   document.getElementById('sbexpand').addEventListener('click',()=>setSidebar(false));
+  // right-click a highlighted selection on any page to add a link
+  document.getElementById('view').addEventListener('contextmenu',e=>{
+    if(e.defaultPrevented)return;                     // a textarea handler already took it
+    if(!(WRITER||LOCAL||CAP))return;                  // editors only
+    if(e.target.closest('textarea,input,select,a'))return;
+    if(selectionLinkMenu(e.clientX,e.clientY))e.preventDefault();
+  });
   // keyboard: "/" focuses search
   document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();document.getElementById('q').focus();}});
 }
@@ -1389,6 +1450,9 @@ async function boot(){
     // A read-only view still resolves the namespace; the first publish that
     // rejects not_writer downgrades us to local mode (see persist()).
     if(CAP&&!LOCAL) WRITER=true;
+  }else{
+    // non-artifact host (e.g. Vercel/static) — allow per-browser local editing
+    LOCAL=true;
   }
   renderNav();
   route(); // re-render so Edit affordances reflect resolved capability
