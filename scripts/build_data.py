@@ -350,17 +350,22 @@ if os.path.exists(TL_PATH):
     tl = json.load(open(TL_PATH))
     # candidate entity names to auto-link inside event text (people + places);
     # only multi-word or reasonably long names, to avoid noisy matches
+    # link people, places, parties and streets (heads of state are person
+    # entities, so they link too). Longest match wins; ties prefer the more
+    # specific type over a street with the same name.
+    PRIO = {"person": 0, "place": 1, "political_party": 2, "street": 3}
     cand = []
     for e in entities.values():
-        if e["type"] in ("person", "place"):
-            nm = e["name"]
-            if len(nm) >= 6 or len(nm.split()) >= 2:
-                cand.append((nm, e["slug"]))
-    cand.sort(key=lambda x: -len(x[0]))
+        t = e["type"]
+        if t not in PRIO: continue
+        nm = e["name"]
+        ok = (len(nm) >= 6 or len(nm.split()) >= 2) if t != "street" else (len(nm) >= 7)
+        if ok: cand.append((nm, e["slug"], PRIO[t]))
+    cand.sort(key=lambda x: (-len(x[0]), x[2]))
     linked = 0
     for ev in tl:
         text = ev["text"]; claimed = [False]*len(text); spans = []; refs = set()
-        for nm, slug in cand:
+        for nm, slug, _ in cand:
             start = 0
             while True:
                 i = text.find(nm, start)
@@ -380,6 +385,20 @@ if os.path.exists(TL_PATH):
         chronology.append({"y": ev["y"], "label": ev["label"], "text": "".join(out),
                            "approx": ev.get("approx", False), "refs": sorted(refs)})
     print(f"chronology: {len(chronology)} events, {linked} auto-linked to entities")
+
+# ── real-world Wikipedia links for foreign figures ─────────────────────────
+WIKIPEDIA = {
+ "Alexander von Humboldt":"https://en.wikipedia.org/wiki/Alexander_von_Humboldt",
+ "Ignacio Manuel Altamirano":"https://en.wikipedia.org/wiki/Ignacio_Manuel_Altamirano",
+ "Antonieta Rivas Mercado":"https://en.wikipedia.org/wiki/Antonieta_Rivas_Mercado",
+ "Bartolomé de las Casas":"https://en.wikipedia.org/wiki/Bartolom%C3%A9_de_las_Casas",
+ "Carlos Finaly":"https://en.wikipedia.org/wiki/Carlos_Finlay",
+ "Carlos Fuentes":"https://en.wikipedia.org/wiki/Carlos_Fuentes",
+ "Cervantes":"https://en.wikipedia.org/wiki/Miguel_de_Cervantes",
+}
+for e in entities.values():
+    if e["name"] in WIKIPEDIA:
+        e["wikipedia"] = WIKIPEDIA[e["name"]]
 
 # ── finalise ──────────────────────────────────────────────────────────────
 data = {

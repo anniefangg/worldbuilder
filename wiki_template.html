@@ -226,6 +226,25 @@ td .cat{font-size:11px;color:var(--muted)}
 .relbox{display:flex;flex-direction:column;gap:.5rem}
 .relbox .conn .rel{min-width:96px}
 .redlink{color:var(--danger);border-bottom:1px dotted var(--danger);cursor:help;opacity:.85}
+.extlink .ext{font-size:.75em;vertical-align:.15em;opacity:.7;margin-left:1px}
+.extlink{color:var(--link);border-bottom:1px dotted color-mix(in srgb,var(--link) 55%,transparent)}
+.backbtn{background:none;border:1px solid var(--line);border-radius:7px;color:var(--muted);
+  padding:.32rem .7rem;font-size:12.5px;margin-bottom:1rem}
+.backbtn:hover{border-color:var(--accent);color:var(--ink)}
+/* home: key pages */
+.keygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.6rem;margin:.3rem 0 1rem}
+.klink{display:flex;align-items:center;gap:.6rem;background:var(--card);border:1px solid var(--line);
+  border-radius:9px;padding:.6rem .75rem;color:var(--ink)}
+.klink:hover{border-color:var(--accent);text-decoration:none}
+.klink .kt{display:flex;flex-direction:column;min-width:0}
+.klink .kr{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:600}
+.klink .kn{font-family:'Fraunces',serif;font-size:1.02rem;line-height:1.15;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seclinks-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6rem;margin-bottom:.4rem}
+.seclink{display:flex;flex-direction:column;gap:.1rem;background:var(--bg-inset,var(--inset));border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:8px;padding:.6rem .8rem;color:var(--ink)}
+.seclink:hover{text-decoration:none;filter:brightness(1.02);border-left-color:var(--accent-lt,var(--accent))}
+.seclink .kn{font-weight:600;font-size:14px}
+.seclink .kr{font-size:11.5px;color:var(--muted)}
 .muted-sub{font-size:12.5px;color:var(--muted);margin:-.5rem 0 .8rem}
 .chron{display:flex;flex-direction:column;border-left:2px solid var(--line);margin-left:.3rem}
 .cev{display:grid;grid-template-columns:70px 1fr;gap:.9rem;padding:.4rem 0 .4rem 1rem;position:relative;align-items:baseline}
@@ -351,12 +370,43 @@ DATA.chronology=DATA.chronology||[];
 const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation'};
 const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations'};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-// render free text, turning [[Name]] / [[Name|label]] into links to that article
+// real-world topics → Wikipedia (auto-linked inside free text)
+const WIKI_EXT={
+ "Viceroyalty of New Spain":"Viceroyalty_of_New_Spain","Captaincy General of Yucatán":"Captaincy_General_of_Yucat%C3%A1n",
+ "First Mexican Empire":"First_Mexican_Empire","Empire of Mexico":"First_Mexican_Empire","Spanish Empire":"Spanish_Empire",
+ "New Spain":"New_Spain","Classic Maya Collapse":"Classic_Maya_collapse","Classic Maya collapse":"Classic_Maya_collapse",
+ "Hernán Cortés":"Hern%C3%A1n_Cort%C3%A9s","Pánfilo de Narváez":"P%C3%A1nfilo_de_Narv%C3%A1ez",
+ "Juan de Grijalva":"Juan_de_Grijalva","Francisco de Montejo":"Francisco_de_Montejo","Benito Juárez":"Benito_Ju%C3%A1rez",
+ "Andrés Quintana Roo":"Andr%C3%A9s_Quintana_Roo","Gulf of Honduras":"Gulf_of_Honduras","Gulf of Batabanó":"Gulf_of_Bataban%C3%B3",
+ "Santo Domingo":"Santo_Domingo","Xaman-Ek":"Xaman_Ek","Xaman Ek":"Xaman_Ek","Ix Chel":"Ixchel","Quiriguá":"Quirigu%C3%A1",
+ "Cozumel":"Cozumel","Cobá":"Coba","Ekab":"Ekab","Yucatán":"Yucat%C3%A1n_Peninsula","Tenerife":"Tenerife","Havana":"Havana",
+ "Maroon":"Maroon_(people)","Taíno":"Ta%C3%ADno","Taino":"Ta%C3%ADno","Maya":"Maya_civilization",
+ "New Spain's":"New_Spain","Cuba":"Cuba","Mexico":"Mexico","Spain":"Spain","Acapulco":"Acapulco","Alexandria":"Alexandria",
+};
+const WIKI_TERMS=Object.keys(WIKI_EXT).sort((a,b)=>b.length-a.length);
+// esc plain text and auto-link known real-world terms (first hit of each term)
+function linkifyExternal(text){
+  const claimed=new Array(text.length).fill(false); const spans=[];
+  for(const term of WIKI_TERMS){
+    const i=text.indexOf(term); if(i<0)continue; const j=i+term.length;
+    if(i>0&&/[A-Za-zÀ-ÿ0-9]/.test(text[i-1]))continue;
+    if(j<text.length&&/[A-Za-zÀ-ÿ0-9]/.test(text[j]))continue;
+    let clash=false; for(let k=i;k<j;k++)if(claimed[k]){clash=true;break;}
+    if(clash)continue; for(let k=i;k<j;k++)claimed[k]=true;
+    spans.push([i,j,term]);
+  }
+  if(!spans.length)return esc(text);
+  spans.sort((a,b)=>a[0]-b[0]); let out='',pos=0;
+  for(const[i,j,term]of spans){ out+=esc(text.slice(pos,i))+extLink('https://en.wikipedia.org/wiki/'+WIKI_EXT[term],text.slice(i,j)); pos=j; }
+  return out+esc(text.slice(pos));
+}
+function extLink(url,label){return `<a class="extlink" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}<span class="ext">↗</span></a>`;}
+// render free text: [[Name]] / [[Name|label]] → article links; real-world terms → Wikipedia
 function wikitext(str){
   if(str==null||str==='')return '';
   return String(str).split(/(\[\[[^\]]+\]\])/g).map(seg=>{
     const m=seg.match(/^\[\[([^\]]+)\]\]$/);
-    if(!m)return esc(seg);
+    if(!m)return linkifyExternal(seg);
     let inner=m[1],pipe=inner.indexOf('|');
     let target=(pipe>=0?inner.slice(0,pipe):inner).trim();
     let label=(pipe>=0?inner.slice(pipe+1):inner).trim();
@@ -379,7 +429,11 @@ function parseHash(){
   return {parts,params};
 }
 function go(hash){location.hash=hash;}
-window.addEventListener('hashchange',route);
+let NAV_DEPTH=0, _backing=false;
+window.addEventListener('hashchange',()=>{
+  if(_backing){_backing=false;NAV_DEPTH=Math.max(0,NAV_DEPTH-1);}else{NAV_DEPTH++;}
+  route();
+});
 
 function route(){
   const {parts,params}=parseHash();
@@ -398,11 +452,14 @@ function route(){
   else if(parts[0]==='seasons'){ html=pageSeasons(); }
   else if(parts[0]==='random'){ const e=DATA.entities[Math.floor(Math.random()*DATA.entities.length)]; go('#/e/'+encodeURIComponent(e.slug)); return; }
   else html=`<div class="empty">Page not found. <a href="#/">Return to the overview.</a></div>`;
+  if(parts.length){ html=`<button class="backbtn" id="backbtn" type="button">← Back</button>`+html; }
   view.innerHTML=html;
+  const bb=document.getElementById('backbtn'); if(bb)bb.onclick=goBack;
   renderNav();
   wirePage();
   view.focus({preventScroll:true});
 }
+function goBack(){ if(NAV_DEPTH>0){_backing=true;history.back();} else go('#/'); }
 
 // ── nav / sidebar ──────────────────────────────────────────────────────
 function counts(){const c={person:0,place:0,street:0,political_party:0};DATA.entities.forEach(e=>c[e.type]=(c[e.type]||0)+1);return c;}
@@ -448,6 +505,23 @@ function pageOverview(){
   const rndStreet=DATA.entities.filter(e=>e.type==='street'&&e.meaning)[Math.floor(Math.random()*80)];
   const stat=(k,v)=>`<div class="fact"><div class="k">${k}</div><div class="v ${String(v).length>6?'sm':''}">${v}</div></div>`;
   const feat=(label,e,extra)=>e?`<a class="ecard" href="#/e/${e.slug}"><div class="eyebrow">${label}</div><div class="en">${esc(e.name)}</div><div class="ed">${esc(extra||e.description||'')}</div></a>`:'';
+  // curated direct links to the most important articles (skipped if missing)
+  const keySpec=[
+    ['Founder','alejandro-vazquez-merayo'],
+    ['Head of state',current&&current.person],
+    ['Capital province','isla-capital'],
+    ['Old town','pueblo-viejo'],
+    ['City centre','centro'],
+    ['Governing party','partido-laboral-progresista'],
+    ['Opposition','alianza-republicana'],
+    ['Independence','teseo-dominguez-de-mora'],
+    ['Longest-serving','osvaldo-rosero-valencia'],
+    ['Modern politics','estefania-luna'],
+  ];
+  const keyTiles=keySpec.filter(([l,s])=>s&&BY[s]).map(([l,s])=>
+    `<a class="klink" href="#/e/${s}">${BY[s].photo?avatarImg(BY[s],34):''}<span class="kt"><span class="kr">${esc(l)}</span><span class="kn">${esc(BY[s].name)}</span></span></a>`).join('');
+  const secLinks=[['#/chronology','Chronology','the full 752–1951 timeline'],['#/timeline','Heads of state','every ruler since 1658'],['#/seasons','Seasons','the eleven narrative eras'],['#/streets','Streets','all '+streets+' named streets']]
+    .map(([h,n,d])=>`<a class="seclink" href="${h}"><span class="kn">${n}</span><span class="kr">${d}</span></a>`).join('');
   return `
   <section class="hero">
     <div class="eyebrow">Island city-state · Caribbean</div>
@@ -462,6 +536,9 @@ function pageOverview(){
       ${stat('Years chronicled','~410')}
     </div>
   </section>
+  <h2 class="sec">Key pages</h2>
+  <div class="keygrid">${keyTiles}</div>
+  <div class="seclinks-row">${secLinks}</div>
   <div class="note"><strong>This wiki is editable.</strong> Every fact lives once as a record; each page is rendered from those records, so an edit to any entry updates every page that references it. Open any article and use <em>Edit</em> — ${WRITER?'your changes are shared with everyone who opens this page.':LOCAL||!CAP?'your changes are saved on this device.':'changes are saved for editors of this artifact.'}</div>
   <h2 class="sec">Start here</h2>
   <div class="landgrid">
@@ -579,6 +656,7 @@ function infobox(e,rels){
     R('Seats',e.seats!=null?e.seats:'');R('Vote',e.vote_pct!=null?e.vote_pct+'%':'');
     R('Votes',e.constituency?fmt(e.constituency):'');R('Founded',e.year_est);R('Status',esc(e.status));
   }
+  if(e.wikipedia)R('Wikipedia',extLink(e.wikipedia,'View on Wikipedia'));
   return `<aside class="infobox">${photo}<div class="ib-head"><div class="ib-type">${esc(TYPE_LABEL[e.type]||e.type)}</div>
     <div class="ib-name">${esc(e.name)}</div></div><dl>${rows||'<div class="row"><dd style="color:var(--muted)">No structured facts yet.</dd></div>'}</dl></aside>`;
 }
