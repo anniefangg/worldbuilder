@@ -276,6 +276,17 @@ td .avatar{margin:0}
 .colmenu.open{display:block}
 .colmenu .ckrow{display:flex;align-items:center;gap:.5rem;font-size:13px;color:var(--ink2);padding:.32rem .45rem;border-radius:6px;cursor:pointer}
 .colmenu .ckrow:hover{background:var(--inset)}
+/* bulk editing */
+.bcell{width:100%;min-width:80px;background:var(--paper);border:1px solid var(--line);border-radius:5px;
+  padding:.25rem .4rem;font-size:12.5px;color:var(--ink);font-family:inherit}
+.bcell:focus{outline:none;border-color:var(--accent)}
+.bcell.dirty{border-color:var(--accent2);background:color-mix(in srgb,var(--accent2) 14%,var(--paper))}
+table.bulk td{padding:.28rem .4rem;vertical-align:middle}
+.bulkbar{position:fixed;bottom:1.1rem;left:50%;transform:translateX(-50%);z-index:70;display:flex;align-items:center;
+  gap:.75rem;background:var(--card);border:1px solid var(--line);border-radius:11px;
+  box-shadow:0 12px 34px rgba(0,0,0,.24);padding:.55rem .7rem .55rem 1rem;font-size:13px}
+.bulkbar[hidden]{display:none}
+.bulkbar #bulkcount{color:var(--ink2);font-variant-numeric:tabular-nums;font-weight:500}
 
 /* collapsible sidebar */
 .sbcollapse{position:absolute;top:.7rem;right:.7rem;background:none;border:1px solid var(--line);
@@ -285,7 +296,7 @@ td .avatar{margin:0}
 .sbexpand{display:none;position:fixed;top:.8rem;left:.8rem;z-index:60;background:var(--card);
   border:1px solid var(--line);border-radius:8px;color:var(--ink2);width:32px;height:32px;font-size:15px;line-height:1}
 .sbexpand:hover{border-color:var(--accent);color:var(--ink)}
-body.sbc .shell{grid-template-columns:0 minmax(0,1fr)}
+body.sbc .shell{grid-template-columns:minmax(0,1fr)}
 body.sbc .sidebar{display:none}
 @media (min-width:881px){ body.sbc .sbexpand{display:inline-flex;align-items:center;justify-content:center} }
 @media (max-width:880px){ .sbcollapse{display:none} .sbexpand{display:none!important} body.sbc .shell{grid-template-columns:1fr} body.sbc .sidebar{display:flex} }
@@ -446,7 +457,7 @@ function route(){
   else if(parts[0]==='edit'){ html=pageEdit(decodeURIComponent(parts[1]||'')); }
   else if(parts[0]==='history'){ html=pageHistory(decodeURIComponent(parts[1]||'')); }
   else if(parts[0]==='type'){ html=pageType(parts[1]); }
-  else if(parts[0]==='streets'){ html=pageStreets(params); }
+  else if(parts[0]==='streets'){ html=pageType('street'); }
   else if(parts[0]==='timeline'){ html=pageTimeline(); }
   else if(parts[0]==='chronology'){ html=pageChronology(); }
   else if(parts[0]==='seasons'){ html=pageSeasons(); }
@@ -710,13 +721,13 @@ const INDEX_CFG={
   columns:[
    {key:'photo',label:'',pinned:false,def:true,cell:e=>avatarImg(e,26)},
    {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
-   {key:'occupation',label:'Occupation',def:true,cell:e=>esc(e.occupation||'')},
+   {key:'occupation',label:'Occupation',def:true,field:'occupation',ekind:'text',cell:e=>esc(e.occupation||'')},
    {key:'seasons',label:'Seasons',def:true,cell:e=>(e.seasons||[]).join(', ')},
-   {key:'born',label:'Born',def:true,cell:e=>e.birth_year!=null?e.birth_year:''},
-   {key:'died',label:'Died',def:false,cell:e=>e.death_year!=null?e.death_year:''},
-   {key:'origin_city',label:'Birthplace',def:false,cell:e=>esc(e.origin_city||'')},
+   {key:'born',label:'Born',def:true,field:'birth_year',ekind:'number',cell:e=>e.birth_year!=null?e.birth_year:''},
+   {key:'died',label:'Died',def:false,field:'death_year',ekind:'number',cell:e=>e.death_year!=null?e.death_year:''},
+   {key:'origin_city',label:'Birthplace',def:false,field:'origin_city',ekind:'text',cell:e=>esc(e.origin_city||'')},
    {key:'party',label:'Party',def:false,cell:e=>e.party&&BY[e.party]?link(e.party):''},
-   {key:'notable_for',label:'Notable for',def:false,cell:e=>esc(e.notable_for||'')},
+   {key:'notable_for',label:'Notable for',def:false,field:'notable_for',ekind:'text',cell:e=>esc(e.notable_for||'')},
   ], card:personCard },
  place:{ title:'Places',
   filters:[
@@ -727,12 +738,12 @@ const INDEX_CFG={
   ],
   columns:[
    {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
-   {key:'kind',label:'Kind',def:true,cell:e=>cap1(e.place_type||'')},
-   {key:'population',label:'Population',def:true,cell:e=>e.population?fmt(e.population):''},
-   {key:'founded_decade',label:'Founded',def:true,cell:e=>esc(e.founded_decade||'')},
-   {key:'peak_decade',label:'Grew fastest',def:false,cell:e=>esc(e.peak_decade||'')},
+   {key:'kind',label:'Kind',def:true,field:'place_type',ekind:'select',opts:()=>[['','—'],['province','Province'],['neighbourhood','Neighbourhood'],['settlement','Settlement']],cell:e=>cap1(e.place_type||'')},
+   {key:'population',label:'Population',def:true,field:'population',ekind:'number',cell:e=>e.population?fmt(e.population):''},
+   {key:'founded_decade',label:'Founded',def:true,field:'founded_decade',ekind:'text',cell:e=>esc(e.founded_decade||'')},
+   {key:'peak_decade',label:'Grew fastest',def:false,field:'peak_decade',ekind:'text',cell:e=>esc(e.peak_decade||'')},
    {key:'within',label:'Within',def:false,cell:e=>e.parent&&BY[e.parent]?link(e.parent):''},
-   {key:'typology',label:'Typology',def:false,cell:e=>esc(e.typology||'')},
+   {key:'typology',label:'Typology',def:false,field:'typology',ekind:'text',cell:e=>esc(e.typology||'')},
   ], card:placeCard, sort:(a,b)=>(b.population||0)-(a.population||0)||a.name.localeCompare(b.name) },
  political_party:{ title:'Political parties',
   filters:[
@@ -742,21 +753,37 @@ const INDEX_CFG={
   ],
   columns:[
    {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
-   {key:'abbreviation',label:'Abbr.',def:true,cell:e=>`<span class="mono">${esc(e.abbreviation||'')}</span>`},
-   {key:'alignment',label:'Alignment',def:true,cell:e=>esc(e.alignment||'')},
-   {key:'seats',label:'Seats',def:true,cell:e=>e.seats!=null?e.seats:''},
-   {key:'vote_pct',label:'Vote %',def:false,cell:e=>e.vote_pct!=null?e.vote_pct+'%':''},
-   {key:'year_est',label:'Founded',def:false,cell:e=>e.year_est||''},
-   {key:'status',label:'Status',def:true,cell:e=>esc(e.status||'')},
-   {key:'ideology',label:'Ideology',def:false,cell:e=>esc(e.ideology||'')},
+   {key:'abbreviation',label:'Abbr.',def:true,field:'abbreviation',ekind:'text',cell:e=>`<span class="mono">${esc(e.abbreviation||'')}</span>`},
+   {key:'alignment',label:'Alignment',def:true,field:'alignment',ekind:'text',cell:e=>esc(e.alignment||'')},
+   {key:'seats',label:'Seats',def:true,field:'seats',ekind:'number',cell:e=>e.seats!=null?e.seats:''},
+   {key:'vote_pct',label:'Vote %',def:false,field:'vote_pct',ekind:'number',cell:e=>e.vote_pct!=null?e.vote_pct+'%':''},
+   {key:'year_est',label:'Founded',def:false,field:'year_est',ekind:'number',cell:e=>e.year_est||''},
+   {key:'status',label:'Status',def:true,field:'status',ekind:'text',cell:e=>esc(e.status||'')},
+   {key:'ideology',label:'Ideology',def:false,field:'ideology',ekind:'text',cell:e=>esc(e.ideology||'')},
   ], card:cardOf },
+ street:{ title:'Streets', defaultView:'list',
+  filters:[
+   {key:'q',kind:'text',label:'name or meaning…',test:(e,v)=>!v||(e.name+' '+(e.meaning||'')).toLowerCase().includes(v.toLowerCase())},
+   {key:'cat',kind:'select',label:'Category',opts:()=>distinctVals('street','category').map(x=>[x,x]),test:(e,v)=>!v||e.category===v},
+   {key:'neigh',kind:'select',label:'Neighbourhood',opts:()=>[...new Set(DATA.relationships.filter(r=>r.type==='runs through'&&BY[r.b]).map(r=>BY[r.b].name))].sort().map(x=>[x,x]),test:(e,v)=>!v||streetNeighNames(e.slug).some(n=>n.name===v)},
+  ],
+  columns:[
+   {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
+   {key:'street_type',label:'Type',def:true,field:'street_type',ekind:'text',cell:e=>esc(e.street_type||'')},
+   {key:'category',label:'Category',def:true,field:'category',ekind:'text',cell:e=>`<span class="cat">${esc(e.category||'')}</span>`},
+   {key:'meaning',label:'Meaning',def:true,field:'meaning',ekind:'text',cell:e=>esc(e.meaning||'')},
+   {key:'note',label:'Note',def:false,field:'note',ekind:'text',cell:e=>esc(e.note||'')},
+   {key:'neighbourhoods',label:'Neighbourhoods',def:true,cell:e=>streetNeighNames(e.slug).map(n=>`<a href="#/e/${n.slug}">${esc(n.name)}</a>`).join(', ')},
+  ], card:e=>`<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${esc((e.street_type||'')+(e.meaning?' · '+e.meaning:''))}</div></a>`,
+  sort:(a,b)=>a.name.localeCompare(b.name) },
 };
 
 function loadIdxPref(type){
   const cfg=INDEX_CFG[type]; let p={};
   try{p=JSON.parse(localStorage.getItem('amparacan_idx_'+type)||'{}');}catch(e){}
   const cols={}; cfg.columns.forEach(c=>{if(!c.pinned)cols[c.key]=(p.cols&&c.key in p.cols)?!!p.cols[c.key]:!!c.def;});
-  return {view:p.view==='list'?'list':'cards',cols};
+  const view=(p.view==='list'||p.view==='cards')?p.view:(cfg.defaultView||'cards');
+  return {view,cols};
 }
 function saveIdxPref(type,pref){try{localStorage.setItem('amparacan_idx_'+type,JSON.stringify(pref));}catch(e){}}
 
@@ -783,9 +810,29 @@ function pageType(type){
        <button class="btn small" id="colbtn" type="button">Columns ▾</button>
        <div class="colmenu" id="colmenu">${colMenu}</div>
      </div>
+     ${(WRITER||LOCAL||CAP)?`<button class="btn small" id="bulkbtn" type="button">✎ Bulk edit</button>`:''}
      <span class="count" id="idxcount"></span>
    </div>
-   <div id="idxbody" data-type="${type}"></div>`;
+   <div id="idxbody" data-type="${type}"></div>
+   <div class="bulkbar" id="bulkbar" hidden>
+     <span id="bulkcount">0 changes</span>
+     <button class="btn small primary" id="bulksave" type="button">Save all</button>
+     <button class="btn small" id="bulkcancel" type="button">Cancel</button>
+   </div>`;
+}
+// bulk editing state
+let BULK_MODE=false, BULK={};
+function bulkCount(){let n=0;for(const s in BULK)n+=Object.keys(BULK[s]).length;return n;}
+function updateBulkBar(){const bar=document.getElementById('bulkbar');if(!bar)return;
+  const n=bulkCount(); bar.hidden=!BULK_MODE;
+  const c=document.getElementById('bulkcount'); if(c)c.textContent=n+' change'+(n===1?'':'s')+' staged';
+  const s=document.getElementById('bulksave'); if(s)s.disabled=!n;}
+function bulkCell(c,e){
+  const staged=BULK[e.slug]&&c.field in BULK[e.slug];
+  const cur=staged?BULK[e.slug][c.field]:(e[c.field]==null?'':e[c.field]);
+  if(c.ekind==='select')return `<select class="bcell${staged?' dirty':''}" data-slug="${e.slug}" data-field="${c.field}">`+
+    c.opts().map(o=>`<option value="${esc(o[0])}" ${String(o[0])===String(cur)?'selected':''}>${esc(o[1])}</option>`).join('')+`</select>`;
+  return `<input class="bcell${staged?' dirty':''}" data-slug="${e.slug}" data-field="${c.field}" type="${c.ekind==='number'?'number':'text'}" value="${esc(cur)}">`;
 }
 function renderIndexBody(type){
   const cfg=INDEX_CFG[type]; const pref=loadIdxPref(type);
@@ -795,19 +842,45 @@ function renderIndexBody(type){
   list.sort(cfg.sort||((a,b)=>a.name.localeCompare(b.name)));
   const cnt=document.getElementById('idxcount'); if(cnt)cnt.textContent=list.length;
   const body=document.getElementById('idxbody'); if(!body)return;
+  const listView = pref.view==='list' || BULK_MODE;   // bulk always uses the table
   if(!list.length){body.innerHTML=`<div class="empty">No matches. Adjust the filters.</div>`;return;}
-  if(pref.view==='list'){
+  if(listView){
     const cols=cfg.columns.filter(c=>c.pinned||pref.cols[c.key]);
-    body.innerHTML=`<div class="tablewrap"><table><thead><tr>${cols.map(c=>`<th>${esc(c.label||'')}</th>`).join('')}</tr></thead><tbody>`+
-      list.map(e=>`<tr>${cols.map(c=>`<td>${c.cell(e)}</td>`).join('')}</tr>`).join('')+`</tbody></table></div>`;
+    body.innerHTML=`<div class="tablewrap"><table class="${BULK_MODE?'bulk':''}"><thead><tr>${cols.map(c=>`<th>${esc(c.label||'')}${BULK_MODE&&c.field?' ✎':''}</th>`).join('')}</tr></thead><tbody>`+
+      list.map(e=>`<tr>${cols.map(c=>`<td>${(BULK_MODE&&c.field)?bulkCell(c,e):c.cell(e)}</td>`).join('')}</tr>`).join('')+`</tbody></table></div>`;
   }else body.innerHTML=`<div class="cardgrid">`+list.map(cfg.card).join('')+`</div>`;
+}
+function stageBulk(el){
+  const slug=el.dataset.slug, field=el.dataset.field, e=BY[slug]; if(!e)return;
+  let val=el.value; const orig=e[field]==null?'':String(e[field]);
+  BULK[slug]=BULK[slug]||{};
+  if(String(val)===orig){ delete BULK[slug][field]; if(!Object.keys(BULK[slug]).length)delete BULK[slug]; el.classList.remove('dirty'); }
+  else { BULK[slug][field]=val; el.classList.add('dirty'); }
+  updateBulkBar();
+}
+function applyBulk(){
+  const now=new Date().toISOString(); let n=0;
+  const NUM=['birth_year','death_year','population','seats','vote_pct','year_est'];
+  for(const slug in BULK){const e=BY[slug];if(!e)continue;
+    for(const field in BULK[slug]){
+      let nv=BULK[slug][field]; const ov=e[field]==null?'':e[field];
+      if(NUM.includes(field)) nv=(nv===''||nv==null)?null:Number(nv);
+      const cmp=nv==null?'':nv;
+      if(String(cmp)===String(ov))continue;
+      DATA.revisions.push({entity:slug,field,old:String(ov),new:String(cmp),at:now});
+      if(nv===''||nv==null)delete e[field]; else e[field]=nv; n++;
+    }
+  }
+  BULK={}; BULK_MODE=false; reindex();
+  persist(); route();   // persist publishes/saves; route re-renders the clean index
 }
 function wireIndex(){
   const body=document.getElementById('idxbody'); if(!body)return;
   const type=body.dataset.type; const cfg=INDEX_CFG[type]; if(!cfg)return;
+  BULK_MODE=false; BULK={};   // fresh each navigation
   cfg.filters.forEach(f=>{const el=document.getElementById('flt_'+f.key);if(el)el.addEventListener(f.kind==='text'?'input':'change',()=>renderIndexBody(type));});
   document.querySelectorAll('#viewtoggle button').forEach(b=>b.onclick=()=>{
-    const pref=loadIdxPref(type); pref.view=b.dataset.v; saveIdxPref(type,pref);
+    if(BULK_MODE)return; const pref=loadIdxPref(type); pref.view=b.dataset.v; saveIdxPref(type,pref);
     document.querySelectorAll('#viewtoggle button').forEach(x=>x.classList.toggle('on',x===b));
     document.getElementById('colwrap').style.display=pref.view==='list'?'':'none';
     renderIndexBody(type);});
@@ -816,6 +889,16 @@ function wireIndex(){
     document.querySelectorAll('#colmenu input').forEach(cb=>cb.onchange=()=>{
       const pref=loadIdxPref(type); pref.cols[cb.dataset.col]=cb.checked; saveIdxPref(type,pref); renderIndexBody(type);});
   }
+  // bulk editing
+  const bulkbtn=document.getElementById('bulkbtn');
+  if(bulkbtn)bulkbtn.onclick=()=>{ BULK_MODE=true; BULK={};
+    document.getElementById('bulkbtn').style.display='none';
+    document.getElementById('colwrap').style.display='none';
+    renderIndexBody(type); updateBulkBar(); };
+  body.addEventListener('input',e=>{const el=e.target.closest('.bcell');if(el)stageBulk(el);});
+  body.addEventListener('change',e=>{const el=e.target.closest('select.bcell');if(el)stageBulk(el);});
+  const bs=document.getElementById('bulksave'); if(bs)bs.onclick=()=>{ if(bulkCount())applyBulk(); };
+  const bc=document.getElementById('bulkcancel'); if(bc)bc.onclick=()=>{ BULK_MODE=false; BULK={}; route(); };
   renderIndexBody(type);
 }
 
