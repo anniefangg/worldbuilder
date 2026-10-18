@@ -1335,10 +1335,39 @@ function shiftLine(P, d, side) {      // offset a polyline sideways by d metres 
   }
   return out;
 }
+// Sand from the beach line down to the waterline: at stations every few metres, march seaward
+// until the ground drops below sea level, and lay a strip whose vertices follow the terrain,
+// so the sand meets the sea exactly at the coast and never spills over the water.
+function sandStrip(geo, P, side) {
+  const STEP = 5, K = 18, MAX = 320, col = linear('#f3dca6'), rows = [];
+  let carry = 0;
+  for (let i = 0; i < P.length - 2; i += 2) {
+    const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+    const tx = dx / len, tz = dz / len, sx = tz * side, sz = -tx * side;          // seaward = away from the land side
+    for (let d = carry; d <= len; d += STEP) {
+      const x0 = ax + tx * d, z0 = az + tz * d;
+      let w = 0; for (let m = 2; m <= MAX; m += 2) { if (H(x0 + sx * m, z0 + sz * m) < 0) { w = m; break; } }
+      if (!w) { rows.push(null); continue; }                                       // no sea within reach: no sand here
+      // refine the waterline to half a metre
+      let lo = w - 2, hi = w; for (let k = 0; k < 3; k++) { const mid = (lo + hi) / 2; if (H(x0 + sx * mid, z0 + sz * mid) < 0) hi = mid; else lo = mid; }
+      const row = [];
+      for (let k = 0; k <= K; k++) {
+        const o = -2 + (lo + 2) * (k / K), x = x0 + sx * o, z = z0 + sz * o, h = H(x, z);
+        row.push(geo.v(x, Math.max(h, 0) + 0.12 + 0.13 * smooth(0, 1.2, h), z, 0, 1, 0, col, x / 4, z / 4));
+      }
+      rows.push(row);
+    }
+    carry = (carry + Math.ceil((len - carry) / STEP) * STEP) - len;
+  }
+  for (let r = 0; r < rows.length - 1; r++) {
+    const A = rows[r], B = rows[r + 1]; if (!A || !B) continue;
+    for (let k = 0; k < K; k++) { geo.triUp(A[k], B[k], A[k + 1]); geo.triUp(A[k + 1], B[k], B[k + 1]); }
+  }
+}
 function buildBeaches(list) {
   for (const o of world.beachObjs || []) { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); }
   world.beachObjs = [];
-  const sand = [], walk = [], props = new Geo(), palms = { palm: new Map(), broad: new Map() }, C = new THREE.Color();
+  const sandGeo = new Geo(), walk = [], props = new Geo(), palms = { palm: new Map(), broad: new Map() }, C = new THREE.Color();
   const UMB = ['#e8457a', '#f2c230', '#2fb7d6', '#3fbf6f', '#f08a2c', '#ffffff', '#1f57a8'];
   const quad = (P, n, col) => { const s0 = props.count; for (const q of P) props.v(q[0], q[1], q[2], n[0], n[1], n[2], col);
     const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
@@ -1364,8 +1393,8 @@ function buildBeaches(list) {
     for (let i = 0; i < P.length - 2; i += 2) { const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz) || 1, mx = (P[i] + P[i + 2]) / 2, mz = (P[i + 1] + P[i + 3]) / 2; vote += H(mx - dz / L * 30, mz + dx / L * 30) - H(mx + dz / L * 30, mz - dx / L * 30); }
     // the Illustrator line marks the beach's inland edge: sand runs from it down to the sea
     // (the far side is hidden under the water), the promenade runs along its city side
-    const side = vote >= 0 ? 1 : -1, SEA = 160;
-    sand.push({ pts: shiftLine(P, 2 - SEA / 2, side), w: SEA, color: '#f3dca6' });
+    const side = vote >= 0 ? 1 : -1;
+    sandStrip(sandGeo, P, side);
     if (look !== 'copacabana') continue;
     walk.push({ pts: shiftLine(P, 4.5, side), w: 9, color: '#ffffff' });
     // walk the line placing kiosks, lifeguard posts, umbrellas and promenade palms
@@ -1384,7 +1413,7 @@ function buildBeaches(list) {
       run += len;
     }
   }
-  if (sand.length) world.beachObjs.push(overlayMesh(ribbonOverlay(sand), world.tex.sand, 0.5));   // just above the terrain
+  if (sandGeo.count) world.beachObjs.push(overlayMesh(sandGeo, world.tex.sand, 0.5));   // just above the terrain
   if (walk.length) world.beachObjs.push(overlayMesh(ribbonOverlay(walk), world.tex.waves, 1));
   if (props.count) { const m = new THREE.Mesh(props.build(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.beachObjs.push(m); }
   world.beachObjs.push(...treeMeshes(palms));
