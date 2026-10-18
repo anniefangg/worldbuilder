@@ -2739,6 +2739,7 @@ function setMulti(ids, { add = false } = {}) {
 }
 function toggleMulti(id) {
   if (!id) return;
+  if (!multi.size && ui.selected === id) { select(null); return; }       // shift-click on the lone selected item un-selects it
   if (!multi.size && ui.selected && ui.selected !== id) { const s0 = ui.selected; select(null); multi.add(s0); multiMark(s0, true); }
   if (multi.has(id)) { multi.delete(id); multiMark(id, false); } else if (multi.size < MULTI_MAX) { multi.add(id); multiMark(id, true); }
   afterMulti();
@@ -3532,7 +3533,7 @@ function initControls() {
     raycaster.setFromCamera(_ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
-  $('edit-pill').addEventListener('click', () => { if (ui.hover) select(ui.hover, { focusPrompt: true }); });
+  $('edit-pill').addEventListener('click', (e) => { if (!ui.hover) return; if (e.shiftKey) toggleMulti(ui.hover); else select(ui.hover, { focusPrompt: true }); });
   // the pill floats over the map: let scrolling over it zoom the view underneath
   $('edit-pill').addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -3737,7 +3738,7 @@ function initMinimap() {
 // The floating Edit pill sits above the hovered building
 function placePill() {
   const pill = $('edit-pill'), t = targetOf(ui.hover);
-  if (!t || ui.hover === ui.selected) { pill.hidden = true; return; }
+  if (!t || ui.hover === ui.selected || multi.size || keys.has('shift') || ui.boxTool) { pill.hidden = true; return; }   // never float a button over the things being picked
   let sx, sy;
   const topY = t.b ? t.b.top + 2 : H(t.cx, t.cz) + 3, edgeZ = t.b ? t.b.bbox[1] : t.cz;
   if (player.mode === 'plan') { sx = (t.cx - plan.cx) * plan.scale + innerWidth / 2; sy = (edgeZ - plan.cz) * plan.scale + innerHeight / 2 - 6; }
