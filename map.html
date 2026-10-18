@@ -863,7 +863,7 @@ async function buildWorld() {
   world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves') };
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
-  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r, color: '#f2f4f6' })), 4), world.tex.setts, 3);
+  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r, color: '#7d8083' })), 4), world.tex.setts, 3);
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
   await progress('Raising buildings', 44);
@@ -1720,6 +1720,9 @@ function overlayMesh(geo, tex, order) {
 }
 // (Re)build the ground layer of one kind, grouped by paving so each group shares a texture.
 const ORDER = { beach: 1, plaza: 1, park: 2, path: 4, street: 5 };
+// Streets are laid dark: asphalt-grey setts and slate pavers. Each street gets its own depth (so the paving still varies) and keeps its tint.
+function darken(hex, k) { const n = parseInt(hex.slice(1), 16), ch = (v) => Math.round(clamp(v * k, 0, 255)).toString(16).padStart(2, '0'); return '#' + ch(n >> 16) + ch((n >> 8) & 255) + ch(n & 255); }   // multiply in sRGB, as the eye reads it
+const streetDark = (f) => 0.5 + 0.18 * ((f.seed >>> 5) % 100) / 100;
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -1730,7 +1733,7 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: s.tint });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0)));
