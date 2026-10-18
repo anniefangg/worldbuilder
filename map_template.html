@@ -690,7 +690,7 @@ async function buildWorld() {
     const rec = {
       idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, area, nv, convex, tile, top: base + 10,
       flowers, seed: parseInt(bIds[bi].slice(1), 16),
-      auto: { wall, shutters, roofType: pitched ? 'hip' : 'flat', floors: bFloors[bi], groundFloor: 'arches', windows: balconies ? 'balconies' : 'shutters', jitter,
+      auto: { facade: 'standard', wall, shutters, roofType: pitched ? 'hip' : 'flat', floors: bFloors[bi], groundFloor: 'arches', windows: balconies ? 'balconies' : 'shutters', jitter,
         tileRoof: style.tileRoofs[(roofPick * style.tileRoofs.length) | 0], flatRoof: style.flatRoofs[(roofPick * style.flatRoofs.length) | 0] },
     };
     world.buildings.push(rec); world.byId.set(rec.id, rec);
@@ -730,7 +730,7 @@ async function buildWorld() {
 
 // ─────────────────────────── building geometry & state ───────────────────────────
 const HEX = /^#[0-9a-f]{6}$/i;
-const GROUND = { arches: 0, shopfront: 1, plain: 2 }, WINDOWS = { shutters: 0, plain: 1, balconies: 2 };
+const GROUND = { arches: 0, shopfront: 1, plain: 2 }, WINDOWS = { shutters: 0, plain: 1, balconies: 2 }, FACADES = ['standard', 'neoclassical'];
 const EX = [['aWall', 4], ['aShut', 3], ['aBid', 1], ['aStyle', 2]];
 // The style a building is drawn with: generated defaults, overridden by saved edits.
 function styleOf(rec) {
@@ -742,6 +742,7 @@ function styleOf(rec) {
   if (Number.isFinite(+o.floors) && +o.floors >= 1) s.floors = clamp(Math.round(+o.floors), 1, 40);
   if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
   if (o.windows in WINDOWS) s.windows = o.windows;
+  if (FACADES.includes(o.facade)) s.facade = o.facade;
   return s;
 }
 const _cW = new THREE.Color(), _cR = new THREE.Color(), _cS = new THREE.Color(), _cP = new THREE.Color(), _cT = new THREE.Color();
@@ -798,12 +799,77 @@ function blossom(geo, x, y, z, r, col) {
     geo.i.push(s0, s0 + 1, s0 + 2);
   }
 }
+// The façade that faces a street or plaza (preferring long ones): where a portico or main entrance goes
+function mainFacade(rec, facades) {
+  let best = null, bs = -1;
+  for (const f of facades) {
+    const mx = (f.ax + f.bx) / 2, mz = (f.az + f.bz) / 2; let street = 0;
+    for (const d of [4, 8, 14]) { const k = featureAt(mx + f.nx * d, mz + f.nz * d, 2); if (k >= 0) { const kind = world.features[k].kind; if (kind === 'street' || kind === 'plaza') { street = kind === 'plaza' ? 2.5 : 2; break; } } }
+    const sc = f.L * (1 + street);
+    if (sc > bs) { bs = sc; best = f; }
+  }
+  rec.mainFacade = best || longestEdge(rec);
+  return rec.mainFacade;
+}
+function longestEdge(rec) {
+  const r = rec.rings[0], sgn = ringArea(r) > 0 ? 1 : -1; let best = null;
+  for (let i = 0, n = r.length; i < n; i += 2) {
+    const j = (i + 2) % n, ax = r[i], az = r[i + 1], bx = r[j], bz = r[j + 1], L = Math.hypot(bx - ax, bz - az);
+    if (!best || L > best.L) best = { ax, az, bx, bz, L, nx: (bz - az) / L * sgn, nz: -(bx - ax) / L * sgn };
+  }
+  return best;
+}
+// Facade-local box: t along the wall, d outward from it, y up
+function fBox(geo, f, t0, t1, d0, d1, y0, y1, col) {
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (t, d, y) => [f.ax + dx * t + f.nx * d, y, f.az + dz * t + f.nz * d];
+  quadN(geo, [P(t0, d0, y1), P(t1, d0, y1), P(t1, d1, y1), P(t0, d1, y1)], [0, 1, 0], col, Z4);
+  quadN(geo, [P(t0, d0, y0), P(t0, d1, y0), P(t1, d1, y0), P(t1, d0, y0)], [0, -1, 0], col, Z4);
+  quadN(geo, [P(t0, d1, y0), P(t1, d1, y0), P(t1, d1, y1), P(t0, d1, y1)], [f.nx, 0, f.nz], col, Z4);
+  quadN(geo, [P(t0, d0, y0), P(t0, d1, y0), P(t0, d1, y1), P(t0, d0, y1)], [-dx, 0, -dz], col, Z4);
+  quadN(geo, [P(t1, d0, y0), P(t1, d1, y0), P(t1, d1, y1), P(t1, d0, y1)], [dx, 0, dz], col, Z4);
+}
+function fColumn(geo, f, t, d, y0, y1, r, col) {
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, cx = f.ax + dx * t + f.nx * d, cz = f.az + dz * t + f.nz * d, N = 10;
+  for (let k = 0; k < N; k++) {
+    const a0 = k / N * Math.PI * 2, a1 = (k + 1) / N * Math.PI * 2, am = (a0 + a1) / 2, r1 = r * 0.86;   // slight taper
+    const n = [Math.cos(am), 0, Math.sin(am)];
+    quadN(geo, [[cx + Math.cos(a0) * r, y0, cz + Math.sin(a0) * r], [cx + Math.cos(a1) * r, y0, cz + Math.sin(a1) * r], [cx + Math.cos(a1) * r1, y1, cz + Math.sin(a1) * r1], [cx + Math.cos(a0) * r1, y1, cz + Math.sin(a0) * r1]], n, col, Z4);
+  }
+}
+// Neoclassical portico on the main façade: giant-order columns, entablature and a central pediment (MUNAL-like)
+function portico(geo, rec, f, base, top, s) {
+  if (!f || f.L < 6) return;
+  const stone = _cT.copy(linear(s.wall)).lerp(new THREE.Color(1, 0.98, 0.94), 0.55), shade = new THREE.Color().copy(stone).multiplyScalar(0.82);
+  const span = Math.min(f.L - 1.2, Math.max(8, f.L * 0.62)), t0 = (f.L - span) / 2, t1 = t0 + span, depth = 2.6;
+  const colTop = Math.min(top - 1.2, base + 4.0 + 3.3 * Math.min(2, Math.max(1, s.floors - 2))), entab = 1.0;
+  fBox(geo, f, t0 - 0.4, t1 + 0.4, 0, depth + 0.5, base - 0.5, base + 0.7, shade);                         // stylobate / steps
+  const n = Math.max(4, Math.round(span / 3.4)), count = n % 2 ? n + 1 : n;                               // an even count leaves a wide central bay for the doorway
+  for (let k = 0; k < count; k++) {
+    const t = t0 + 0.5 + (span - 1) * k / (count - 1);
+    fBox(geo, f, t - 0.55, t + 0.55, depth - 0.55, depth + 0.55, base + 0.7, base + 1.3, stone);            // plinth
+    fColumn(geo, f, t, depth, base + 1.3, colTop - 0.5, 0.42, stone);
+    fBox(geo, f, t - 0.6, t + 0.6, depth - 0.6, depth + 0.6, colTop - 0.5, colTop, stone);                 // capital
+  }
+  fBox(geo, f, t0 - 0.3, t1 + 0.3, 0, depth + 0.7, colTop, colTop + entab, stone);                          // entablature
+  // pediment over the central bays
+  const pw = span * 0.55, pc = (t0 + t1) / 2, ph = Math.min(pw * 0.2, 3.2), yb = colTop + entab, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L;
+  const P = (t, d, y) => [f.ax + dx * t + f.nx * d, y, f.az + dz * t + f.nz * d], d1 = depth + 0.7;
+  const s0 = geo.count, A = P(pc - pw / 2, d1, yb), B = P(pc + pw / 2, d1, yb), C = P(pc, d1, yb + ph);
+  for (const q of [A, B, C]) { geo.v(q[0], q[1], q[2], f.nx, 0, f.nz, stone); geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
+  // tympanum faces the street: keep the winding whose normal points along the façade normal
+  const ex = B[0] - A[0], ez = B[2] - A[2], fy = C[1] - A[1], gx = C[0] - A[0], gz = C[2] - A[2];
+  const nxT = 0 * gz - ez * fy, nzT = ex * fy - 0 * gx;
+  if (nxT * f.nx + nzT * f.nz >= 0) geo.i.push(s0, s0 + 1, s0 + 2); else geo.i.push(s0, s0 + 2, s0 + 1);
+  const slope = (ta, tb) => { const mid = (ta + tb) / 2 - pc, n = [-dx * Math.sign(mid) * 0.6, 0.8, -dz * Math.sign(mid) * 0.6]; quadN(geo, [P(ta, 0, yb + (ta === pc ? ph : 0)), P(tb, 0, yb + (tb === pc ? ph : 0)), P(tb, d1, yb + (tb === pc ? ph : 0)), P(ta, d1, yb + (ta === pc ? ph : 0))], n, shade, Z4); };
+  slope(pc - pw / 2, pc); slope(pc, pc + pw / 2);
+}
 function emitBuilding(geo, rec) {
   const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0];
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
-  const start = geo.count, pitched = s.roofType === 'hip', parapet = pitched ? 0 : 0.9;
+  const neo = s.facade === 'neoclassical';
+  const start = geo.count, pitched = s.roofType === 'hip' && !neo, parapet = pitched ? 0 : neo ? 1.1 : 0.9;
   for (const r of rings) {
     const outward = (r === outer) === (ringArea(r) > 0); // true → the right-hand normal points out of the solid
     for (let i = 0, n = r.length; i < n; i += 2) {
@@ -842,8 +908,9 @@ function emitBuilding(geo, rec) {
     for (const t of tris) geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
   }
   // balconies on the main street façades, one per upper floor
-  const facades = s.windows === 'balconies' || rec.flowers ? facadesOf(rec) : [];
-  if (s.windows === 'balconies' && s.floors > 1) {
+  const facades = s.windows === 'balconies' || rec.flowers || neo ? facadesOf(rec) : [];
+  if (neo) portico(geo, rec, mainFacade(rec, facades), base, top, s);
+  else if (s.windows === 'balconies' && s.floors > 1) {
     _cT.copy(cWall).lerp(new THREE.Color(1, 0.97, 0.92), 0.7);
     for (const f of facades.slice(0, f2(facades))) {
       const span = Math.min(f.L * 0.7, 9), t0 = (f.L - span) / 2;
@@ -857,7 +924,7 @@ function emitBuilding(geo, rec) {
       for (let y = top - 0.6, m = 0; y > base + 2.5 && m < 4; y -= 1.3 + rnd(), m++) for (let b = 0; b < 3; b++) blossom(geo, x + (rnd() - 0.5) * 1.2, y + (rnd() - 0.5) * 0.6, z + (rnd() - 0.5) * 0.3, 0.32 + rnd() * 0.3, m === 3 && b === 0 ? LEAF : BLOOMS[(rnd() * BLOOMS.length) | 0]);
     }
   }
-  const g = GROUND[s.groundFloor], w = WINDOWS[s.windows];
+  const g = neo ? 3 : GROUND[s.groundFloor], w = neo ? 3 : WINDOWS[s.windows];
   for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
 }
 const f2 = (fs) => (fs.length > 1 && fs[1].L >= 7 ? 2 : 1);
@@ -970,7 +1037,12 @@ function buildingMaterial() {
         float can = step(2.4, L) * step(0.0, v) * step(v, top - 0.7);
         float win = 0.0, frame = 0.0, shut = 0.0, iron = 0.0, awning = 0.0;
         float gStyle = vStyle.x, wStyle = vStyle.y;
-        if (ground > 0.5 && gStyle < 0.5) {           // arcade of arches
+        float neo = step(2.5, wStyle);                 // neoclassical civic façade (galleries, museums)
+        if (ground > 0.5 && gStyle > 2.5) {            // rusticated stone base with tall arched doorways
+          float ay = max((fy - 0.66) / 0.18, 0.0);
+          win = step(x * x / 0.03 + ay * ay, 1.0) * step(0.02, fy) * step(fy, 0.84);
+          frame = step(x * x / 0.05 + ay * ay * 0.7, 1.0) * step(fy, 0.9) * (1.0 - win);
+        } else if (ground > 0.5 && gStyle < 0.5) {     // arcade of arches
           float ay = max((fy - 0.6) / 0.2, 0.0);
           win = step(x * x / 0.045 + ay * ay, 1.0) * step(0.02, fy) * step(fy, 0.8);
           frame = step(x * x / 0.065 + ay * ay * 0.7, 1.0) * step(fy, 0.86) * (1.0 - win);
@@ -979,8 +1051,8 @@ function buildingMaterial() {
           frame = step(x, 0.46) * step(fy, 0.76) * (1.0 - win);
           awning = step(0.76, fy) * step(fy, 0.9) * step(x, 0.48);
         } else {                                       // upper floors: tall arched openings
-          float tall = wStyle > 1.5 ? 1.0 : 0.0;       // balconies get French doors
-          float lo = mix(0.26, 0.06, tall), hi = 0.7, hw = mix(0.14, 0.15, tall);
+          float tall = wStyle > 1.5 && wStyle < 2.5 ? 1.0 : 0.0;       // balconies get French doors
+          float lo = mix(mix(0.26, 0.06, tall), 0.1, neo), hi = mix(0.7, 0.74, neo), hw = mix(mix(0.14, 0.15, tall), 0.19, neo);
           float ax = x / hw, archTop = hi + 0.1 * sqrt(max(1.0 - ax * ax, 0.0));
           win = step(x, hw) * step(lo, fy) * step(fy, archTop);
           float axf = x / (hw + 0.04), archF = hi + 0.13 * sqrt(max(1.0 - axf * axf, 0.0));
@@ -988,6 +1060,7 @@ function buildingMaterial() {
           if (wStyle < 0.5) shut = step(hw + 0.04, x) * step(x, hw + 0.16) * step(lo, fy) * step(fy, hi + 0.04);
           frame = max(frame, step(x, hw + 0.1) * step(lo - 0.07, fy) * step(fy, lo - 0.035));   // sill
           if (tall > 0.5 && ground < 0.5) iron = step(x, hw + 0.02) * step(lo, fy) * step(fy, lo + 0.3) * (step(0.62, fract(u * 3.2)) + step(lo + 0.27, fy));
+          if (neo > 0.5) frame = max(frame, step(x, hw + 0.12) * step(archF + 0.015, fy) * step(fy, archF + 0.07 - x * 0.12));  // little pediment over each window
         }
         win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0))); iron = min(iron, 1.0) * can; awning *= can;
         float lit = step(0.42, h31(vec3(flr, col, vBid)));                          // about half the rooms have their lamps on
@@ -998,6 +1071,12 @@ function buildingMaterial() {
         float weather = 0.92 + 0.08 * h31(floor(vWP * 0.7));                        // lime-wash patches
         vec3 c = wall * weather * mix(0.72, 1.0, smoothstep(-0.5, 2.2, v));         // grime at the base
         c = mix(c, trim, step(top - 0.45, v) * step(v, top) * 0.8);              // cornice band
+        if (neo > 0.5) {
+          c = mix(c, trim, step(0.44, x) * step(gf, v) * step(v, top) * 0.55);                          // pilasters between bays
+          c *= 1.0 - 0.18 * step(v, gf) * step(fract(v * 2.0), 0.07) * step(0.0, v);                   // rusticated joints
+          float bal = step(top + 0.12, v) * step(v, top + 0.95), gap = step(0.55, fract(u * 4.0)) * step(top + 0.25, v) * step(v, top + 0.82);
+          c = mix(c, trim, bal); c = mix(c, trim * 0.45, gap * bal);                                  // balustrade
+        }
         c = mix(c, trim, step(gf - 0.25, v) * step(v, gf) * 0.6);                // ground-floor string course
         c = mix(c, trim, frame);
         c = mix(c, vShut, max(shut, awning * step(0.5, fract(u * 1.2))));
@@ -1138,7 +1217,7 @@ function featureAt(x, z, tol = 1) {
 const PAVINGS = ['flagstones', 'cobbles', 'pavers'];
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { paving: PAVINGS, tint: 'hex' },
+  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'] },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {}, beach: {},
@@ -1146,7 +1225,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0] });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0] });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none' });
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
   for (const [k, spec] of Object.entries(FSTYLE[f.kind] || {})) {
@@ -1213,13 +1292,82 @@ function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
   const groups = new Map(), list = world.features.filter((f) => f.kind === kind);
+  if (kind === 'plaza') buildChinampas(list.filter((f) => featureStyle(f).use === 'chinampa'));
   for (const f of list) {
-    const s = featureStyle(f), tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
+    const s = featureStyle(f); if (s.use === 'chinampa') continue;
+    const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
     g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: s.tint });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0)));
+}
+
+// ---- chinampas: narrow garden plots between canals, edged with ahuejote willows, with a trajinera or two
+function buildChinampas(list) {
+  for (const o of world.chin || []) { scene.remove(o); o.geometry.dispose(); if (o.material.dispose) o.material.dispose(); }
+  world.chin = [];
+  if (!list.length) return;
+  const water = new Geo(), land = new Geo(), willows = [], C = new THREE.Color();
+  const CROPS = ['#5e9a3e', '#7ab04a', '#9cc95a', '#4f8a3a', '#88b84d', '#6fa443', '#e8962a', '#a3c45a'], SOIL = new THREE.Color('#6a5034'), BOATS = ['#e8457a', '#f2c230', '#2fb7d6', '#3fbf6f', '#8c5bd6', '#f08a2c'];
+  const quad = (g, P, n, col, uvs) => { const s0 = g.count; P.forEach((q, k) => g.v(q[0], q[1], q[2], n[0], n[1], n[2], col, uvs ? uvs[k][0] : q[0] / 3, uvs ? uvs[k][1] : q[2] / 3));
+    const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
+    const cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cx * n[0] + cy * n[1] + cz * n[2] >= 0) g.i.push(s0, s0 + 1, s0 + 2, s0, s0 + 2, s0 + 3); else g.i.push(s0, s0 + 2, s0 + 1, s0, s0 + 3, s0 + 2); };
+  const box = (g, F, u0, u1, v0, v1, y0, y1, top, side) => {   // box in the chinampa's own frame
+    const P = (u, v, y) => { const [x, z] = F(u, v); return [x, y, z]; }, nu = F.n(1, 0), nv = F.n(0, 1);
+    quad(g, [P(u0, v0, y1), P(u1, v0, y1), P(u1, v1, y1), P(u0, v1, y1)], [0, 1, 0], top);
+    quad(g, [P(u0, v0, y0), P(u1, v0, y0), P(u1, v0, y1), P(u0, v0, y1)], [-nv[0], 0, -nv[1]], side);
+    quad(g, [P(u0, v1, y0), P(u1, v1, y0), P(u1, v1, y1), P(u0, v1, y1)], [nv[0], 0, nv[1]], side);
+    quad(g, [P(u0, v0, y0), P(u0, v1, y0), P(u0, v1, y1), P(u0, v0, y1)], [-nu[0], 0, -nu[1]], side);
+    quad(g, [P(u1, v0, y0), P(u1, v1, y0), P(u1, v1, y1), P(u1, v0, y1)], [nu[0], 0, nu[1]], side);
+  };
+  for (const f of list) {
+    const rnd = mulberry(f.seed ^ 0xc0ffee), r = f.rings[0];
+    // orient the plots along the polygon's longest edge
+    let best = 0, ux = 1, uz = 0;
+    for (let i = 0; i < r.length; i += 2) { const j = (i + 2) % r.length, L = Math.hypot(r[j] - r[i], r[j + 1] - r[i + 1]); if (L > best) { best = L; ux = (r[j] - r[i]) / L; uz = (r[j + 1] - r[i + 1]) / L; } }
+    const vx = -uz, vz = ux, F = (u, v) => [f.cx + ux * u + vx * v, f.cz + uz * u + vz * v]; F.n = (a, b) => [ux * a + vx * b, uz * a + vz * b];
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let i = 0; i < r.length; i += 2) { const dx = r[i] - f.cx, dz = r[i + 1] - f.cz, u = dx * ux + dz * uz, v = dx * vx + dz * vz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const y = H(f.cx, f.cz) + LIFT, inside = (u, v) => { const [x, z] = F(u, v); return pointInRings(x, z, f.rings); };
+    // canal water over the whole plaza
+    const { pts, tris } = triangulate(f.rings), b0 = water.count; C.set('#3fb3a8');
+    for (const q of pts) water.v(q.x, y + 0.02, q.y, 0, 1, 0, C);
+    for (const t of tris) water.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
+    const PL = 24, PW = 6.5, GU = 4, GV = 5; let row = 0;
+    for (let v = v0 + 1.5; v + PW < v1 - 1; v += PW + GV, row++) {
+      for (let u = u0 + 1.5 + (row % 2) * 6; u + PL < u1 - 1; u += PL + GU) {
+        if (![[u, v], [u + PL, v], [u, v + PW], [u + PL, v + PW], [u + PL / 2, v + PW / 2]].every(([a, b]) => inside(a, b))) continue;
+        C.set(CROPS[(rnd() * CROPS.length) | 0]);
+        box(land, F, u, u + PL, v, v + PW, y - 0.3, y + 0.55, C.clone(), SOIL);
+        for (let k = 0; k < 4; k++) { const cu = u + 1 + rnd() * (PL - 2), cv = v + 0.6 + (k % 2 ? PW - 1.2 : 0); C.set(CROPS[(rnd() * 3) | 0]); box(land, F, cu - 1.2, cu + 1.2, cv - 0.25, cv + 0.25, y + 0.55, y + 0.8, C.clone(), C.clone()); }
+        for (let a = u + 3; a < u + PL - 1; a += 9 + rnd() * 3) for (const side of [v + 0.4, v + PW - 0.4]) if (rnd() < 0.55) { const [x, z] = F(a, side); willows.push([x, y + 0.5, z, 0.85 + rnd() * 0.35]); }
+      }
+      // a trajinera in some of the canals
+      if (rnd() < 0.45) {
+        const bu = u0 + 8 + rnd() * Math.max(1, u1 - u0 - 24), bv = v + PW + GV / 2;
+        if (inside(bu, bv) && inside(bu + 6.5, bv)) {
+          C.set(BOATS[(rnd() * BOATS.length) | 0]); const hull = C.clone(); C.set(BOATS[(rnd() * BOATS.length) | 0]);
+          box(land, F, bu, bu + 6.5, bv - 0.8, bv + 0.8, y - 0.1, y + 0.45, new THREE.Color('#6b3f22'), hull);
+          box(land, F, bu + 0.4, bu + 6.1, bv - 0.95, bv + 0.95, y + 1.9, y + 2.05, C.clone(), C.clone());
+          for (const pu of [bu + 0.6, bu + 5.9]) for (const pv of [bv - 0.7, bv + 0.7]) box(land, F, pu - 0.06, pu + 0.06, pv - 0.06, pv + 0.06, y + 0.45, y + 1.9, new THREE.Color('#f3efe4'), new THREE.Color('#f3efe4'));
+        }
+      }
+    }
+  }
+  const wm = new THREE.Mesh(water.build(), new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1a5f5a', emissiveIntensity: 0.45, depthWrite: false }));
+  wm.renderOrder = 1; wm.receiveShadow = true; scene.add(wm);
+  const lm = new THREE.Mesh(land.build(), new THREE.MeshLambertMaterial({ vertexColors: true, map: world.tex.grass.map }));
+  lm.castShadow = lm.receiveShadow = true; lm.renderOrder = 10; scene.add(lm);
+  world.chin.push(wm, lm);
+  if (willows.length) {   // ahuejotes: tall, slender willows planted along the plot edges
+    const g = mergeGeometries([colorize(new THREE.CylinderGeometry(0.12, 0.2, 2.2, 5).translate(0, 1.1, 0).toNonIndexed(), linear('#6b5236')),
+      colorize(new THREE.ConeGeometry(0.75, 7.5, 6).translate(0, 5.6, 0).toNonIndexed(), linear('#557f3c'))].map(stripUV));
+    const im = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), willows.length), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3();
+    willows.forEach(([x, yy, z, sc], i) => { M4.compose(V.set(x, yy, z), Q.identity(), Sc.set(sc, sc, sc)); im.setMatrixAt(i, M4); });
+    im.castShadow = true; im.renderOrder = 10; im.computeBoundingSphere(); scene.add(im); world.chin.push(im);
+  }
 }
 
 // ---- trees
@@ -1593,11 +1741,11 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
-const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade',
+const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure',
   paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeType: 'tree species', lights: 'street lights' };
+  trees: 'tree density', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use' };
 function diffDocs(a, b) {
   const out = [];
   for (const k of ['name', 'address', 'tags', 'history', 'details', 'attrs']) if (JSON.stringify(a[k] || '') !== JSON.stringify(b[k] || '')) out.push(k);
@@ -1627,6 +1775,7 @@ function cleanStyleFor(kind, o) {
     if (Number.isFinite(+o.floors) && +o.floors >= 1) s.floors = clamp(Math.round(+o.floors), 1, 40);
     if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
     if (o.windows in WINDOWS) s.windows = o.windows;
+    if (FACADES.includes(o.facade)) s.facade = o.facade;
     return s;
   }
   for (const [k, spec] of Object.entries(FSTYLE[kind] || {})) {
@@ -1648,11 +1797,13 @@ const STYLE_DOCS = {
 - roofType: "flat" (roof terrace behind a parapet) or "hip" (red terracotta tiled roof)
 - floors: whole number 1-40
 - groundFloor: "arches" (arcade), "shopfront" (wide shop windows with striped awnings) or "plain"
-- windows: "shutters", "plain" or "balconies" (French doors with wrought-iron balconies on the street fronts)`,
+- windows: "shutters", "plain" or "balconies" (French doors with wrought-iron balconies on the street fronts)
+- facade: "standard" or "neoclassical" (civic stone palace like the MUNAL or a museum: giant-order columned portico with a pediment on the street front, tall arched gallery windows, rusticated base, balustrade)`,
   park: `- grass: lawn colour, "#rrggbb"
 - trees: "none", "sparse", "normal" or "dense"
 - treeType: "palms", "broadleaf" (ceibas and flamboyants) or "mixed"`,
-  plaza: `- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
+  plaza: `- use: "plaza" (a paved square) or "chinampa" (Xochimilco-style floating garden plots between little canals, with ahuejote willows and trajinera boats)
+- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
@@ -1663,7 +1814,7 @@ const STYLE_DOCS = {
 function promptFor(t, doc, text) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
-    current_style: { wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows } });
+    current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows } });
   else Object.assign(info, KINDS[t.kind].geom === 'poly' ? { area_m2: Math.round(t.f.size) } : { length_m: Math.round(t.f.size), width_m: t.f.w }, { current_style: cur });
   const fields = STYLE_DOCS[t.kind];
   return `You edit one ${labelOf(t.kind).toLowerCase()} in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean. Its look blends Latin American colonial and Mediterranean towns (Havana, San Juan, Cartagena, Campeche, Oaxaca, Guanajuato, Querétaro, Seville, Cádiz, Granada, Barcelona, Arles, Monaco, Amalfi, Venice, Istanbul): lime-washed and pastel walls, terracotta roofs, blue-white cobbles, palms and bougainvillea, at dusk under string lights.
@@ -2138,7 +2289,7 @@ function setMode(mode) {
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
   plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
-  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); mm.last = 0;
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); mm.last = 0; placeMinimap();
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -2396,7 +2547,9 @@ function drawMinimap(now) {
   // a scale bar label: the map's width in metres
   const span = W * px; $('mm-scale').textContent = span >= 1000 ? `${(span / 1000).toFixed(1)} km` : `${Math.round(span / 10) * 10} m`;
 }
+function placeMinimap() { const r = $('brand').getBoundingClientRect(); $('minimap').style.top = Math.round(r.bottom + 10) + 'px'; }
 function initMinimap() {
+  addEventListener('resize', placeMinimap);
   const c = $('mm');
   c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); mm.zoom = clamp(mm.zoom * Math.exp(-e.deltaY * 0.002), 0.15, 6); mm.last = 0; }, { passive: false });
   c.addEventListener('dblclick', (e) => {
@@ -2424,6 +2577,8 @@ let marked = [];
 function highlight(ids) { clearHighlight(); for (const id of ids) { const r = world.byId.get(id); if (r) { animOf(r.idx).wantMark = 1; marked.push(r.idx); } } plan.invalidate(); return marked.length; }
 function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; marked = []; plan.invalidate(); }
 window.amparacan = {
+  view(x, y, z, tx, ty, tz) { setMode('map'); tweenCamera(new THREE.Vector3(x, y, z), new THREE.Vector3(tx, ty, tz), 0.6); },
+  facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },

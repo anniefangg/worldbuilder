@@ -76,8 +76,8 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   `buildings/{bId}` and `features/{fid}` hold `{name, address, tags[], history, details,
   attrs{}, style{}}`. Feature ids are prefixed by kind: `pk` park, `pz` plaza, `wt` lake,
   `st` street, `pt` path, `cn` canal, `bc` beach (buildings are `b` + 8 hex). Style fields:
-  buildings `wall, shutters, roof, roofType, floors, groundFloor, windows`; parks `grass,
-  trees, treeType`; plazas `paving, tint`; streets `paving, tint, lights`; paths `paving, tint`.
+  buildings `facade (standard|neoclassical), wall, shutters, roof, roofType, floors, groundFloor,
+  windows`; parks `grass, trees, treeType`; plazas `use (plaza|chinampa), paving, tint`; streets `paving, tint, lights`; paths `paving, tint`.
   `prompts/{pId}` `{bId (any target id), text, status: draft|queued|applying|applied|done|failed,
   result}`. `changes/{cId}` is the history log: `{at, targetId, kind, targetName, source:
   prompt|manual|claude-code, prompt, summary, category, tags[], fields[], before{style}, after{style}}`.
