@@ -164,6 +164,13 @@ body.tray-open #info { display: none; }
 #minimap .mm-scale { position: absolute; right: 10px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #preview-banner { margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff1c9; color: #6b4a10; font-size: 11.5px; line-height: 1.35; max-width: 220px; }
 #preview-banner a { color: var(--azulejo); font-weight: 600; }
+#info .attach-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.thumb { position: relative; width: 56px; height: 56px; border-radius: 8px; overflow: hidden; border: 1px solid var(--edge); background: var(--plaster-solid); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; border: 0; background: rgba(18,50,63,.75); color: #fff; font: 700 11px/18px var(--font-ui); padding: 0; cursor: pointer; }
+.thumbs-sm { display: flex; gap: 4px; flex-wrap: wrap; }
+.thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
+#prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
   #minimap { width: 128px; height: 128px; top: calc(146px + env(safe-area-inset-top, 0px)); }
@@ -486,7 +493,7 @@ function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) {
 function groundTexture(kind) {
   const N = kind === 'grass' ? 256 : 512;
   const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N; return [c, c.getContext('2d')]; };
-  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11 }[kind]);
+  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23 }[kind]);
   const stone = (x, y, w, h, r, fill) => {
     g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
     const gr = bg.createRadialGradient(x + w / 2, y + h / 2, 1, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
@@ -519,6 +526,18 @@ function groundTexture(kind) {
       bg.fillStyle = '#ddd'; bg.fillRect(x + 1, r * 64 + 1, 126, 62);
     }
     for (let k = 0; k < 900; k++) { g.fillStyle = `rgba(60,70,80,${rnd() * 0.06})`; g.fillRect(rnd() * N, rnd() * N, 2, 2); }
+  } else if (kind === 'sand') {     // fine golden sand
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, N, N); bg.fillStyle = '#999'; bg.fillRect(0, 0, N, N);
+    for (let k = 0; k < 9000; k++) { const v = 225 + rnd() * 30 | 0, x = rnd() * N, y = rnd() * N; g.fillStyle = `rgb(${v},${v - 8},${v - 22})`; g.fillRect(x, y, 1.5, 1.5); bg.fillStyle = rnd() < 0.5 ? '#aaa' : '#888'; bg.fillRect(x, y, 2, 2); }
+  } else if (kind === 'waves') {    // Copacabana calçadão: black and white Portuguese stones in undulating bands
+    const id = g.createImageData(N, N), bd = bg.createImageData(N, N), band = 128, amp = 70;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const off = amp * Math.sin((y / N) * Math.PI * 2), k = Math.floor((x + off + N) / band) % 2, i = (y * N + x) * 4;
+      const stone = (x % 9 < 8 && y % 9 < 8) ? 1 : 0, v = k ? 32 : 238, j = (Math.sin(x * 12.9 + y * 78.2) * 43758.5 % 1 + 1) % 1 * 14;
+      id.data[i] = id.data[i + 1] = id.data[i + 2] = stone ? v + (k ? j : -j) : (k ? 20 : 170); id.data[i + 3] = 255;
+      bd.data[i] = bd.data[i + 1] = bd.data[i + 2] = stone ? 200 : 90; bd.data[i + 3] = 255;
+    }
+    g.putImageData(id, 0, 0); bg.putImageData(bd, 0, 0);
   } else {                          // grass speckle
     g.fillStyle = '#fff'; g.fillRect(0, 0, N, N); bg.fillStyle = '#888'; bg.fillRect(0, 0, N, N);
     for (let k = 0; k < 2600; k++) { const v = 190 + rnd() * 65 | 0; g.fillStyle = `rgb(${v - 10},${v},${v - 20})`; g.fillRect(rnd() * N, rnd() * N, 2, 3); }
@@ -664,9 +683,9 @@ async function buildWorld() {
 
   // ---- ground: plazas, parks, streets and paths, each feature styled on its own
   await progress('Paving streets and plazas', 36);
-  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass') };
+  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves') };
   initFeatures();
-  for (const kind of ['plaza', 'park', 'path', 'street']) buildGround(kind);
+  for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
   overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r, color: '#f2f4f6' })), 4), world.tex.setts, 3);
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
@@ -1220,7 +1239,8 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
   plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'] },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
-  canal: {}, water: {}, beach: {},
+  canal: {}, water: {},
+  beach: { look: ['copacabana', 'natural'] },
 };
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
@@ -1228,6 +1248,7 @@ function featureStyle(f) {
   if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0] });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none' });
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
+  if (f.kind === 'beach') s.look = 'copacabana';
   for (const [k, spec] of Object.entries(FSTYLE[f.kind] || {})) {
     const v = o[k]; if (v === undefined) continue;
     if (spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = v;
@@ -1287,11 +1308,12 @@ function overlayMesh(geo, tex, order) {
   m.renderOrder = order; m.receiveShadow = true; scene.add(m); return m;
 }
 // (Re)build the ground layer of one kind, grouped by paving so each group shares a texture.
-const ORDER = { plaza: 1, park: 2, path: 4, street: 5 };
+const ORDER = { beach: 1, plaza: 1, park: 2, path: 4, street: 5 };
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
   const groups = new Map(), list = world.features.filter((f) => f.kind === kind);
+  if (kind === 'beach') { buildBeaches(list); for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f)); world.ground[kind] = []; return; }
   if (kind === 'plaza') buildChinampas(list.filter((f) => featureStyle(f).use === 'chinampa'));
   for (const f of list) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
@@ -1301,6 +1323,71 @@ function buildGround(kind) {
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0)));
+}
+
+// ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
+// palms along the promenade, kiosks, lifeguard posts and a scatter of umbrellas
+function shiftLine(P, d, side) {      // offset a polyline sideways by d metres (side = +1 / -1 along the left normal)
+  const out = [];
+  for (let i = 0; i < P.length; i += 2) {
+    const a = Math.max(0, i - 2), b = Math.min(P.length - 2, i + 2), dx = P[b] - P[a], dz = P[b + 1] - P[a + 1], L = Math.hypot(dx, dz) || 1;
+    out.push(P[i] - dz / L * d * side, P[i + 1] + dx / L * d * side);
+  }
+  return out;
+}
+function buildBeaches(list) {
+  for (const o of world.beachObjs || []) { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); }
+  world.beachObjs = [];
+  const sand = [], walk = [], props = new Geo(), palms = { palm: new Map(), broad: new Map() }, C = new THREE.Color();
+  const UMB = ['#e8457a', '#f2c230', '#2fb7d6', '#3fbf6f', '#f08a2c', '#ffffff', '#1f57a8'];
+  const quad = (P, n, col) => { const s0 = props.count; for (const q of P) props.v(q[0], q[1], q[2], n[0], n[1], n[2], col);
+    const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
+    const cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cx * n[0] + cy * n[1] + cz * n[2] >= 0) props.i.push(s0, s0 + 1, s0 + 2, s0, s0 + 2, s0 + 3); else props.i.push(s0, s0 + 2, s0 + 1, s0, s0 + 3, s0 + 2); };
+  const box = (x, z, ang, w, d, y0, y1, col, top = col) => {  // axis-aligned in a frame rotated by ang
+    const ca = Math.cos(ang), sa = Math.sin(ang), P = (u, v, y) => [x + ca * u - sa * v, y, z + sa * u + ca * v], hw = w / 2, hd = d / 2;
+    quad([P(-hw, -hd, y1), P(hw, -hd, y1), P(hw, hd, y1), P(-hw, hd, y1)], [0, 1, 0], top);
+    for (const [u0, v0, u1, v1, nx, nz] of [[-hw, -hd, hw, -hd, sa, -ca], [hw, hd, -hw, hd, -sa, ca], [-hw, hd, -hw, -hd, -ca, -sa], [hw, -hd, hw, hd, ca, sa]])
+      quad([P(u0, v0, y0), P(u1, v1, y0), P(u1, v1, y1), P(u0, v0, y1)], [nx, 0, nz], col);
+  };
+  const umbrella = (x, z, y, col) => {   // pole + an eight-sided canopy
+    box(x, z, 0, 0.08, 0.08, y, y + 2.1, C.set('#f3efe4').clone());
+    const s0 = props.count, R = 1.25, cy = y + 2.35; props.v(x, cy + 0.35, z, 0, 1, 0, col);
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; props.v(x + Math.cos(a) * R, cy, z + Math.sin(a) * R, Math.cos(a) * 0.3, 0.95, Math.sin(a) * 0.3, col); }
+    for (let k = 0; k < 8; k++) props.triUp(s0, s0 + 1 + k, s0 + 1 + (k + 1) % 8);
+  };
+  const onPark = (x, z) => { const k = featureAt(x, z, 0); return k >= 0 && world.features[k].kind === 'park'; };
+  for (const f of list) {
+    const P = f.pts, look = featureStyle(f).look, rnd = mulberry(f.seed ^ 0xbeac4);
+    // which side is land? vote along the line
+    let vote = 0;
+    for (let i = 0; i < P.length - 2; i += 2) { const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz) || 1, mx = (P[i] + P[i + 2]) / 2, mz = (P[i + 1] + P[i + 3]) / 2; vote += H(mx - dz / L * 30, mz + dx / L * 30) - H(mx + dz / L * 30, mz - dx / L * 30); }
+    // the Illustrator line marks the beach's inland edge: sand runs from it down to the sea
+    // (the far side is hidden under the water), the promenade runs along its city side
+    const side = vote >= 0 ? 1 : -1, SEA = 160;
+    sand.push({ pts: shiftLine(P, 2 - SEA / 2, side), w: SEA, color: '#f3dca6' });
+    if (look !== 'copacabana') continue;
+    walk.push({ pts: shiftLine(P, 4.5, side), w: 9, color: '#ffffff' });
+    // walk the line placing kiosks, lifeguard posts, umbrellas and promenade palms
+    let run = 0, nextK = 60 + rnd() * 60, nextL = 200 + rnd() * 200, nextU = 0, nextP = 4;
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+      const tx = dx / len, tz = dz / len, nx = -tz * side, nz = tx * side, ang = Math.atan2(tz, tx);
+      const at = (d, o) => [ax + tx * d + nx * o, az + tz * d + nz * o];
+      for (let d = 0; d < len; d += 3) {
+        const g = run + d;
+        if (g >= nextU) { nextU += 5 + rnd() * 7; const o = -(6 + rnd() * 45); const [x, z] = at(d, o); const h = H(x, z); if (h > 0.5 && buildingAt(x, z) < 0 && !onPark(x, z)) umbrella(x, z, h + 0.2, C.set(UMB[(rnd() * UMB.length) | 0]).clone()); }
+        if (g >= nextK) { nextK += 130 + rnd() * 60; const [x, z] = at(d, -4); const h = H(x, z); if (h > 0.5 && buildingAt(x, z) < 0) { box(x, z, ang, 3.2, 3.2, h, h + 2.5, C.set('#f6f3ea').clone()); box(x, z, ang, 4.4, 4.4, h + 2.5, h + 2.8, C.set('#2f8f5b').clone()); } }
+        if (g >= nextL) { nextL += 600 + rnd() * 200; const [x, z] = at(d, -(22 + rnd() * 10)); const h = H(x, z); if (h > 0.4 && !onPark(x, z)) { box(x, z, ang, 2.2, 2.2, h, h + 4.2, C.set('#f6f3ea').clone()); box(x, z, ang, 2.25, 2.25, h + 2.6, h + 3.2, C.set('#f08a2c').clone()); box(x, z, ang, 3.4, 3.4, h + 4.2, h + 6.4, C.set('#f6f3ea').clone(), C.set('#1f57a8').clone()); } }
+        if (g >= nextP) { nextP += 14; const [x, z] = at(d, 10); if (H(x, z) > 0.6 && buildingAt(x, z) < 0) bucketAdd(palms, 'palm', x, z, 1.0 + rnd() * 0.25, rnd); }
+      }
+      run += len;
+    }
+  }
+  if (sand.length) world.beachObjs.push(overlayMesh(ribbonOverlay(sand), world.tex.sand, 0.5));   // just above the terrain
+  if (walk.length) world.beachObjs.push(overlayMesh(ribbonOverlay(walk), world.tex.waves, 1));
+  if (props.count) { const m = new THREE.Mesh(props.build(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.beachObjs.push(m); }
+  world.beachObjs.push(...treeMeshes(palms));
 }
 
 // ---- chinampas: narrow garden plots between canals, edged with ahuejote willows, with a trajinera or two
@@ -1741,11 +1828,11 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
-const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure',
+const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
   paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use' };
+  trees: 'tree density', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look' };
 function diffDocs(a, b) {
   const out = [];
   for (const k of ['name', 'address', 'tags', 'history', 'details', 'attrs']) if (JSON.stringify(a[k] || '') !== JSON.stringify(b[k] || '')) out.push(k);
@@ -1753,7 +1840,7 @@ function diffDocs(a, b) {
   for (const k of new Set([...Object.keys(sa), ...Object.keys(sb)])) if (sa[k] !== sb[k]) out.push(k);
   return out;
 }
-function logChange({ id, source, prompt = '', summary, category, tags = [], before, after }) {
+function logChange({ id, source, prompt = '', summary, category, tags = [], before, after, images }) {
   const t = targetOf(id), fields = diffDocs(before || {}, after || {});
   if (!fields.length && source !== 'claude-code') return null;
   const cat = CATEGORIES.includes(category) ? category : (fields.map((f) => STYLE_CATEGORY[f]).find(Boolean) || (fields.length ? 'Details' : 'Other'));
@@ -1763,6 +1850,7 @@ function logChange({ id, source, prompt = '', summary, category, tags = [], befo
     tags: [...new Set(tags.map((x) => String(x).trim().toLowerCase()).filter(Boolean))].slice(0, 8), fields,
     before: { style: clone((before || {}).style) }, after: { style: clone((after || {}).style) },
   };
+  if (images && images.length) entry.images = images.filter((im) => !im.preview || im.url.length < 60000);
   saveDoc('changes', cid, entry, 0); store.emit('changes'); return cid;
 }
 
@@ -1810,8 +1898,9 @@ const STYLE_DOCS = {
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
 - tint: colour multiplied over the surface, "#rrggbb"`,
+  beach: `- look: "copacabana" (wide golden sand, black-and-white wave-pattern calçadão promenade, palms, kiosks, lifeguard posts, umbrellas) or "natural" (plain sand)`,
 };
-function promptFor(t, doc, text) {
+function promptFor(t, doc, text, nImages = 0) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
     current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows } });
@@ -1822,7 +1911,7 @@ function promptFor(t, doc, text) {
 Feature: ${JSON.stringify(info)}
 
 The author's request: ${JSON.stringify(text)}
-
+${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
 Only if the request asks for it, you may also set attributes: name, ${t.kind === 'building' ? 'address, ' : ''}tags (array of strings), history, details.
 
@@ -1838,14 +1927,23 @@ async function applyPrompt(pid) {
   if (!SAMPLE) { toast(store.kind === 'local' ? 'This is the local preview, where Claude can’t run. Open the published map to apply edits instantly; this prompt is kept in your batch.' : 'Claude isn’t available in this view, so the prompt stays in your batch.'); return false; }
   patchPrompt(pid, { status: 'applying' });
   try {
-    const before = docFor(t.id), r = await SAMPLE.json(promptFor(t, before, p.text), { modelTier: 'default' });
+    // reference images: this visit's originals, else the stored copies
+    let images = sessionBlobs.get(pid) || [];
+    if (!images.length && p.images && p.images.length) images = (await Promise.all(p.images.map((im) => fetch(im.url).then((r) => r.ok ? r.blob() : null).catch(() => null)))).filter(Boolean);
+    let lim = null; try { lim = images.length ? await SAMPLE.limits() : null; } catch (e) {}
+    const canSee = !!(lim && lim.images);
+    if (canSee) images = (await Promise.all(images.slice(0, lim.images.maxCount).map((b) => (b.size > lim.images.maxInputBytes || !lim.images.mediaTypes.includes(b.type) ? shrink(b) : b))));
+    else if (images.length) toast('This view can’t send images to Claude, so the edit uses your words only.');
+    const before = docFor(t.id), opts = { modelTier: 'default' };
+    if (canSee && images.length) opts.images = images;
+    const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
     const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
     saveTarget(t.id, after, 0);
     const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || 'Applied').slice(0, 300);
     patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
-    logChange({ id: t.id, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], before, after });
-    if (needs) newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued');
+    logChange({ id: t.id, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], before, after, images: p.images });
+    if (needs) { const q = newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued'); if (p.images) patchPrompt(q, { images: p.images }); }
     if (t.kind === 'building') { const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400); }
     rememberFocus(t.id);
     return true;
@@ -1883,7 +1981,7 @@ function endEditing() {
   ui.editing = false; ui.editSnapshot = null;
 }
 function select(id, { edit = false, focusPrompt = false } = {}) {
-  if (id !== ui.selected) endEditing();
+  if (id !== ui.selected) { endEditing(); for (const x of attach.list) URL.revokeObjectURL(x.url); attach.list = []; }
   const prev = targetOf(ui.selected); if (prev && prev.b && ui.selected !== id) animOf(prev.b.idx).wantSel = 0;
   ui.selected = id || null;
   const t = targetOf(id); if (t && t.b) animOf(t.b.idx).wantSel = 1;
@@ -1907,7 +2005,7 @@ const PLACEHOLDER = {
   path: 'e.g. Make it a dirt trail',
   canal: 'e.g. Name it Canal de las Flores and write its history',
   water: 'e.g. Call it Laguna Azul and note that it was dredged in the 1890s',
-  beach: 'e.g. Name it Playa del Faro',
+  beach: 'e.g. Make it a natural beach without the promenade',
 };
 function renderInfo() {
   const box = $('info'), id = ui.selected || ui.hover, t = targetOf(id);
@@ -1982,19 +2080,72 @@ function editForm(t, title) {
   form.addEventListener('input', save);
   return form;
 }
+// Reference images attached to the next prompt (kept in memory until it is sent)
+const attach = { list: [] };
+const IMG_MAX = 1568;
+async function shrink(blob, max = IMG_MAX, type = 'image/jpeg', q = 0.86) {   // downscale large photos before sending/storing
+  const img = await createImageBitmap(blob), k = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise((r) => c.toBlob((b) => r(b || blob), type, q));
+}
+const blobToDataURL = (b) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+function addAttachments(files) {
+  const imgs = [...files].filter((f) => /^image\//.test(f.type));
+  if (!imgs.length) { if (files.length) toast('Only images can be attached as references.'); return; }
+  for (const f of imgs) { if (attach.list.length >= 4) { toast('Up to 4 reference images per prompt.'); break; } attach.list.push({ blob: f, url: URL.createObjectURL(f), name: f.name || 'image' }); }
+  renderAttachments();
+}
+function renderAttachments() {
+  const row = $('attach-thumbs'); if (!row) return;
+  row.replaceChildren(...attach.list.map((a, i) => el('div', { class: 'thumb', title: a.name }, el('img', { src: a.url, alt: 'Reference image ' + (i + 1) }),
+    el('button', { type: 'button', 'aria-label': 'Remove image', onclick: () => { URL.revokeObjectURL(a.url); attach.list.splice(i, 1); renderAttachments(); } }, '×'))));
+}
 function promptBox(t) {
-  return el('div', { class: 'field', style: 'gap:8px' },
+  const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
+  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: PLACEHOLDER[t.kind] || '' });
+  area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
+  const box = el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
     el('label', { for: 'prompt-text' }, `Change this ${labelOf(t.kind).toLowerCase()}`),
-    el('textarea', { id: 'prompt-text', rows: 3, placeholder: PLACEHOLDER[t.kind] || '' }),
+    area,
+    el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }),
+      el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, attach.list.length ? '+ Add image' : '+ Reference image'), file),
+    el('div', { class: 'hint' }, 'Attach, paste or drop a photo to show what you want it to look like.'),
     el('div', { class: 'row' },
       el('button', { class: 'btn primary small', type: 'button', onclick: () => submitPrompt(t, 'now') }, 'Apply now'),
       el('button', { class: 'btn small', type: 'button', onclick: () => submitPrompt(t, 'batch') }, 'Add to batch')),
     el('div', { class: 'plist', id: 'info-prompts' }));
+  box.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); box.classList.add('dragover'); } });
+  box.addEventListener('dragleave', () => box.classList.remove('dragover'));
+  box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('dragover'); addAttachments(e.dataTransfer.files); });
+  setTimeout(renderAttachments, 0);
+  return box;
 }
+// Store attachments with the prompt: as artifact assets when published, as small inline previews locally
+async function storeImages(list) {
+  const out = [];
+  let assets = null; if (window.claude && window.claude.use) assets = await claude.use('assets');
+  for (const a of list) {
+    const blob = await shrink(a.blob);
+    if (assets) {
+      try { const r = await assets.upload(blob); out.push({ id: r.id, url: r.url, name: a.name }); continue; }
+      catch (e) { toast(e && e.code === 'quota_exceeded' ? 'Image storage is full, so this image is only used for this edit.' : 'Couldn’t store the image; it’s still used for this edit.'); }
+    }
+    out.push({ url: await blobToDataURL(await shrink(a.blob, 360, 'image/jpeg', 0.7)), name: a.name, preview: true });
+  }
+  return out;
+}
+const sessionBlobs = new Map();   // prompt id → full-size blobs from this visit
 async function submitPrompt(t, how) {
-  const x = $('prompt-text'), text = x.value.trim(); if (!text) { x.focus(); return; }
-  x.value = '';
-  const id = newPrompt(t.id, text, 'draft'); rememberFocus(t.id);
+  const x = $('prompt-text'), text = x.value.trim();
+  if (!text && !attach.list.length) { x.focus(); return; }
+  const files = attach.list.splice(0); x.value = ''; renderAttachments();
+  const id = newPrompt(t.id, text || 'Make it look like the attached image.', 'draft'); rememberFocus(t.id);
+  if (files.length) {
+    sessionBlobs.set(id, files.map((f) => f.blob));
+    patchPrompt(id, { images: await storeImages(files) });
+    files.forEach((f) => URL.revokeObjectURL(f.url));
+  }
   if (how === 'now') await applyPrompt(id); else toast('Added to your batch.');
 }
 const STATUS_LABEL = { draft: 'In batch', queued: 'Sent to Claude Code', applying: 'Applying…', applied: 'Applied', done: 'Done by Claude Code', failed: 'Didn’t apply' };
@@ -2005,6 +2156,7 @@ function promptItem(id, p, withWho) {
       withWho ? el('button', { class: 'btn link who', type: 'button', onclick: () => t && focusTarget(t.id) }, nameOf(p.bId)) : el('span'),
       el('span', { class: 'pill ' + p.status }, STATUS_LABEL[p.status] || p.status)),
     el('div', { class: 'txt' }, p.text),
+    p.images && p.images.length ? el('div', { class: 'thumbs-sm' }, p.images.map((im) => el('img', { src: im.url, alt: 'Reference image', title: im.name || '' }))) : null,
     p.result ? el('div', { class: 'hint' }, p.result) : null,
     store.canEdit && (p.status === 'draft' || p.status === 'failed') ? el('div', { class: 'row' },
       el('button', { class: 'btn small', type: 'button', onclick: () => applyPrompt(id) }, 'Apply now'),
@@ -2044,6 +2196,7 @@ function changeItem(cid, c, withWho) {
       el('span', { class: 'row', style: 'gap:4px' }, withWho ? el('span', { class: 'pill' }, labelOf(c.kind)) : null, el('span', { class: 'pill cat' }, c.category))),
     el('div', { class: 'txt' }, c.summary),
     c.prompt ? el('div', { class: 'hint' }, '“' + c.prompt + '”') : null,
+    c.images && c.images.length ? el('div', { class: 'thumbs-sm' }, c.images.map((im) => el('img', { src: im.url, alt: 'Reference image', title: im.name || '' }))) : null,
     c.tags && c.tags.length ? el('div', { class: 'chips' }, c.tags.map((x) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: 'Show changes tagged ' + x, onclick: () => openHistory({ tag: x, only: false }) }, x))) : null,
     el('div', { class: 'row', style: 'justify-content:space-between' }, el('span', { class: 'hint' }, `${withWho ? rel(c.at) + ' · ' + clock(c.at) + ' · ' : ''}${SOURCE_LABEL[c.source] || c.source}`),
       canRestore ? el('button', { class: 'btn small', type: 'button', onclick: () => restoreChange(c) }, 'Restore earlier look') : null));

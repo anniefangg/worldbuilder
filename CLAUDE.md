@@ -77,11 +77,14 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   attrs{}, style{}}`. Feature ids are prefixed by kind: `pk` park, `pz` plaza, `wt` lake,
   `st` street, `pt` path, `cn` canal, `bc` beach (buildings are `b` + 8 hex). Style fields:
   buildings `facade (standard|neoclassical), wall, shutters, roof, roofType, floors, groundFloor,
-  windows`; parks `grass, trees, treeType`; plazas `use (plaza|chinampa), paving, tint`; streets `paving, tint, lights`; paths `paving, tint`.
+  windows`; parks `grass, trees, treeType`; plazas `use (plaza|chinampa), paving, tint`; beaches `look (copacabana|natural)`; streets `paving, tint, lights`; paths `paving, tint`.
   `prompts/{pId}` `{bId (any target id), text, status: draft|queued|applying|applied|done|failed,
   result}`. `changes/{cId}` is the history log: `{at, targetId, kind, targetName, source:
   prompt|manual|claude-code, prompt, summary, category, tags[], fields[], before{style}, after{style}}`.
   "Apply now" restyles via the page's `sample` call; "Send to Claude Code" marks prompts `queued`.
+  Prompts may carry reference `images: [{id, url, name}]` (artifact assets; read one with the
+  Artifact tool, `action: read`, `path: <asset id>`). "Apply now" sends them to Claude
+  (capabilities `sample: {images: true}`, `assets: {}`).
 - **Processing the batch** ("process the map batch"): `ArtifactData list prompts`,
   implement each `queued` prompt (style fields via the target's doc, anything bigger in
   `map_template.html`), set the prompt to `status: "done"` + a short `result`, and add a
