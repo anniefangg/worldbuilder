@@ -1663,6 +1663,22 @@ function bladeGeometry() {
   return g;
 }
 const GRASS_CH = 32, GRASS_R = 72;
+// Is (x, z) on a street, a path or a paved street-area, give or take m metres? (exact: the coarse occupancy raster is 4 m a pixel)
+function hardAt(x, z, m = 0.6) {
+  for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) {
+    const f = world.features[idx];
+    if ((f.kind === 'street' || f.kind === 'path') && distToLine(f.pts, x, z) < f.w / 2 + m) return true;
+    if (f.kind === 'canal' && distToLine(f.pts, x, z) < f.w / 2 + 3 + m) return true;                  // canals and their soft banks
+    if (f.kind === 'water' && pointInRings(x, z, f.rings)) return true;
+  }
+  if (!world.saGrid) {
+    world.saGrid = new Map(); const SA = world.layers.streetAreas;
+    SA.forEach((rings, i) => { let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; const r = rings[0]; for (let k = 0; k < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); z0 = Math.min(z0, r[k + 1]); z1 = Math.max(z1, r[k + 1]); }
+      for (let ix = Math.floor(x0 / 64); ix <= Math.floor(x1 / 64); ix++) for (let iz = Math.floor(z0 / 64); iz <= Math.floor(z1 / 64); iz++) { const k = ix * 8192 + iz; let l = world.saGrid.get(k); if (!l) world.saGrid.set(k, l = []); l.push(i); } });
+  }
+  for (const i of world.saGrid.get(Math.floor(x / 64) * 8192 + Math.floor(z / 64)) || []) if (pointInRings(x, z, world.layers.streetAreas[i])) return true;
+  return false;
+}
 function parksIn(x0, z0, x1, z1) {
   const out = new Set();
   for (let ix = Math.floor(x0 / FGRID); ix <= Math.floor(x1 / FGRID); ix++) for (let iz = Math.floor(z0 / FGRID); iz <= Math.floor(z1 / FGRID); iz++)
@@ -1677,9 +1693,9 @@ function buildGrassChunk(ix, iz) {
   for (let a = 0; a < GRASS_CH; a += spacing) for (let b = 0; b < GRASS_CH; b += spacing) {
     const x = x0 + a + rnd() * spacing, z = z0 + b + rnd() * spacing;
     let hit = null; for (const p of info) { const bb = p.f.bbox; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pointInRings(x, z, p.f.rings)) { hit = p; break; } }
-    if (!hit || occParkAt(x, z) > 0.55 || H(x, z) < 0.5) continue;
+    if (!hit || occParkAt(x, z) > 0.55 || H(x, z) < 0.5 || hardAt(x, z, 0.55)) continue;
     // tufts: two or three blades leaning different ways
-    const nb = 2 + (rnd() < 0.5 ? 1 : 0), tall = 0.38 + rnd() * 0.5 + (vnoise(x / 9, z / 9) > 0.62 ? 0.3 : 0);
+    const nb = 2 + (rnd() < 0.5 ? 1 : 0), tall = 0.14 + rnd() * 0.2 + (vnoise(x / 9, z / 9) > 0.62 ? 0.1 : 0);   // a short, mown lawn with a few longer patches
     for (let k = 0; k < nb; k++) pos.push(x + (rnd() - 0.5) * 0.25, z + (rnd() - 0.5) * 0.25, tall * (0.7 + rnd() * 0.5), rnd() * 6.283, hit.c);
   }
   const n = pos.length / 5; if (!n) return null;
@@ -1699,7 +1715,7 @@ function updateGrass(dt) {
   world.grass = world.grass || new Map();
   if (!world.bladeGeo) {
     world.bladeGeo = bladeGeometry();
-    world.grassMat = windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'clamp(position.y, 0.0, 1.0)', amp: 1.0, fade: [GRASS_R * 0.55, GRASS_R] });
+    world.grassMat = windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'clamp(position.y, 0.0, 1.0)', amp: 2.0, fade: [GRASS_R * 0.55, GRASS_R] });
   }
   grassTimer -= dt; if (grassTimer > 0) return; grassTimer = 0.25;
   const p = camera.position, high = p.y - H(p.x, p.z) > 120 || player.mode === 'plan';
@@ -2156,7 +2172,7 @@ function rebuildParkTrees(onlyTiles) {
         for (let k = 0; k < n; k++) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
-          if (occParkAt(x, z) > 0.5) continue;
+          if (occParkAt(x, z) > 0.5 || hardAt(x, z, 1.4)) continue;
           const sp = rnd() < palmShare ? 'palm' : rnd() < 0.3 ? 'cypress' : rnd() < 0.3 ? 'canopy' : 'broad'; bucketAdd(buckets, sp, x, z, sp === 'cypress' ? 0.9 + rnd() * 0.5 : sp === 'canopy' ? 0.7 + rnd() * 0.4 : 0.8 + rnd() * 0.5, rnd); count++;
         }
         // shrubs and flowering bushes, in loose drifts
@@ -2164,9 +2180,9 @@ function rebuildParkTrees(onlyTiles) {
         for (let k = 0; k < nb; k++) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
-          if (occParkAt(x, z) > 0.5) continue;
+          if (occParkAt(x, z) > 0.5 || hardAt(x, z, 1.0)) continue;
           const drift = 2 + ((rnd() * 3) | 0), flower = rnd() < 0.3;
-          for (let d = 0; d < drift; d++) { const bx = x + (rnd() - 0.5) * 3.2, bz = z + (rnd() - 0.5) * 3.2; if (occParkAt(bx, bz) > 0.5 || H(bx, bz) < 0.5) continue; bucketAdd(buckets, flower && d < 2 ? 'flowerBush' : 'bush', bx, bz, 0.7 + rnd() * 0.7, rnd); count++; }
+          for (let d = 0; d < drift; d++) { const bx = x + (rnd() - 0.5) * 3.2, bz = z + (rnd() - 0.5) * 3.2; if (occParkAt(bx, bz) > 0.5 || H(bx, bz) < 0.5 || hardAt(bx, bz, 0.9)) continue; bucketAdd(buckets, flower && d < 2 ? 'flowerBush' : 'bush', bx, bz, 0.7 + rnd() * 0.7, rnd); count++; }
         }
       }
     }
