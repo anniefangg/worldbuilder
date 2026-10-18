@@ -127,3 +127,9 @@ URL, which is this project's live deployment.)_
 A Supabase project (`Amparacan Wiki`, ref `ybjjkqkefplndzlbjcob`) already has the
 9-table schema applied (see plan). The import scripts here are the reproducible
 pipeline for seeding it.
+
+### 3D map look (dreamy pass)
+- Footprint corners are rounded (`roundedRings`, quadratic fillets with smooth normals); roofs have real eaves, fascia and soffits; parapets have a coping.
+- Façade shader (`buildingMaterial`): limewash variation, rain streaks, exposed brick/stone patches, ivy and bougainvillea, louvred/closed shutters, window boxes, glazing bars, plank front doors (bay index packed in `aWall.w` thousands; `doorsOf(rec)`), terracotta barrel tiles, paver terraces. Roof clutter in `roofClutter`.
+- Street furniture (`addStreetFurniture`, instanced per 400 m chunk, shown near the camera by `updateFurniture`): lamp posts with night halos and light pools, benches, bins, bollards, planters, potted plants at doors, canal railings, plaza fountains.
+- Post-processing: bloom + split-tone grade per time of day (`TOD[...].post`, `applyPost`). Rendering goes through `post.composer`.

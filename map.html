@@ -284,6 +284,11 @@ body.tray-open #info { display: none; }
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -358,7 +363,7 @@ const STYLES = {
       ['#ecc96f', 2], ['#e2a45a', 1], ['#c97a52', 1], ['#d7b8d8', 1], ['#f4c9d4', 1]
     ],
     shutters: ['#2f5d50', '#2d4f80', '#6b4a33', '#7a3b2e', '#1d6f74', '#3d6b3a', '#8c5a2b'],
-    flatRoofs: ['#e8e2d6', '#ddd5c6', '#d6cab5', '#e9ddd0'],
+    flatRoofs: ['#e8e2d6', '#ddd5c6', '#c98a68', '#d6cab5', '#d19a7a', '#e9ddd0'],   // lime-wash and terracotta pavers
     tileRoofs: ['#b4472f', '#c25639', '#a83f2b', '#c9643f', '#9c3a28', '#bb5034', '#cf7048'],
     pitchedShare: 0.76,     // most roofs are terracotta; the rest are roof terraces
     balconyShare: 0.45,
@@ -380,6 +385,37 @@ const HORIZON = new THREE.Color('#cbe9f0');
 scene.fog = new THREE.Fog(HORIZON, 2000, 26000);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 90000);
 
+// ---- post: a soft bloom on lanterns, windows and sunlit plaster, then a dreamy grade (split-toned, softly lifted, vignetted)
+const post = (() => {
+  const pr = renderer.getPixelRatio();
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: 4 }));
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.7, 1.5);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const grade = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, uSat: { value: 1.1 }, uLift: { value: 0.02 }, uVig: { value: 0.22 }, uTime: { value: 0 }, uShadow: { value: new THREE.Vector3() }, uHigh: { value: new THREE.Vector3() } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float uSat, uLift, uVig, uTime; uniform vec3 uShadow, uHigh; varying vec2 vUv;
+      void main() {
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, uSat);
+        c += uShadow * (1.0 - smoothstep(0.05, 0.55, l)) + uHigh * smoothstep(0.45, 1.0, l);   // cool shadows, warm light
+        c = c * (1.0 - uLift) + uLift * vec3(0.93, 0.96, 1.0);                                   // gently lifted blacks: a hazy, painted feel
+        vec2 d = vUv - 0.5; c *= 1.0 - uVig * dot(d, d) * 2.0;
+        c += (fract(sin(dot(vUv * 731.0 + fract(uTime), vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;   // a whisper of grain against banding
+        gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+      }`,
+  });
+  composer.addPass(grade);
+  return { composer, bloom, grade };
+})();
+function applyPost(p) {
+  const b = post.bloom, u = post.grade.uniforms;
+  b.strength = p.bloom; b.threshold = p.thr; b.radius = p.radius || 0.7;
+  u.uSat.value = p.sat; u.uLift.value = p.lift; u.uVig.value = p.vig; u.uShadow.value.set(...p.sh); u.uHigh.value.set(...p.hi);
+}
 const SUN_DIR = new THREE.Vector3(-0.55, 0.72, 0.42).normalize();
 const hemi = new THREE.HemisphereLight('#d6ecff', '#b9a27c', 1.35);
 scene.add(hemi);
@@ -394,16 +430,20 @@ const NIGHT = { value: 1 };   // shared by every shader that glows at dusk
 const TOD = {
   day: { sun: [-0.55, 0.72, 0.42], sunCol: '#fff0d4', sunI: 2.9, hemiSky: '#d6ecff', hemiGround: '#b9a27c', hemiI: 1.35,
     hor: '#cbe9f0', mid: '#8cc3e6', top: '#3f93d8', glow: '#ffdcae', fog: '#cbe9f0', exposure: 1.12, night: 0,
-    cloud: '#ffffff', cloudEm: '#dfe9ee', cloudEmI: 0.35, waterSky: '#bfe6f4', waterDark: 1 },
+    cloud: '#ffffff', cloudEm: '#dfe9ee', cloudEmI: 0.35, waterSky: '#bfe6f4', waterDark: 1,
+    post: { bloom: 0.22, thr: 2.2, radius: 0.8, sat: 1.12, lift: 0.025, vig: 0.24, sh: [-0.01, 0.006, 0.03], hi: [0.03, 0.014, -0.006] } },
   dusk: { sun: [-0.86, 0.22, 0.46], sunCol: '#ff8c68', sunI: 1.45, hemiSky: '#7aa9dc', hemiGround: '#5a4a64', hemiI: 1.6,
     hor: '#5cbcc6', mid: '#22769a', top: '#0e2c4c', glow: '#ff9a7a', fog: '#3f8fa8', exposure: 1.15, night: 1,
-    cloud: '#f4b0c8', cloudEm: '#a8558c', cloudEmI: 0.55, waterSky: '#2f7f99', waterDark: 0.62 },
+    cloud: '#f4b0c8', cloudEm: '#a8558c', cloudEmI: 0.55, waterSky: '#2f7f99', waterDark: 0.62,
+    post: { bloom: 0.5, thr: 0.95, radius: 0.75, sat: 1.14, lift: 0.03, vig: 0.3, sh: [0.006, -0.004, 0.04], hi: [0.05, 0.014, 0.0] } },
   dawn: { sun: [0.84, 0.2, 0.36], sunCol: '#ffc49a', sunI: 1.9, hemiSky: '#c6cde8', hemiGround: '#8f7a78', hemiI: 1.55,
     hor: '#ffd3a8', mid: '#e8b8b6', top: '#6f8fc4', glow: '#ffb48c', fog: '#e8c9bb', exposure: 1.1, night: 0.3,
-    cloud: '#ffe0e6', cloudEm: '#f2a593', cloudEmI: 0.45, waterSky: '#f0c8b8', waterDark: 0.85 },
+    cloud: '#ffe0e6', cloudEm: '#f2a593', cloudEmI: 0.45, waterSky: '#f0c8b8', waterDark: 0.85,
+    post: { bloom: 0.38, thr: 1.4, radius: 0.8, sat: 1.12, lift: 0.035, vig: 0.26, sh: [0.004, -0.004, 0.035], hi: [0.05, 0.02, 0.012] } },
   night: { sun: [0.32, 0.6, -0.62], sunCol: '#9db4ff', sunI: 0.55, hemiSky: '#33456f', hemiGround: '#1c1828', hemiI: 0.7,
     hor: '#132a4c', mid: '#081630', top: '#02050d', glow: '#2a4373', fog: '#0d1c36', exposure: 1.15, night: 1, milky: 1,
-    cloud: '#56627f', cloudEm: '#232c4a', cloudEmI: 0.5, waterSky: '#10233f', waterDark: 0.2 },
+    cloud: '#56627f', cloudEm: '#232c4a', cloudEmI: 0.5, waterSky: '#10233f', waterDark: 0.2,
+    post: { bloom: 0.85, thr: 0.6, radius: 0.7, sat: 1.06, lift: 0.02, vig: 0.32, sh: [-0.004, 0.0, 0.03], hi: [0.04, 0.02, 0.0] } },
 };
 const TOD_ORDER = ['dawn', 'day', 'dusk', 'night'];
 const todState = { name: 'dusk' };
@@ -417,6 +457,7 @@ function setTimeOfDay(name) {
   u.uHor.value.set(t.hor); u.uMid.value.set(t.mid); u.uTop.value.set(t.top); u.uGlow.value.set(t.glow); u.uNight.value = t.night; u.uMilky.value = t.milky || 0;
   scene.fog.color.set(t.fog); renderer.toneMappingExposure = t.exposure; NIGHT.value = t.night;
   applyTODExtras(t);
+  applyPost(t.post);
   applyWeather();
   const b = $('tod'), next = TOD_ORDER[(TOD_ORDER.indexOf(name) + 1) % TOD_ORDER.length], cap = (x) => x[0].toUpperCase() + x.slice(1);
   if (b) { b.textContent = cap(name); b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${next}`); b.title = `Time of day: ${cap(name)}. Click (or T) for ${next}.`; }
@@ -600,8 +641,8 @@ function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) {
 
 // Procedural ground textures (colour map + bump map, multiplied by vertex colour)
 function groundTexture(kind) {
-  const N = kind === 'grass' ? 256 : 512;
-  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N; return [c, c.getContext('2d')]; };
+  const N = kind === 'grass' ? 256 : 512, RES = kind === 'setts' || kind === 'flags' ? 2 : 1;   // stone paving is drawn at double resolution for crisp close-ups
+  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N * RES; const g = c.getContext('2d'); g.scale(RES, RES); return [c, g]; };
   const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23 }[kind]);
   const stone = (x, y, w, h, r, fill) => {
     g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
@@ -874,12 +915,15 @@ async function buildWorld() {
   await progress('Stringing lights across the lanes', 94);
   world.lights = addStreetLights();
   world.bridges = buildBridges();
+  await progress('Setting out benches, lamps and flowerpots', 95);
+  world.furniture = addStreetFurniture();
   await progress('Rolling in the clouds', 96);
   addClouds();
   applyTODExtras = (t) => {
     world.water.uniforms.uSky.value.set(t.waterSky); world.water.uniforms.uDark.value = t.waterDark;
     world.cloudMat.color.set(t.cloud); world.cloudMat.emissive.set(t.cloudEm); world.cloudMat.emissiveIntensity = t.cloudEmI;
     world.bulbs.visible = t.night > 0.5;
+    world.lampMat.emissiveIntensity = t.night > 0.5 ? 2.6 : 0;
   };
 }
 
@@ -1018,49 +1062,192 @@ function portico(geo, rec, f, base, top, s) {
   const slope = (ta, tb) => { const mid = (ta + tb) / 2 - pc, n = [-dx * Math.sign(mid) * 0.6, 0.8, -dz * Math.sign(mid) * 0.6]; quadN(geo, [P(ta, 0, yb + (ta === pc ? ph : 0)), P(tb, 0, yb + (tb === pc ? ph : 0)), P(tb, d1, yb + (tb === pc ? ph : 0)), P(ta, d1, yb + (ta === pc ? ph : 0))], n, shade, Z4); };
   slope(pc - pw / 2, pc); slope(pc, pc + pw / 2);
 }
+// ---- soft corners: every footprint corner becomes a short curve with smooth normals, so blocks read rounded and friendly
+const CORNER_R = 0.9, EAVE = 0.5, WHITE_LIME = new THREE.Color(1, 0.97, 0.92);
+function roundRing(r, sgn, rad = CORNER_R) {
+  const n = r.length / 2, pts = [], nrm = [], at = (k) => ((k % n) + n) % n * 2;
+  const nOf = (tx, tz) => { const l = Math.hypot(tx, tz) || 1; return [tz / l * sgn, -tx / l * sgn]; };
+  for (let k = 0; k < n; k++) {
+    const p = at(k - 1), v = at(k), q = at(k + 1), vx = r[v], vz = r[v + 1];
+    const L1 = Math.hypot(vx - r[p], vz - r[p + 1]), L2 = Math.hypot(r[q] - vx, r[q + 1] - vz);
+    if (L1 < 0.02 || L2 < 0.02) { pts.push(vx, vz); nrm.push(null); continue; }
+    const d1x = (vx - r[p]) / L1, d1z = (vz - r[p + 1]) / L1, d2x = (r[q] - vx) / L2, d2z = (r[q + 1] - vz) / L2;
+    const turn = Math.abs(d1x * d2z - d1z * d2x), d = Math.min(rad, L1 * 0.3, L2 * 0.3);
+    if (turn < 0.2 || d < 0.2) { pts.push(vx, vz); nrm.push(null); continue; }
+    const ax = vx - d1x * d, az = vz - d1z * d, bx = vx + d2x * d, bz = vz + d2z * d;
+    for (let s = 0; s <= 2; s++) {      // quadratic fillet: tangent to both walls
+      const t = s / 2, w = 1 - t;
+      pts.push(w * w * ax + 2 * w * t * vx + t * t * bx, w * w * az + 2 * w * t * vz + t * t * bz);
+      nrm.push(nOf(w * (vx - ax) + t * (bx - vx), w * (vz - az) + t * (bz - vz)));
+    }
+  }
+  return { pts, nrm, sgn };
+}
+// per-vertex offset directions (the curve's normal where rounded, else the corner bisector, lengthened to keep the offset even)
+function ringOffsets(R) {
+  const { pts, nrm, sgn } = R, n = pts.length / 2, out = [];
+  const e = (a, b) => { const tx = pts[b * 2] - pts[a * 2], tz = pts[b * 2 + 1] - pts[a * 2 + 1], l = Math.hypot(tx, tz) || 1; return [tz / l * sgn, -tx / l * sgn]; };
+  for (let k = 0; k < n; k++) {
+    if (nrm[k]) { out.push(nrm[k]); continue; }
+    const n1 = e((k + n - 1) % n, k), n2 = e(k, (k + 1) % n); let mx = n1[0] + n2[0], mz = n1[1] + n2[1]; const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml;
+    const c = Math.max(0.5, mx * n1[0] + mz * n1[1]); out.push([mx / c, mz / c]);
+  }
+  return out;
+}
+function roundedRings(rec) {
+  if (rec.round) return rec.round;
+  const outer = rec.rings[0];
+  return (rec.round = rec.rings.map((r) => { const R = roundRing(r, (r === outer) === (ringArea(r) > 0) ? 1 : -1); R.off = ringOffsets(R); return R; }));
+}
+const offsetRing = (R, d) => R.pts.map((p, i) => p + R.off[i >> 1][i & 1] * d);
+function ringEdge(R, i) {
+  const P = R.pts, j = (i + 2) % P.length, ax = P[i], az = P[i + 1], bx = P[j], bz = P[j + 1], L = Math.hypot(bx - ax, bz - az) || 1e-6;
+  return { ax, az, bx, bz, L, nx: (bz - az) / L * R.sgn, nz: -(bx - ax) / L * R.sgn };
+}
+// Front doors: one on each of the (up to two) longest street-facing walls, in a bay picked from the building's seed.
+// The façade shader draws the door from the bay index packed into aWall.w; the stoop, lantern and pots are real geometry.
+function doorsOf(rec) {
+  if (rec.doors) return rec.doors;
+  const R = roundedRings(rec)[0], cand = [];
+  for (let i = 0; i < R.pts.length; i += 2) {
+    const f = ringEdge(R, i); if (f.L < 4) continue;
+    const px = (f.ax + f.bx) / 2 + f.nx * 2.5, pz = (f.az + f.bz) / 2 + f.nz * 2.5;
+    if (buildingAt(px, pz) < 0 && H(px, pz) > 0.3) cand.push({ i, f });
+  }
+  cand.sort((p, q) => q.f.L - p.f.L);
+  const out = [];
+  for (const { i, f } of cand) {
+    // on a hillside the uphill walls are dug in: a door goes in a bay where the street meets the ground floor
+    const nb = Math.max(1, Math.floor(f.L / 3.4)), dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, k = out.length;
+    for (let tries = 0; tries < nb && out.length === k; tries++) {
+      const bay = ((rec.seed >>> (3 + k * 7)) + tries) % nb, u = (bay + 0.5) * f.L / nb, x = f.ax + dx * u + f.nx * 1.2, z = f.az + dz * u + f.nz * 1.2;
+      if (H(x, z) + LIFT - rec.base < 0.75) out.push({ i, f, bay, u });
+    }
+    if (out.length >= (cand.length > 1 && cand[1].f.L >= 7 ? 2 : 1)) break;
+  }
+  return (rec.doors = out);
+}
+// an upright box in a wall-local frame (t along f, d outward, y up); aw marks it for the shader
+function boxW(geo, f, t0, t1, d0, d1, y0, y1, col, aw = Z4) {
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (t, d, y) => [f.ax + dx * t + f.nx * d, y, f.az + dz * t + f.nz * d];
+  quadN(geo, [P(t0, d0, y1), P(t1, d0, y1), P(t1, d1, y1), P(t0, d1, y1)], [0, 1, 0], col, aw);
+  quadN(geo, [P(t0, d1, y0), P(t1, d1, y0), P(t1, d1, y1), P(t0, d1, y1)], [f.nx, 0, f.nz], col, aw);
+  quadN(geo, [P(t0, d0, y0), P(t1, d0, y0), P(t1, d0, y1), P(t0, d0, y1)], [-f.nx, 0, -f.nz], col, aw);
+  quadN(geo, [P(t0, d0, y0), P(t0, d1, y0), P(t0, d1, y1), P(t0, d0, y1)], [-dx, 0, -dz], col, aw);
+  quadN(geo, [P(t1, d0, y0), P(t1, d1, y0), P(t1, d1, y1), P(t1, d0, y1)], [dx, 0, dz], col, aw);
+}
+const LAMP_AW = [[0, 0, -6, 0], [0, 0, -6, 0], [0, 0, -6, 0], [0, 0, -6, 0]];
+function polyFlat(geo, rings, y, col, aw, down) {   // a flat polygon (holes allowed), facing up or down
+  const loops = rings.map((r) => { const p = []; for (let i = 0; i < r.length; i += 2) p.push(new THREE.Vector2(r[i], r[i + 1])); return p; });
+  const tris = THREE.ShapeUtils.triangulateShape(loops[0], loops.slice(1)), b0 = geo.count;
+  for (const l of loops) for (const v of l) { geo.v(v.x, y, v.y, 0, down ? -1 : 1, 0, col); geo.extra.aWall.push(...aw); geo.extra.aShut.push(0, 0, 0); }
+  for (const t of tris) { const s0 = geo.i.length; geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]); if (down) { const a = geo.i[s0 + 1]; geo.i[s0 + 1] = geo.i[s0 + 2]; geo.i[s0 + 2] = a; } }
+}
+// the edge band of a roof: fascia board down from the eave and the soffit back to the wall
+function eaveBand(geo, R, d, yEave, yBot, colF, colS) {
+  const O = d ? offsetRing(R, d) : R.pts, P = R.pts, n = P.length;
+  for (let i = 0; i < n; i += 2) {
+    const j = (i + 2) % n, f = ringEdge({ pts: O, sgn: R.sgn }, i);
+    if (f.L < 0.02) continue;
+    quadN(geo, [[O[i], yBot, O[i + 1]], [O[j], yBot, O[j + 1]], [O[j], yEave, O[j + 1]], [O[i], yEave, O[i + 1]]], [f.nx, 0, f.nz], colF, Z4);
+    if (d) quadN(geo, [[P[i], yBot + 0.02, P[i + 1]], [P[j], yBot + 0.02, P[j + 1]], [O[j], yBot, O[j + 1]], [O[i], yBot, O[i + 1]]], [f.nx * 0.2, -1, f.nz * 0.2], colS, Z4);
+  }
+}
+const _cF = new THREE.Color(), _cK = new THREE.Color(), CHIMNEY_CAP = linear('#9c4a32'), TANK = linear('#2b2f33'), POT = linear('#b4643f'), GREENS = ['#3e7f34', '#4f9a3c', '#356f31', '#5c9e3a'].map(linear);
+// little things on the roof: chimneys on tiles; stair huts, water tanks, antennas and potted plants on terraces
+function roofClutter(geo, rec, s, top, pitched, ridge) {
+  const rnd = mulberry(rec.seed ^ 0x2c1b3c6d), f0 = longestEdge(rec), dx = (f0.bx - f0.ax) / f0.L, dz = (f0.bz - f0.az) / f0.L;
+  const at = (x, z) => ({ ax: x, az: z, bx: x + dx, bz: z + dz, L: 1, nx: f0.nx, nz: f0.nz });
+  const inside = (x, z, m) => pointInRings(x, z, rec.rings) && pointInRings(x + m, z, rec.rings) && pointInRings(x - m, z, rec.rings) && pointInRings(x, z + m, rec.rings) && pointInRings(x, z - m, rec.rings);
+  const spot = (m) => { const [x0, z0, x1, z1] = rec.bbox; for (let k = 0; k < 8; k++) { const x = rec.cx + (rnd() - 0.5) * (x1 - x0) * 0.7, z = rec.cz + (rnd() - 0.5) * (z1 - z0) * 0.7; if (inside(x, z, m)) return [x, z]; } return null; };
+  if (pitched) {
+    if (!ridge || rec.area < 40) return;
+    const nCh = rec.area > 160 ? 2 : rnd() < 0.6 ? 1 : 0;
+    _cK.copy(linear(s.wall)).multiplyScalar(0.92);
+    for (let k = 0; k < nCh; k++) {
+      const t = 0.2 + rnd() * 0.6, x = ridge.a.x + (ridge.b.x - ridge.a.x) * t, z = ridge.a.z + (ridge.b.z - ridge.a.z) * t, y = ridge.a.y, f = at(x, z);
+      boxW(geo, f, -0.35, 0.35, -0.3, 0.3, y - 1.4, y + 0.9, _cK);
+      boxW(geo, f, -0.45, 0.45, -0.4, 0.4, y + 0.9, y + 1.08, CHIMNEY_CAP);
+    }
+    return;
+  }
+  if (rec.area < 30) return;
+  _cK.copy(linear(s.wall));
+  if (rnd() < 0.45) { const p = spot(1.8); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -1.1, 1.1, -1.1, 1.1, top, top + 2.4, _cK); boxW(geo, f, -1.25, 1.25, -1.25, 1.25, top + 2.4, top + 2.55, _cP.copy(_cK).lerp(WHITE_LIME, 0.6)); } }
+  if (rnd() < 0.35) { const p = spot(1.2); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -0.6, 0.6, -0.6, 0.6, top, top + 0.5, IRON); boxW(geo, f, -0.55, 0.55, -0.55, 0.55, top + 0.5, top + 1.6, rnd() < 0.5 ? TANK : _cP.set(0.85, 0.86, 0.84)); } }
+  if (rnd() < 0.4) { const p = spot(0.6); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -0.03, 0.03, -0.03, 0.03, top, top + 3.2, IRON); boxW(geo, f, -0.7, 0.7, -0.02, 0.02, top + 2.7, top + 2.74, IRON); boxW(geo, f, -0.5, 0.5, -0.02, 0.02, top + 3.0, top + 3.04, IRON); } }
+  const nPots = rnd() < 0.55 ? 2 + ((rnd() * 4) | 0) : 0;
+  for (let k = 0; k < nPots; k++) {
+    const p = spot(0.5); if (!p) break; const f = at(p[0], p[1]), r = 0.35 + rnd() * 0.25;
+    boxW(geo, f, -0.3, 0.3, -0.3, 0.3, top, top + 0.5, POT);
+    blossom(geo, p[0], top + 0.55 + r * 0.6, p[1], r + 0.15, rnd() < 0.3 ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
+  }
+}
 function emitBuilding(geo, rec) {
-  const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0];
+  const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0], RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
   const neo = s.facade === 'neoclassical';
   const start = geo.count, pitched = s.roofType === 'hip' && !neo, parapet = pitched ? 0 : neo ? 1.1 : 0.9;
-  for (const r of rings) {
-    const outward = (r === outer) === (ringArea(r) > 0); // true → the right-hand normal points out of the solid
-    for (let i = 0, n = r.length; i < n; i += 2) {
-      const j = (i + 2) % n, ax = r[i], az = r[i + 1], bx = r[j], bz = r[j + 1], L = Math.hypot(bx - ax, bz - az);
-      if (L < 0.05) continue;
-      let nx = (bz - az) / L, nz = -(bx - ax) / L; if (!outward) { nx = -nx; nz = -nz; }
-      const y0 = base - 2.5, y1 = top + parapet, hgt = top - base;
-      const A = geo.v(ax, y0, az, nx, 0, nz, cWall), Bv = geo.v(bx, y0, bz, nx, 0, nz, cWall), C = geo.v(bx, y1, bz, nx, 0, nz, cWall), D = geo.v(ax, y1, az, nx, 0, nz, cWall);
-      geo.extra.aWall.push(0, -2.5, L, hgt, L, -2.5, L, hgt, L, y1 - base, L, hgt, 0, y1 - base, L, hgt);
+  const doors = neo ? [] : doorsOf(rec), doorBay = new Map(doors.map((d) => [d.i, d.bay]));
+  const y0 = base - 2.5, y1 = top + parapet, hgt = top - base, cTrim = _cF.copy(cWall).lerp(WHITE_LIME, 0.65);
+  for (const R of RR) {
+    const P = R.pts, N = P.length, isOuter = R === RR[0];
+    for (let i = 0; i < N; i += 2) {
+      const f = ringEdge(R, i), L = f.L; if (L < 0.05) continue;
+      const k1 = ((i + 2) % N) >> 1, n0 = R.nrm[i >> 1] || [f.nx, f.nz], n1 = R.nrm[k1] || [f.nx, f.nz];
+      const w = hgt + 1000 * ((isOuter && doorBay.has(i) ? doorBay.get(i) : -1) + 1);   // façade height, plus the door's bay (if any) in the thousands
+      const A = geo.v(f.ax, y0, f.az, n0[0], 0, n0[1], cWall), Bv = geo.v(f.bx, y0, f.bz, n1[0], 0, n1[1], cWall), C = geo.v(f.bx, y1, f.bz, n1[0], 0, n1[1], cWall), D = geo.v(f.ax, y1, f.az, n0[0], 0, n0[1], cWall);
+      geo.extra.aWall.push(0, -2.5, L, w, L, -2.5, L, w, L, y1 - base, L, w, 0, y1 - base, L, w);
       for (let k = 0; k < 4; k++) geo.extra.aShut.push(cShut.r, cShut.g, cShut.b);
       // A,B,C winds to the left-hand normal; flip when the outward normal is the right-hand one
-      if (outward) geo.i.push(A, C, Bv, A, D, C); else geo.i.push(A, Bv, C, A, C, D);
-      if (parapet) { // inner face of the parapet
+      if (R.sgn > 0) geo.i.push(A, C, Bv, A, D, C); else geo.i.push(A, Bv, C, A, C, D);
+      if (parapet) { // inner face of the parapet, then a rounded lime coping that overhangs it a little
         cPar.copy(cWall).multiplyScalar(0.85);
-        const a2 = geo.v(ax, top, az, -nx, 0, -nz, cPar), b2 = geo.v(bx, top, bz, -nx, 0, -nz, cPar), c2 = geo.v(bx, y1, bz, -nx, 0, -nz, cPar), d2 = geo.v(ax, y1, az, -nx, 0, -nz, cPar);
+        const a2 = geo.v(f.ax, top, f.az, -n0[0], 0, -n0[1], cPar), b2 = geo.v(f.bx, top, f.bz, -n1[0], 0, -n1[1], cPar), c2 = geo.v(f.bx, y1, f.bz, -n1[0], 0, -n1[1], cPar), d2 = geo.v(f.ax, y1, f.az, -n0[0], 0, -n0[1], cPar);
         for (let k = 0; k < 4; k++) { geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
-        if (outward) geo.i.push(a2, b2, c2, a2, c2, d2); else geo.i.push(a2, c2, b2, a2, d2, c2);
+        if (R.sgn > 0) geo.i.push(a2, b2, c2, a2, c2, d2); else geo.i.push(a2, c2, b2, a2, d2, c2);
+        const o0 = R.off[i >> 1], o1 = R.off[k1], q = (x, z, o, d, y) => [x + o[0] * d, y, z + o[1] * d];
+        quadN(geo, [q(f.ax, f.az, o0, -0.32, y1 + 0.1), q(f.bx, f.bz, o1, -0.32, y1 + 0.1), q(f.bx, f.bz, o1, 0.14, y1 + 0.1), q(f.ax, f.az, o0, 0.14, y1 + 0.1)], [0, 1, 0], cTrim, Z4);
+        quadN(geo, [q(f.ax, f.az, o0, 0.14, y1 - 0.14), q(f.bx, f.bz, o1, 0.14, y1 - 0.14), q(f.bx, f.bz, o1, 0.14, y1 + 0.1), q(f.ax, f.az, o0, 0.14, y1 + 0.1)], [f.nx, 0, f.nz], cTrim, Z4);
       }
     }
   }
+  let ridge = null;
   if (pitched) {
-    // terracotta: true hips where the footprint allows, otherwise a low tiled roof over the whole footprint
+    // terracotta with real eaves: true hips where the footprint allows, otherwise a low tiled roof over the whole footprint
     _cR.copy(linear(s.roof || s.tileRoof)).multiplyScalar(0.9 + ((rec.seed >>> 3) % 20) / 100);
-    if (nv === 4 && rings.length === 1 && isConvex(outer)) hipRoof(geo, outer, top, _cR);
-    else if (rings.length === 1 && nv <= 40 && starShaped(outer, cx, cz)) tentRoof(geo, outer, top, _cR, cx, cz, clamp(Math.sqrt(area) * 0.2, 1.4, 4.5));
-    else {
-      const { pts, tris } = triangulate(rings), b0 = geo.count;
-      for (const v of pts) { geo.v(v.x, top + 0.15, v.y, 0, 1, 0, _cR); geo.extra.aWall.push(0, 0, -2, 0); geo.extra.aShut.push(0, 0, 0); }
-      for (const t of tris) geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
+    const cFas = _cK.copy(_cR).multiplyScalar(0.72), cSof = _cP.copy(cWall).multiplyScalar(0.78);
+    if (nv === 4 && rings.length === 1 && isConvex(outer)) {
+      const E = expandAbout(outer, cx, cz, EAVE * 1.25); ridge = hipRoof(geo, E, top - 0.25, _cR);
+      eaveBand(geo, { pts: E, sgn: RR[0].sgn }, 0, top - 0.25, top - 0.42, cFas, cSof);
+      polyFlat(geo, [E], top - 0.42, cSof, [0, 0, 0, 0], true);
+    } else if (rings.length === 1 && nv <= 40 && starShaped(outer, cx, cz)) {
+      const E = expandAbout(outer, cx, cz, EAVE * 1.25), rise = clamp(Math.sqrt(area) * 0.2, 1.4, 4.5);
+      tentRoof(geo, E, top - 0.25, _cR, cx, cz, rise + 0.25); ridge = { a: new THREE.Vector3(cx - 0.5, top + rise, cz), b: new THREE.Vector3(cx + 0.5, top + rise, cz) };
+      eaveBand(geo, { pts: E, sgn: RR[0].sgn }, 0, top - 0.25, top - 0.42, cFas, cSof);
+      polyFlat(geo, [E], top - 0.42, cSof, [0, 0, 0, 0], true);
+    } else {
+      const O = RR.map((R) => offsetRing(R, EAVE * 0.8));
+      polyFlat(geo, O, top + 0.15, _cR, [0, 0, -2, 0]);
+      polyFlat(geo, O, top - 0.08, cSof, [0, 0, 0, 0], true);
+      for (const R of RR) eaveBand(geo, R, EAVE * 0.8, top + 0.15, top - 0.08, cFas, cSof);
     }
   } else {
-    // roof terraces: lime-wash tinted toward the façade colour
-    if (s.roof) _cR.copy(linear(s.roof)); else _cR.copy(linear(s.flatRoof)).lerp(cWall, 0.4);
-    const { pts, tris } = triangulate(rings), b0 = geo.count;
-    for (const v of pts) { geo.v(v.x, top, v.y, 0, 1, 0, _cR); geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
-    for (const t of tris) geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
+    // roof terraces: lime-wash or terracotta pavers, tinted toward the façade colour
+    if (s.roof) _cR.copy(linear(s.roof)); else _cR.copy(linear(s.flatRoof)).lerp(cWall, 0.3);
+    polyFlat(geo, RR.map((R) => R.pts), top, _cR, [0, 0, -5, 0]);
+  }
+  roofClutter(geo, rec, s, top, pitched, ridge);
+  // front doors: a stone stoop and a wrought-iron lantern over each
+  for (const d of doors) {
+    const f = d.f, stone = _cK.copy(cWall).lerp(new THREE.Color(0.7, 0.68, 0.64), 0.7);
+    boxW(geo, f, d.u - 0.95, d.u + 0.95, 0, 0.75, base - 0.3, base + 0.16, stone);
+    boxW(geo, f, d.u - 0.8, d.u + 0.8, 0, 0.4, base + 0.16, base + 0.32, stone);
+    boxW(geo, f, d.u - 0.03, d.u + 0.03, 0, 0.42, base + 3.5, base + 3.56, IRON);                  // bracket
+    boxW(geo, f, d.u - 0.15, d.u + 0.15, 0.27, 0.57, base + 3.05, base + 3.45, IRON, LAMP_AW);     // lantern glass
+    boxW(geo, f, d.u - 0.2, d.u + 0.2, 0.22, 0.62, base + 3.45, base + 3.55, IRON);               // lantern cap
   }
   // balconies on the main street façades, one per upper floor
   const facades = s.windows === 'balconies' || rec.flowers || neo ? facadesOf(rec) : [];
@@ -1165,7 +1352,10 @@ function hipRoof(geo, r, top, col) {
   const r1 = mDA.clone().lerp(mBC, t), r2 = mBC.clone().lerp(mDA, t); r1.y = r2.y = top + rise;
   const face = (...v) => roofFace(geo, v, col);
   face(d, a, r1); face(b, c, r2); face(a, b, r2, r1); face(c, d, r1, r2);
+  return { a: r1, b: r2 };
 }
+// a ring pushed out from its centre by d metres (eaves for convex and star-shaped roofs)
+function expandAbout(r, cx, cz, d) { const o = []; for (let i = 0; i < r.length; i += 2) { const x = r[i] - cx, z = r[i + 1] - cz, l = Math.hypot(x, z) || 1; o.push(r[i] + x / l * d, r[i + 1] + z / l * d); } return o; }
 
 const STATE_VERTEX = `
   vec4 bState = texelFetch(uState, ivec2(int(mod(aBid, 256.0)), int(aBid / 256.0)), 0);
@@ -1175,24 +1365,34 @@ function buildingMaterial() {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uState = world.stateUniform; sh.uniforms.uNight = NIGHT;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 aWall; attribute vec3 aShut; attribute float aBid; attribute vec2 aStyle; uniform highp sampler2D uState;\nvarying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY; varying vec3 vWP; varying float vBid;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>' + STATE_VERTEX + '\nvWall = aWall; vShut = aShut; vStyle = aStyle; vState = bState.gba; vBid = aBid; vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWY = vWP.y;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 aWall; attribute vec3 aShut; attribute float aBid; attribute vec2 aStyle; uniform highp sampler2D uState;\nvarying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY; varying vec3 vWP; varying float vBid; varying vec3 vWN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + STATE_VERTEX + '\nvWall = aWall; vShut = aShut; vStyle = aStyle; vState = bState.gba; vBid = aBid; vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWY = vWP.y; vWN = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uNight; varying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY; varying vec3 vWP; varying float vBid;\nfloat h31(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }')
+      .replace('#include <common>', `#include <common>
+uniform float uNight; varying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY; varying vec3 vWP; varying float vBid; varying vec3 vWN;
+float h31(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(p * 4.11 + 3.7); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-      float glow = 0.0, lantern = 0.0;
+      float glow = 0.0, lantern = 0.0, lamp = 0.0;
+      float camD = distance(cameraPosition, vWP), near = 1.0 - smoothstep(160.0, 650.0, camD);
       if (vWall.z > 0.5) {
-        float L = vWall.z, u = vWall.x, v = vWall.y, top = vWall.w;
+        float L = vWall.z, u = vWall.x, v = vWall.y, top = mod(vWall.w, 1000.0), doorBay = floor(vWall.w / 1000.0) - 1.0;
         vec3 wall = diffuseColor.rgb;
         float gf = 4.0, fh = 3.3;
         float ground = step(v, gf);
         float flr = ground > 0.5 ? 0.0 : 1.0 + floor((v - gf) / fh);
         float fy = ground > 0.5 ? v / gf : fract((v - gf) / fh);
-        float n = max(1.0, floor(L / 3.4)); float col = floor(u / (L / n)); float cx = fract(u / (L / n)); float x = abs(cx - 0.5);
+        float n = max(1.0, floor(L / 3.4)), bw = L / n; float col = floor(u / bw); float cx = fract(u / bw); float x = abs(cx - 0.5), xm = (cx - 0.5) * bw;
         float can = step(2.4, L) * step(0.0, v) * step(v, top - 0.7);
-        float win = 0.0, frame = 0.0, shut = 0.0, iron = 0.0, awning = 0.0;
+        float win = 0.0, frame = 0.0, shut = 0.0, iron = 0.0, awning = 0.0, door = 0.0, box = 0.0, bloomM = 0.0, closed = 0.0;
         float gStyle = vStyle.x, wStyle = vStyle.y;
         float neo = step(2.5, wStyle);                 // neoclassical civic façade (galleries, museums)
+        float bidR = h31(vec3(vBid, 3.1, 7.7)), winR = h31(vec3(flr, col, vBid + 0.5));
+        vec2 fp = vec2(u + mod(vBid, 97.0) * 13.7, v);
+        float lo = 0.0, hi = 0.0, hw = 0.0;
         if (ground > 0.5 && gStyle > 2.5) {            // rusticated stone base with tall arched doorways
           float ay = max((fy - 0.66) / 0.18, 0.0);
           win = step(x * x / 0.03 + ay * ay, 1.0) * step(0.02, fy) * step(fy, 0.84);
@@ -1207,7 +1407,7 @@ function buildingMaterial() {
           awning = step(0.76, fy) * step(fy, 0.9) * step(x, 0.48);
         } else {                                       // upper floors: tall arched openings
           float tall = wStyle > 1.5 && wStyle < 2.5 ? 1.0 : 0.0;       // balconies get French doors
-          float lo = mix(mix(0.26, 0.06, tall), 0.1, neo), hi = mix(0.7, 0.74, neo), hw = mix(mix(0.14, 0.15, tall), 0.19, neo);
+          lo = mix(mix(0.26, 0.06, tall), 0.1, neo); hi = mix(0.7, 0.74, neo); hw = mix(mix(0.14, 0.15, tall), 0.19, neo);
           float ax = x / hw, archTop = hi + 0.1 * sqrt(max(1.0 - ax * ax, 0.0));
           win = step(x, hw) * step(lo, fy) * step(fy, archTop);
           float axf = x / (hw + 0.04), archF = hi + 0.13 * sqrt(max(1.0 - axf * axf, 0.0));
@@ -1216,16 +1416,41 @@ function buildingMaterial() {
           frame = max(frame, step(x, hw + 0.1) * step(lo - 0.07, fy) * step(fy, lo - 0.035));   // sill
           if (tall > 0.5 && ground < 0.5) iron = step(x, hw + 0.02) * step(lo, fy) * step(fy, lo + 0.3) * (step(0.62, fract(u * 3.2)) + step(lo + 0.27, fy));
           if (neo > 0.5) frame = max(frame, step(x, hw + 0.12) * step(archF + 0.015, fy) * step(fy, archF + 0.07 - x * 0.12));  // little pediment over each window
+          if (tall < 0.5 && neo < 0.5 && ground < 0.5) {
+            closed = step(winR, 0.16) * step(wStyle, 0.5);                   // some shutters pulled to
+            box = step(0.6, winR) * step(x, hw + 0.05) * step(lo - 0.17, fy) * step(fy, lo - 0.075); // window box…
+            bloomM = step(0.6, winR) * step(x, hw + 0.07 - 0.03 * vn2(vec2(u * 9.0, 1.0))) * step(lo - 0.085, fy) * step(fy, lo + 0.03 + 0.05 * vn2(vec2(u * 7.0, v))); // …spilling flowers
+          }
         }
-        win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0))); iron = min(iron, 1.0) * can; awning *= can;
+        // front door in its bay: an arched plank door in the shutter colour, fanlight over it, lantern above
+        if (ground > 0.5 && doorBay > -0.5 && abs(col - doorBay) < 0.5 && neo < 0.5) {
+          float dax = abs(xm) / 0.72, dTop = 2.3 + 0.42 * sqrt(max(1.0 - dax * dax, 0.0));
+          door = step(abs(xm), 0.72) * step(v, dTop); float dFr = step(abs(xm), 0.86) * step(v, dTop + 0.16) * (1.0 - door);
+          win = step(abs(xm), 0.66) * step(2.36, v) * step(v, dTop - 0.05); frame = dFr; iron = 0.0; awning = 0.0; shut = 0.0;
+          door *= 1.0 - win;
+        }
+        win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0))); iron = min(iron, 1.0) * can; awning *= can; door *= can; box *= can; bloomM *= can;
         float lit = step(0.42, h31(vec3(flr, col, vBid)));                          // about half the rooms have their lamps on
-        vec3 glassDay = mix(vec3(0.03, 0.05, 0.08), vec3(0.18, 0.27, 0.36), smoothstep(0.3, 0.8, fy));
-        vec3 glassNight = mix(vec3(0.05, 0.08, 0.12), vec3(0.55, 0.28, 0.1), lit);
-        vec3 glass = mix(glassDay, glassNight, uNight);
+        // ---- plaster: soft washes, patches and rain streaks, so walls look hand-limed rather than flat
+        float wash = fb2(fp * 0.16), blot = mix(0.5, fb2(fp * 1.7), near);
+        vec3 c = wall * (0.9 + 0.14 * wash) * (0.95 + 0.1 * blot);
+        c = mix(c, c * vec3(1.04, 0.98, 0.9), smoothstep(0.55, 0.8, wash) * 0.5);                  // sun-bleached, warmer patches
+        float streak = smoothstep(0.55, 0.95, vn2(vec2(u * 1.7, v * 0.09 + mod(vBid, 31.0)))) * smoothstep(top - 5.0, top - 0.6, v);
+        c *= 1.0 - 0.14 * streak * near;
+        c *= mix(0.7, 1.0, smoothstep(-0.5, 2.4, v));                                               // grime at the base
+        // exposed stone or brick where the plaster has come away (older buildings)
+        float peel = near * step(0.45, bidR) * smoothstep(0.69, 0.72, fb2(fp * vec2(0.42, 0.55)) + 0.12 * (1.0 - smoothstep(0.0, 3.5, v)));
+        if (peel > 0.0) {
+          float br = floor(v / 0.12), bx = fract(u / 0.27 + 0.5 * mod(br, 2.0)), by = fract(v / 0.12);
+          vec3 brick = mix(vec3(0.6, 0.33, 0.22), vec3(0.72, 0.5, 0.36), h21(vec2(floor(u / 0.27 + 0.5 * mod(br, 2.0)), br))) * (1.0 - 0.4 * max(step(0.84, by), step(0.92, bx)));
+          if (bidR > 0.75) brick = mix(vec3(0.68, 0.63, 0.55), vec3(0.8, 0.76, 0.68), vn2(fp * 3.0)) * (1.0 - 0.35 * step(0.9, fract(v / 0.32 + 0.3 * floor(u / 0.5))));
+          c = mix(c, brick, peel);
+        }
         vec3 trim = mix(wall, vec3(1.0, 0.97, 0.92), 0.75);
-        float weather = 0.92 + 0.08 * h31(floor(vWP * 0.7));                        // lime-wash patches
-        vec3 c = wall * weather * mix(0.72, 1.0, smoothstep(-0.5, 2.2, v));         // grime at the base
-        c = mix(c, trim, step(top - 0.45, v) * step(v, top) * 0.8);              // cornice band
+        c = mix(c * 0.62 + vec3(0.2, 0.19, 0.17), c, step(0.55, v));                                // stone plinth
+        c *= 1.0 - 0.25 * step(top - 1.0, v) * step(v, top - 0.45) * smoothstep(top - 1.0, top - 0.45, v); // shadow under the cornice
+        c = mix(c, trim, step(top - 0.45, v) * step(v, top) * 0.85);                              // cornice band
+        c = mix(c, trim, step(0.5, bidR) * (1.0 - ground) * step(fract((v - gf) / fh), 0.04) * step(v, top - 1.0) * 0.6); // floor string courses
         if (neo > 0.5) {
           c = mix(c, trim, step(0.44, x) * step(gf, v) * step(v, top) * 0.55);                          // pilasters between bays
           c *= 1.0 - 0.18 * step(v, gf) * step(fract(v * 2.0), 0.07) * step(0.0, v);                   // rusticated joints
@@ -1234,29 +1459,70 @@ function buildingMaterial() {
         }
         c = mix(c, trim, step(gf - 0.25, v) * step(v, gf) * 0.6);                // ground-floor string course
         c = mix(c, trim, frame);
-        c = mix(c, vShut, max(shut, awning * step(0.5, fract(u * 1.2))));
+        float louvre = 0.8 + 0.2 * step(0.45, fract(v * 16.0));
+        c = mix(c, vShut * louvre, max(shut, awning * step(0.5, fract(u * 1.2))));
         c = mix(c, mix(vShut, vec3(1.0), 0.5), awning * (1.0 - step(0.5, fract(u * 1.2))));
+        // the door: vertical planks and two panels
+        vec3 wood = vShut * (0.78 + 0.22 * step(0.12, fract(xm * 4.2))) * (1.0 - 0.18 * step(0.5, abs(fract(v * 0.75) - 0.5)) * step(0.1, abs(xm)));
+        c = mix(c, wood, door);
+        // ivy and bougainvillea climbing some walls from the street
+        float ivyB = step(0.72, h31(vec3(vBid, 9.2, 1.3)));
+        float ends = max(1.0 - smoothstep(0.0, 3.5, u), smoothstep(L - 3.5, L, u)) * step(2.4, L);       // vines climb from the corners
+        float ivyF = fb2(vec2(u * 0.3 + mod(vBid, 53.0), v * 0.16)) + 0.2 * vn2(fp * 3.1) + 0.12 * vn2(fp * 7.3);  // leafy edge
+        float ivy = ivyB * smoothstep(0.66, 0.69, ivyF + ends * 0.35 - v / max(top, 4.0) * 0.5) * step(0.0, v);
+        vec3 leaf = mix(vec3(0.12, 0.28, 0.09), vec3(0.32, 0.55, 0.18), vn2(fp * 6.0));
+        leaf = mix(leaf, vec3(0.82, 0.18, 0.52), step(0.86, h31(vec3(vBid, 4.0, 2.0))) * step(0.62, vn2(fp * 4.0)));   // bougainvillea blooms
+        leaf *= 0.75 + 0.35 * vn2(fp * 13.0);
+        c = mix(c, leaf, ivy * (1.0 - door));
+        win *= 1.0 - ivy * 0.85;
+        vec3 glassDay = mix(vec3(0.03, 0.05, 0.08), vec3(0.2, 0.3, 0.4), smoothstep(0.3, 0.85, fy));
+        float curtain = step(hw * 0.62, x) * step(0.001, hw);
+        vec3 room = mix(vec3(0.62, 0.3, 0.1), vec3(0.95, 0.62, 0.3), smoothstep(lo, hi, fy) * 0.4 + curtain * 0.5);
+        vec3 glassNight = mix(vec3(0.05, 0.08, 0.12), room, lit);
+        vec3 glass = mix(glassDay, glassNight, uNight);
+        float reveal = 1.0 - step(0.001, hw) * (0.4 * smoothstep(hi - 0.1, hi + 0.06, fy) + 0.25 * step(cx, 0.5 - hw + 0.035));   // shadowed reveal at the head and one jamb
+        float mull = (step(x, 0.012) + step(abs(fy - (lo + (hi - lo) * 0.66)), 0.01)) * step(0.001, hw);   // glazing bars
+        glass = mix(glass * reveal, trim * mix(1.0, 0.5, uNight), min(mull, 1.0) * near);
+        win *= 1.0 - closed;
+        c = mix(c, vShut * louvre, closed * step(x, hw + 0.02) * step(lo, fy) * step(fy, hi + 0.1) * can);
         c = mix(c, glass, win * (1.0 - iron));
         c = mix(c, vec3(0.08, 0.08, 0.09), iron);
+        c = mix(c, vec3(0.63, 0.31, 0.18) * (0.9 + 0.1 * step(0.5, fract(v * 25.0))), box);
+        vec3 fl = mix(vec3(0.16, 0.38, 0.13), mix(vec3(0.86, 0.16, 0.2), vec3(0.9, 0.36, 0.62), step(0.5, winR * 7.0 - floor(winR * 7.0))), step(0.5, vn2(vec2(u * 11.0, v * 11.0))));
+        c = mix(c, fl, bloomM);
         diffuseColor.rgb = c;
-        glow = win * (1.0 - iron) * lit * (ground > 0.5 ? 1.25 : 1.0);
+        glow = win * (1.0 - iron) * lit * (ground > 0.5 ? 1.25 : 1.0) * (1.0 - closed);
         lantern = (1.0 - smoothstep(0.0, 9.0, v)) * step(0.0, v);                // warm wash from street lamps and doorways
+        float dl = step(-0.5, doorBay) * step(abs(col - doorBay), 0.5);           // the door lantern's pool of light on the wall
+        lantern += dl * 1.1 * exp(-(xm * xm * 0.6 + (v - 3.1) * (v - 3.1) * 0.5)) * ground;
+      } else if (vWall.z < -5.5) {                     // lantern glass
+        diffuseColor.rgb = vec3(1.0, 0.86, 0.6); lamp = 1.0;
+      } else if (vWall.z < -4.5) {                     // roof terrace: square tiles with grout lines
+        vec2 tq = vWP.xz / 0.5, ti = floor(tq), tf = fract(tq);
+        float grout = max(step(0.94, tf.x), step(0.94, tf.y));
+        diffuseColor.rgb *= (0.9 + 0.16 * h21(ti)) * (1.0 - 0.22 * grout) * (0.92 + 0.12 * fb2(vWP.xz * 0.3));
       } else if (vWall.z < -2.5) {                     // wrought-iron balcony railing
         float bar = step(0.78, fract(vWall.x * 7.0)), rails = step(0.9, vWall.y) + step(vWall.y, 0.06) + step(0.48, vWall.y) * step(vWall.y, 0.53);
         if (bar + rails < 0.5) discard;
         diffuseColor.rgb = vec3(0.07, 0.075, 0.08);
-      } else if (vWall.z < -1.5) {                     // low tiled roof over complex footprints
-        float row = vWP.z * 2.4, cell = fract(vWP.x * 3.2 + floor(row) * 0.5);
-        diffuseColor.rgb *= (0.84 + 0.16 * smoothstep(0.0, 0.3, fract(row))) * (0.9 + 0.1 * sin(cell * 6.2832));
-      } else if (vWall.z < -0.5) {
-        diffuseColor.rgb *= 0.86 + 0.14 * smoothstep(0.0, 0.25, fract(vWY * 2.6)); // tile courses
+      } else if (vWall.z < -0.5) {                     // terracotta: barrel tiles laid in overlapping courses
+        vec3 Nw = normalize(vWN); float sinA = length(Nw.xz);
+        vec2 tdir = sinA > 0.25 ? normalize(vec2(-Nw.z, Nw.x)) : vec2(1.0, 0.0);
+        float across = dot(vWP.xz, tdir) / 0.26, down = sinA > 0.25 ? vWY / sinA / 0.34 : vWP.z / 0.34;
+        float row = floor(down), sx = fract(across + 0.5 * mod(row, 2.0));
+        float barrel = 0.7 + 0.36 * sin(sx * 3.14159), lap = 0.74 + 0.26 * smoothstep(0.0, 0.4, fract(down));
+        float tv = h21(vec2(floor(across + 0.5 * mod(row, 2.0)), row));
+        vec3 rc = diffuseColor.rgb * mix(1.0, barrel * lap, 0.35 + 0.65 * near) * (0.86 + 0.26 * tv);
+        rc = mix(rc, rc * vec3(0.8, 0.84, 0.7), smoothstep(0.55, 0.8, fb2(vWP.xz * 0.3)) * 0.55);   // lichen and age
+        diffuseColor.rgb = rc;
       }
       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.15 + vec3(0.16, 0.11, 0.02), vState.x);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.38, 0.82), vState.y * 0.32);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.82, 0.25), vState.z * 0.55);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       totalEmissiveRadiance += vec3(0.42, 0.3, 0.08) * vState.x + vec3(0.03, 0.08, 0.22) * vState.y + vec3(0.3, 0.22, 0.02) * vState.z;
-      totalEmissiveRadiance += uNight * (vec3(1.0, 0.46, 0.14) * glow * 1.15 + diffuseColor.rgb * vec3(1.0, 0.58, 0.28) * lantern * 0.6);`);
+      totalEmissiveRadiance += uNight * (vec3(1.0, 0.46, 0.14) * glow * 1.15 + diffuseColor.rgb * vec3(1.0, 0.58, 0.28) * lantern * 0.6 + vec3(1.0, 0.62, 0.28) * lamp * 3.2);
+      totalEmissiveRadiance += (1.0 - uNight) * lamp * vec3(0.12, 0.1, 0.06);`);
   };
   return m;
 }
@@ -1882,6 +2148,177 @@ function bridgeAt(x, z) {
 }
 
 // ---- highlight shapes for hovered / selected ground features
+// ---- street furniture: lamp posts, benches, bins, bollards, potted plants, planters, fountains and canal railings.
+// Instanced per 400 m chunk and drawn only near the camera, so the whole island can be furnished.
+const FURN_CH = 400, FURN_NEAR = 800;
+function furnitureGeometries() {
+  const iron = linear('#1e2622'), wood = linear('#a8743f'), woodD = linear('#7f5330'), pot = linear('#b9653d'), green = linear('#2f5140'), stone = linear('#e2dccf'), stoneD = linear('#c9c1b1');
+  const P = (g, c, x = 0, y = 0, z = 0) => colorize((g.index ? g.toNonIndexed() : g).translate(x, y, z), c);
+  const box = (w, h, d, c, x, y, z) => P(new THREE.BoxGeometry(w, h, d), c, x, y, z);
+  const cyl = (r0, r1, h, c, y, seg = 8, x = 0, z = 0) => P(new THREE.CylinderGeometry(r1, r0, h, seg), c, x, y + h / 2, z);
+  const blob = (r, c, x, y, z, sy = 1, det = 1) => P(new THREE.IcosahedronGeometry(r, det).scale(1, sy, 1), c, x, y, z);
+  const merge = (parts) => { const g = mergeGeometries(parts.map((p) => { for (const k of Object.keys(p.attributes)) if (!['position', 'normal', 'color'].includes(k)) p.deleteAttribute(k); return p; })); return g; };
+  const G = {};
+  // Mediterranean cast-iron lamp post with a lantern head
+  G.lamp = merge([cyl(0.2, 0.14, 0.55, iron, 0), cyl(0.075, 0.055, 3.45, iron, 0.55, 6), cyl(0.12, 0.12, 0.1, iron, 4.0), cyl(0.09, 0.09, 0.05, iron, 4.6), P(new THREE.ConeGeometry(0.3, 0.3, 6), iron, 0, 4.78, 0), cyl(0.035, 0.035, 0.2, iron, 4.92, 4)]);
+  G.lampGlass = merge([cyl(0.13, 0.22, 0.52, linear('#fff1cf'), 4.1, 6)]);
+  G.bench = merge([...[-0.17, 0, 0.17].map((z) => box(1.8, 0.05, 0.13, wood, 0, 0.46, z)), box(1.8, 0.12, 0.05, woodD, 0, 0.7, -0.27), box(1.8, 0.12, 0.05, woodD, 0, 0.88, -0.29),
+    ...[-0.75, 0.75].flatMap((x) => [box(0.06, 0.46, 0.5, iron, x, 0.23, 0), box(0.06, 0.6, 0.05, iron, x, 0.72, -0.28)])]);
+  G.bin = merge([cyl(0.21, 0.25, 0.82, green, 0, 10), cyl(0.27, 0.27, 0.06, iron, 0.82, 10), cyl(0.05, 0.05, 0.1, iron, 0.88, 6)]);
+  G.bollard = merge([cyl(0.12, 0.09, 0.72, iron, 0, 8), P(new THREE.SphereGeometry(0.1, 8, 5), iron, 0, 0.76, 0)]);
+  const potG = (r) => P(new THREE.CylinderGeometry(r * 1.25, r, r * 1.6, 9), pot, 0, r * 0.8, 0);
+  G.potBush = merge([potG(0.27), blob(0.48, linear('#3f8a35'), 0, 0.86, 0, 0.85)]);
+  G.potFlower = merge([potG(0.24), blob(0.4, linear('#3f7f34'), 0, 0.74, 0), ...[[0.2, 0.95, 0.1], [-0.17, 0.9, -0.12], [0.02, 1.08, -0.05], [-0.08, 0.88, 0.22], [0.12, 0.84, -0.24]].map(([x, y, z], i) => blob(0.15, linear(i % 2 ? '#e0609f' : '#d94aa0'), x, y, z, 1, 0))]);
+  const agave = []; for (let k = 0; k < 9; k++) { const t = new THREE.BufferGeometry(); t.setAttribute('position', new THREE.Float32BufferAttribute([-0.08, 0, 0, 0.08, 0, 0, 0, 0.8, 0.36, 0.08, 0, 0, -0.08, 0, 0, 0, 0.8, 0.36], 3)); t.rotateY(k / 9 * Math.PI * 2 + (k % 2) * 0.3); t.translate(0, 0.5, 0); t.computeVertexNormals(); agave.push(colorize(t, linear(k % 2 ? '#6f9a6a' : '#86ad7b'))); }
+  G.potAgave = merge([potG(0.3), ...agave]);
+  G.rail = merge([box(0.07, 1.02, 0.07, iron, -1.2, 0.51, 0), box(2.4, 0.06, 0.08, iron, 0, 1.0, 0), box(2.4, 0.04, 0.04, iron, 0, 0.14, 0), ...[-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9].map((x) => box(0.025, 0.86, 0.025, iron, x, 0.57, 0))]);
+  G.planter = merge([box(2.3, 0.55, 0.75, stone, 0, 0.275, 0), box(2.4, 0.08, 0.85, stoneD, 0, 0.58, 0), ...[-0.72, 0, 0.72].map((x, i) => blob(0.44, linear(['#4f9a3c', '#3f8a35', '#5c9e3a'][i]), x, 0.88, 0, 0.8))]);
+  G.fountain = merge([cyl(3.0, 3.0, 0.65, stone, 0, 24), cyl(0.5, 0.42, 1.6, stoneD, 0.6, 10), cyl(0.3, 1.25, 0.32, stone, 2.1, 16), cyl(0.18, 0.12, 0.7, stoneD, 2.4, 8), cyl(0.15, 0.55, 0.2, stone, 3.0, 12)]);
+  G.fountainWater = merge([cyl(2.75, 2.75, 0.04, linear('#5fc3d3'), 0.52, 24), cyl(1.1, 1.1, 0.03, linear('#7fd6e0'), 2.36, 16)]);
+  G.pool = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
+  return G;
+}
+function addStreetFurniture() {
+  for (const c of world.furn || []) for (const m of c.meshes) { scene.remove(m); if (m.isPoints) m.geometry.dispose(); else m.dispose(); }
+  const G = world.furnGeo || (world.furnGeo = furnitureGeometries());
+  if (!world.furnMat) {
+    world.furnMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    world.lampMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#ffae5e', emissiveIntensity: 0 });
+    world.waterMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1b6b7a', emissiveIntensity: 0.25, transparent: true, opacity: 0.88 });
+    world.poolMat = new THREE.MeshBasicMaterial({ map: world.bulbTex, color: '#ff9a4a', transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    world.haloMat = new THREE.PointsMaterial({ size: 2.6, map: world.bulbTex, color: '#ffc27a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+  }
+  const MAT = { lampGlass: world.lampMat, fountainWater: world.waterMat, pool: world.poolMat };
+  const chunks = new Map(), counts = {};
+  const chunkOf = (x, z) => {
+    const ix = Math.floor(x / FURN_CH), iz = Math.floor(z / FURN_CH), k = ix * 4096 + iz; let c = chunks.get(k);
+    if (!c) chunks.set(k, c = { x: (ix + 0.5) * FURN_CH, z: (iz + 0.5) * FURN_CH, items: {}, halos: [] });
+    return c;
+  };
+  const put = (kind, x, z, rot, s = 1, y = H(x, z) + LIFT - 0.03) => { const c = chunkOf(x, z); (c.items[kind] || (c.items[kind] = [])).push(x, y, z, rot, s); counts[kind] = (counts[kind] || 0) + 1; };
+  // a coarse occupancy hash so furniture doesn't pile up on itself or on street-tree trunks
+  const taken = new Set(), cell = (x, z) => Math.floor(x / 1.4) * 65536 + Math.floor(z / 1.4);
+  const near = (x, z) => { const i = Math.floor(x / 1.4), j = Math.floor(z / 1.4); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (taken.has((i + a) * 65536 + j + b)) return true; return false; };
+  const M4 = new THREE.Matrix4(), V = new THREE.Vector3();
+  for (const m of world.streetTrees || []) for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, M4); V.setFromMatrixPosition(M4); taken.add(cell(V.x, V.z)); }
+  const clear = (x, z, r) => H(x, z) > 0.6 && !near(x, z) && buildingAt(x, z) < 0 && buildingAt(x + r, z) < 0 && buildingAt(x - r, z) < 0 && buildingAt(x, z + r) < 0 && buildingAt(x, z - r) < 0 && bridgeAt(x, z) === -Infinity;
+  const claim = (x, z) => taken.add(cell(x, z));
+  const lamp = (x, z) => { if (!clear(x, z, 0.4)) return false; claim(x, z); put('lamp', x, z, 0); put('lampGlass', x, z, 0); const y = H(x, z); chunkOf(x, z).halos.push(x, y + LIFT + 4.33, z); put('pool', x, z, 0, 5.5, y + LIFT + 0.04); return true; };
+  const facing = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);      // rotation that turns local +z toward (tx, tz)
+  // walk a polyline, calling fn(x, z, nx, nz, dx, dz) every `gap` metres
+  const walk = (P, gap, start, fn) => {
+    let next = start, run = 0;
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+      while (next <= run + len) { const t = (next - run) / len; fn(ax + dx * t, az + dz * t, -dz / len, dx / len, dx / len, dz / len); next += gap; }
+      run += len;
+    }
+  };
+  for (const f of world.features) {
+    const rnd = mulberry(f.seed ^ 0x7f4a7c15);
+    if (f.kind === 'street' && f.w >= 3) {
+      const hw = f.w / 2, both = f.w >= 12; let side = rnd() < 0.5 ? 1 : -1, k = 0;
+      walk(f.pts, f.w >= 9 ? 24 : 28, 6 + rnd() * 10, (x, z, nx, nz) => {
+        for (const sd of both ? [side, -side] : [side]) lamp(x + nx * (hw + 0.45) * sd, z + nz * (hw + 0.45) * sd);
+        side = -side;
+      });
+      if (f.w >= 6) walk(f.pts, 34, 14 + rnd() * 12, (x, z, nx, nz, dx, dz) => {
+        const sd = (k++ % 2) ? 1 : -1, bx = x + nx * (hw + 2.4) * sd, bz = z + nz * (hw + 2.4) * sd;
+        if (!clear(bx, bz, 1.1)) return; claim(bx, bz); put('bench', bx, bz, facing(bx, bz, x, z));
+        const ex = bx + dx * 1.5, ez = bz + dz * 1.5;
+        if (k % 2 === 0 && clear(ex, ez, 0.4)) { claim(ex, ez); put('bin', ex, ez, rnd() * 6.28); }
+      });
+    } else if (f.kind === 'path' && f.w >= 1.5) {
+      const hw = f.w / 2; let k = 0;
+      walk(f.pts, 30, 8 + rnd() * 10, (x, z, nx, nz) => {
+        const sd = (k++ % 2) ? 1 : -1, bx = x + nx * (hw + 0.9) * sd, bz = z + nz * (hw + 0.9) * sd;
+        if (clear(bx, bz, 1.0)) { claim(bx, bz); put('bench', bx, bz, facing(bx, bz, x, z)); }
+      });
+      walk(f.pts, 27, 2 + rnd() * 6, (x, z, nx, nz) => { lamp(x + nx * (hw + 0.4), z + nz * (hw + 0.4)); });
+    } else if (f.kind === 'canal') {
+      // railings along both banks, wherever the bank is dry land
+      for (const sd of [1, -1]) walk(f.pts, 2.4, 1.2, (x, z, nx, nz, dx, dz) => {
+        let d = f.w / 2 + 0.6; while (d < f.w / 2 + 7 && H(x + nx * d * sd, z + nz * d * sd) < 0.7) d += 0.4;
+        const rx = x + nx * (d + 0.3) * sd, rz = z + nz * (d + 0.3) * sd;
+        if (d < f.w / 2 + 7 && buildingAt(rx, rz) < 0 && bridgeAt(rx, rz) === -Infinity) put('rail', rx, rz, Math.atan2(dx, dz) + Math.PI / 2, 1, H(rx, rz) + LIFT - 0.05);
+      });
+    } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
+      const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]];
+      let kb = 0;
+      // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
+      walk(ring, 3.4, 1.5, (x, z, nx, nz) => {
+        const inx = nx * sgn, inz = nz * sgn, ox = x - inx * 2.5, oz = z - inz * 2.5;
+        if (buildingAt(ox, oz) >= 0) return;               // only the open edges, toward streets
+        const bx = x + inx * 0.5, bz = z + inz * 0.5; if (clear(bx, bz, 0.2)) { claim(bx, bz); put('bollard', bx, bz, 0); }
+      });
+      walk(ring, 17, 4, (x, z, nx, nz) => { lamp(x + nx * sgn * 1.6, z + nz * sgn * 1.6); });
+      walk(ring, 11, 7, (x, z, nx, nz) => {
+        const bx = x + nx * sgn * 3.4, bz = z + nz * sgn * 3.4; if (!pointInRings(bx, bz, f.rings) || !clear(bx, bz, 1.2)) return;
+        claim(bx, bz); put((kb++ % 3) === 2 ? 'planter' : 'bench', bx, bz, facing(bx, bz, x + nx * sgn * 10, z + nz * sgn * 10));
+      });
+      if (f.size > 1400) {
+        const fx = f.cx, fz = f.cz;
+        if (pointInRings(fx, fz, f.rings) && clear(fx, fz, 3.5)) { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(fx + a * 1.4, fz + b * 1.4); put('fountain', fx, fz, 0); put('fountainWater', fx, fz, 0); }
+      }
+    }
+  }
+  // potted plants by front doors (and a few along street walls), and a pool of lantern light on the pavement
+  const POTS = ['potBush', 'potFlower', 'potAgave', 'potBush', 'potFlower'];
+  for (const rec of world.buildings) {
+    if (styleOf(rec).facade === 'neoclassical') continue;
+    const rnd = mulberry(rec.seed ^ 0x1b873593);
+    for (const d of doorsOf(rec)) {
+      const f = d.f, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L;
+      for (const s of [-1.2, 1.2]) {
+        if (rnd() < 0.3) continue;
+        const t = d.u + s, x = f.ax + dx * t + f.nx * 0.5, z = f.az + dz * t + f.nz * 0.5;
+        if (t > 0.4 && t < f.L - 0.4 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.85 + rnd() * 0.35, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
+      }
+      const px = f.ax + dx * d.u + f.nx * 1.8, pz = f.az + dz * d.u + f.nz * 1.8;
+      put('pool', px, pz, 0, 3.2, H(px, pz) + LIFT + 0.04);
+      if (f.L > 9 && rnd() < 0.6) {
+        const t = 0.6 + rnd() * (f.L - 1.2), x = f.ax + dx * t + f.nx * 0.45, z = f.az + dz * t + f.nz * 0.45;
+        if (Math.abs(t - d.u) > 1.8 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.8 + rnd() * 0.4, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
+      }
+    }
+  }
+  // build one instanced mesh per kind per chunk
+  const Q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), N3 = new THREE.Vector3();
+  world.furn = [];
+  for (const c of chunks.values()) {
+    const meshes = [];
+    for (const [kind, l] of Object.entries(c.items)) {
+      const n = l.length / 5, mesh = new THREE.InstancedMesh(G[kind], MAT[kind] || world.furnMat, n);
+      for (let i = 0; i < n; i++) {
+        const s = l[i * 5 + 4], x = l[i * 5], z = l[i * 5 + 2];
+        if (kind === 'pool') Q.setFromUnitVectors(up, N3.set(H(x - 2, z) - H(x + 2, z), 4, H(x, z - 2) - H(x, z + 2)).normalize());   // lie along the slope
+        else Q.setFromAxisAngle(up, l[i * 5 + 3]);
+        M4.compose(V.set(x, l[i * 5 + 1], z), Q, kind === 'pool' ? S.set(s, 1, s) : S.set(s, s, s)); mesh.setMatrixAt(i, M4);
+      }
+      mesh.computeBoundingSphere(); mesh.userData.kind = kind;
+      if (kind === 'pool') { mesh.renderOrder = 7; mesh.userData.night = true; }
+      else { mesh.castShadow = kind !== 'bollard' && kind !== 'rail'; mesh.receiveShadow = true; mesh.renderOrder = 10; }
+      mesh.visible = false; scene.add(mesh); meshes.push(mesh);
+    }
+    if (c.halos.length) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(c.halos, 3));
+      const pts = new THREE.Points(g, world.haloMat); pts.renderOrder = 12; pts.userData.night = true; pts.visible = false; scene.add(pts); meshes.push(pts);
+    }
+    world.furn.push({ x: c.x, z: c.z, meshes, vis: false });
+  }
+  return counts;
+}
+// show the chunks near the camera (lamp halos and light pools only after dark)
+function updateFurniture() {
+  if (!world.furn) return;
+  const p = camera.position, high = p.y - H(p.x, p.z) > 700, night = NIGHT.value > 0.5;
+  for (const c of world.furn) {
+    const vis = !high && Math.hypot(c.x - p.x, c.z - p.z) < FURN_NEAR + FURN_CH * 0.71;
+    if (vis === c.vis && night === c.night) continue;
+    c.vis = vis; c.night = night;
+    for (const m of c.meshes) m.visible = vis && (!m.userData.night || night);
+  }
+}
 function featureShape(f, color, opacity) {
   const geo = KINDS[f.kind].geom === 'poly' ? polyOverlay([{ rings: f.rings, color: '#ffffff' }], 6) : ribbonOverlay([{ pts: f.pts, w: f.w + 1.6, color: '#ffffff' }]);
   for (let i = 1; i < geo.p.length; i += 3) geo.p[i] += 0.25;
@@ -3193,6 +3630,8 @@ function update(dt, t) {
   const alt = Math.max(0, camera.position.y);
   const W0 = WEATHER[wx.name]; scene.fog.near = (1800 + alt * 3) * W0.nearK; scene.fog.far = (24000 + alt * 6) * W0.fogK;
   stepWeather(dt, t);
+  updateFurniture();
+  post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t;
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
@@ -3216,7 +3655,7 @@ function adaptResolution(now, drew) {
   let next = res.cur;
   if (avg > 24 && res.cur > 1) next = Math.max(1, res.cur - 0.25);
   else if (avg < 13 && res.cur < res.max) next = Math.min(res.max, res.cur + 0.25);
-  if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); }
+  if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); post.composer.setPixelRatio(next); post.composer.setSize(innerWidth, innerHeight); }
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, double-click to jump there.
@@ -3281,7 +3720,8 @@ let marked = [];
 function highlight(ids) { clearHighlight(); for (const id of ids) { const r = world.byId.get(id); if (r) { animOf(r.idx).wantMark = 1; marked.push(r.idx); } } plan.invalidate(); return marked.length; }
 function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; marked = []; plan.invalidate(); }
 window.amparacan = {
-  view(x, y, z, tx, ty, tz) { setMode('map'); tweenCamera(new THREE.Vector3(x, y, z), new THREE.Vector3(tx, ty, tz), 0.6); },
+  view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
+  doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
@@ -3355,7 +3795,7 @@ store.on((what, ids) => {
     const perf = window.amparacan.perf = { update: 0, render: 0 };
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.05), t0 = performance.now(), draw = update(dt, clock.elapsedTime), t1 = performance.now();
-      if (draw) renderer.render(scene, camera);
+      if (draw) post.composer.render(dt);
       const t2 = performance.now(); perf.update = perf.update * 0.9 + (t1 - t0) * 0.1; perf.render = perf.render * 0.9 + (t2 - t1) * 0.1;
       adaptResolution(t2, draw);
     });
@@ -3364,5 +3804,5 @@ store.on((what, ids) => {
     $('load-label').textContent = 'Could not build the map: ' + (err && err.message ? err.message : err);
   }
 })();
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); plan.invalidate(); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); post.composer.setSize(innerWidth, innerHeight); plan.invalidate(); });
 </script>
