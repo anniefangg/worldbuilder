@@ -2684,6 +2684,11 @@ function initControls() {
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
   $('edit-pill').addEventListener('click', () => { if (ui.hover) select(ui.hover, { focusPrompt: true }); });
+  // the pill floats over the map: let scrolling over it zoom the view underneath
+  $('edit-pill').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    (player.mode === 'plan' ? plan.canvas : canvas).dispatchEvent(new WheelEvent('wheel', { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, clientX: e.clientX, clientY: e.clientY, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, bubbles: true, cancelable: true }));
+  }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
   // touch joystick + fly pad
