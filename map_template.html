@@ -174,6 +174,7 @@ body.tray-open #info { display: none; }
 .thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
 #info .stepper { gap: 6px; }
+#info input.canopy { width: 100%; accent-color: #2f7f4f; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 #info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
 #select-btn {
@@ -1640,7 +1641,7 @@ const PAVINGS = ['flagstones', 'cobbles', 'pavers'];
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
   plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex' },
-  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'] },
+  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
   beach: { look: ['copacabana', 'natural'] },
@@ -1655,10 +1656,16 @@ function featureStyle(f) {
   if (f.kind === 'beach') s.look = 'copacabana';
   for (const [k, spec] of Object.entries(FSTYLE[f.kind] || {})) {
     const v = o[k]; if (v === undefined) continue;
-    if (spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = v;
+    if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
+  }
+  if (f.kind === 'street') {      // the canopy slider (0–100) rules; the older none/palms/canopy word is kept in step with it
+    if (s.canopy === undefined) s.canopy = { none: 0, palms: 30, canopy: 75 }[s.trees];
+    s.trees = s.canopy < 8 ? 'none' : s.canopy < 50 ? 'palms' : 'canopy';
   }
   return s;
 }
+const CANOPY_WORDS = [[1, 'No trees'], [25, 'A few palms'], [45, 'Palm-lined'], [70, 'Shaded'], [90, 'Leafy canopy'], [101, 'Full canopy']];
+const canopyWord = (c) => CANOPY_WORDS.find(([m]) => c < m)[1];
 const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass' };
 const LIFT = 0.25;
 function polyOverlay(items, uvScale) {
@@ -1959,8 +1966,8 @@ function rebuildStreetTrees() {
   const buckets = { palm: new Map(), broad: new Map(), canopy: new Map() }; let n = 0;
   for (const f of world.features) {
     if (f.kind !== 'street') continue;
-    const st = featureStyle(f).trees; if (st === 'none' || !st) continue;
-    const rnd = mulberry(f.seed ^ 0x51ee7), P = f.pts, canopy = st === 'canopy', off = f.w / 2 + (canopy ? 1.2 : 1.5), both = canopy || f.w >= 9, gap = canopy ? 8.5 : f.w >= 9 ? 10 : 12;
+    const c = featureStyle(f).canopy / 100; if (c < 0.04) continue;
+    const rnd = mulberry(f.seed ^ 0x51ee7), P = f.pts, shade = smooth(0.35, 0.6, c), off = f.w / 2 + 1.2 + 0.3 * (1 - shade), both = c >= 0.45 || f.w >= 9, gap = 15 - 10 * c;
     let next = 3 + rnd() * 5, run = 0, k = 0;
     for (let i = 0; i < P.length - 2; i += 2) {
       const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
@@ -1968,12 +1975,13 @@ function rebuildStreetTrees() {
       while (next <= run + len) {
         const t = (next - run) / len, cx = ax + dx * t, cz = az + dz * t;
         const sides = both ? [1, -1] : [k++ % 2 ? 1 : -1];
-        if (canopy && f.w >= 14) sides.push(0);                          // a central row down wide boulevards
+        if (c >= 0.85 && f.w >= 12) sides.push(0);                       // a central row down wide boulevards
         for (const side of sides) {
           const x = cx + nx * off * side + (rnd() - 0.5) * 0.8, z = cz + nz * off * side + (rnd() - 0.5) * 0.8;
           if (buildingAt(x, z) >= 0 || H(x, z) < 0.6 || bridgeAt(x, z) > -Infinity) continue;
-          const scale = canopy ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) : 0.85 + rnd() * 0.3;
-          bucketAdd(buckets, canopy ? 'canopy' : 'palm', x, z, scale, rnd); n++;
+          const big = rnd() < shade;
+          const scale = big ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) * (0.8 + 0.4 * c) : 0.85 + rnd() * 0.3;
+          bucketAdd(buckets, big ? 'canopy' : 'palm', x, z, scale, rnd); n++;
         }
         next += gap * (0.9 + rnd() * 0.2);
       }
@@ -2539,10 +2547,10 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
 const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
-  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting' };
+  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look' };
+  trees: 'tree density', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look' };
 function diffDocs(a, b) {
   const out = [];
   for (const k of ['name', 'address', 'tags', 'history', 'details', 'attrs']) if (JSON.stringify(a[k] || '') !== JSON.stringify(b[k] || '')) out.push(k);
@@ -2578,7 +2586,8 @@ function cleanStyleFor(kind, o) {
   }
   for (const [k, spec] of Object.entries(FSTYLE[kind] || {})) {
     const v = typeof o[k] === 'string' ? o[k].trim() : o[k];
-    if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
+    if (spec === 'pct') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 100); }
+    else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
   }
   return s;
 }
@@ -2606,6 +2615,7 @@ const STYLE_DOCS = {
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
+- canopy: tree cover as a number 0-100 (0 = no trees, about 30 = a line of palms, about 75 = shade trees on both sides, 100 = a full canopy of overlapping crowns, plus a central row on wide streets). Prefer this over "trees".
 - trees: "canopy" (large shade trees on both sides whose crowns meet over the street), "palms" (a line of palms) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
 - tint: colour multiplied over the surface, "#rrggbb"`,
@@ -2970,6 +2980,14 @@ function renderInfo() {
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
     }
+    if (store.canEdit && t.kind === 'street') {
+      const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
+      const range = el('input', { type: 'range', min: '0', max: '100', step: '5', value: String(cv), 'aria-label': 'Tree canopy', class: 'canopy' });
+      range.oninput = () => { const v = +range.value; pct.textContent = v + '%'; word.textContent = canopyWord(v); };
+      range.onchange = () => setCanopy(id, +range.value);
+      kids.push(el('div', { class: 'field', style: 'gap:6px' }, el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Tree canopy'), word, pct),
+        range, el('div', { class: 'row', style: 'justify-content:space-between' }, el('span', { class: 'hint' }, 'Bare'), el('span', { class: 'hint' }, 'Palms'), el('span', { class: 'hint' }, 'Full canopy'))));
+    }
     if (store.canEdit) {
       const hasStyle = Object.keys(doc.style || {}).length > 0;
       kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => { startEditing(); renderInfo(); } }, 'Edit details'),
@@ -2997,6 +3015,21 @@ function changeFloors(id, delta) {
   pend.timer = setTimeout(() => {
     floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
     if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
+  }, 1500);
+}
+// Tree canopy slider: applies on release; a burst of changes is logged as one history entry
+const canopyEdits = new Map();
+function setCanopy(id, v) {
+  const t = targetOf(id); if (!t || t.kind !== 'street' || !store.canEdit) return;
+  const cur = featureStyle(t.f).canopy; if (v === cur) return;
+  const doc = docFor(id); let pend = canopyEdits.get(id);
+  if (!pend) canopyEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
+  doc.style = { ...doc.style, canopy: v }; delete doc.style.trees; doc.updatedAt = new Date().toISOString();
+  saveTarget(id, doc, 400);
+  clearTimeout(pend.timer);
+  pend.timer = setTimeout(() => {
+    canopyEdits.delete(id); const after = docFor(id), to = after.style.canopy;
+    if (to !== pend.from) logChange({ id, source: 'manual', summary: `Tree canopy ${pend.from}% → ${to}% (${canopyWord(to).toLowerCase()})`, category: 'Vegetation', tags: ['trees', 'canopy'], before: pend.before, after });
   }, 1500);
 }
 function resetLook(id) {
@@ -3756,12 +3789,12 @@ store.on((what, ids) => {
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
-      if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).trees !== st.trees)) streetTrees = true;
+      if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
     for (const k of kinds) if (ORDER[k]) buildGround(k);
     if (treeTiles.size) rebuildParkTrees(treeTiles);
     if (lights) world.lights = addStreetLights();
-    if (streetTrees) rebuildStreetTrees();
+    if (streetTrees) { rebuildStreetTrees(); world.furniture = addStreetFurniture(); }
     plan.invalidate(true);
   }
   if ((what === 'buildings' || what === 'features' || what === 'changes') && sel && !ui.editing && (touched || what === 'changes')) renderInfo();
