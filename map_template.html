@@ -171,6 +171,9 @@ body.tray-open #info { display: none; }
 .thumbs-sm { display: flex; gap: 4px; flex-wrap: wrap; }
 .thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
+#info .stepper { gap: 6px; }
+#info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+#info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
@@ -224,9 +227,10 @@ body.tray-open #info { display: none; }
     <dt>Space</dt><dd>Jump · rise when flying</dd>
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
-    <dt>T</dt><dd>Switch between dusk and day</dd>
+    <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
+    <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
   </dl>
 </div>
 
@@ -374,11 +378,18 @@ const NIGHT = { value: 1 };   // shared by every shader that glows at dusk
 const TOD = {
   day: { sun: [-0.55, 0.72, 0.42], sunCol: '#fff0d4', sunI: 2.9, hemiSky: '#d6ecff', hemiGround: '#b9a27c', hemiI: 1.35,
     hor: '#cbe9f0', mid: '#8cc3e6', top: '#3f93d8', glow: '#ffdcae', fog: '#cbe9f0', exposure: 1.12, night: 0,
-    cloud: '#ffffff', cloudEm: '#dfe9ee', cloudEmI: 0.35, waterSky: '#bfe6f4' },
+    cloud: '#ffffff', cloudEm: '#dfe9ee', cloudEmI: 0.35, waterSky: '#bfe6f4', waterDark: 1 },
   dusk: { sun: [-0.86, 0.22, 0.46], sunCol: '#ff8c68', sunI: 1.45, hemiSky: '#7aa9dc', hemiGround: '#5a4a64', hemiI: 1.6,
     hor: '#5cbcc6', mid: '#22769a', top: '#0e2c4c', glow: '#ff9a7a', fog: '#3f8fa8', exposure: 1.15, night: 1,
-    cloud: '#f4b0c8', cloudEm: '#a8558c', cloudEmI: 0.55, waterSky: '#2f7f99' },
+    cloud: '#f4b0c8', cloudEm: '#a8558c', cloudEmI: 0.55, waterSky: '#2f7f99', waterDark: 0.62 },
+  dawn: { sun: [0.84, 0.2, 0.36], sunCol: '#ffc49a', sunI: 1.9, hemiSky: '#c6cde8', hemiGround: '#8f7a78', hemiI: 1.55,
+    hor: '#ffd3a8', mid: '#e8b8b6', top: '#6f8fc4', glow: '#ffb48c', fog: '#e8c9bb', exposure: 1.1, night: 0.3,
+    cloud: '#ffe0e6', cloudEm: '#f2a593', cloudEmI: 0.45, waterSky: '#f0c8b8', waterDark: 0.85 },
+  night: { sun: [0.32, 0.6, -0.62], sunCol: '#9db4ff', sunI: 0.55, hemiSky: '#33456f', hemiGround: '#1c1828', hemiI: 0.7,
+    hor: '#132a4c', mid: '#081630', top: '#02050d', glow: '#2a4373', fog: '#0d1c36', exposure: 1.15, night: 1, milky: 1,
+    cloud: '#56627f', cloudEm: '#232c4a', cloudEmI: 0.5, waterSky: '#10233f', waterDark: 0.2 },
 };
+const TOD_ORDER = ['dawn', 'day', 'dusk', 'night'];
 const todState = { name: 'dusk' };
 let applyTODExtras = () => {};     // filled in once the water, clouds and lights exist
 function setTimeOfDay(name) {
@@ -387,28 +398,43 @@ function setTimeOfDay(name) {
   sun.color.set(t.sunCol); sun.intensity = t.sunI;
   hemi.color.set(t.hemiSky); hemi.groundColor.set(t.hemiGround); hemi.intensity = t.hemiI;
   const u = camera.userData.sky.material.uniforms;
-  u.uHor.value.set(t.hor); u.uMid.value.set(t.mid); u.uTop.value.set(t.top); u.uGlow.value.set(t.glow); u.uNight.value = t.night;
+  u.uHor.value.set(t.hor); u.uMid.value.set(t.mid); u.uTop.value.set(t.top); u.uGlow.value.set(t.glow); u.uNight.value = t.night; u.uMilky.value = t.milky || 0;
   scene.fog.color.set(t.fog); renderer.toneMappingExposure = t.exposure; NIGHT.value = t.night;
   applyTODExtras(t);
-  const b = $('tod'); if (b) { b.textContent = name === 'dusk' ? 'Dusk' : 'Day'; b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${name === 'dusk' ? 'day' : 'dusk'}`); }
+  const b = $('tod'), next = TOD_ORDER[(TOD_ORDER.indexOf(name) + 1) % TOD_ORDER.length], cap = (x) => x[0].toUpperCase() + x.slice(1);
+  if (b) { b.textContent = cap(name); b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${next}`); b.title = `Time of day: ${cap(name)}. Click (or T) for ${next}.`; }
 }
 
 // Sky dome
 {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(80000, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 } },
+    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w * 0.9999; }`,
-    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow; uniform float uNight; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow; uniform float uNight, uMilky; varying vec3 vDir;
       float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      float fbm(vec3 p){ float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++) { s += a * vn(p); p *= 2.03; a *= 0.5; } return s; }
       void main(){
         vec3 d = normalize(vDir); float h = max(d.y, 0.0);
         vec3 c = mix(uHor, uMid, smoothstep(0.0, 0.28, h)); c = mix(c, uTop, smoothstep(0.22, 0.85, h));
         float s = max(dot(d, uSun), 0.0);
         c += uGlow * (pow(s, 6.0) * mix(0.25, 0.7, uNight) * (1.0 - smoothstep(0.0, 0.5, h)));     // warm band toward the sun
-        c += vec3(1.0, 0.86, 0.6) * pow(s, 900.0) * mix(6.0, 2.0, uNight);
+        c += mix(vec3(1.0, 0.86, 0.6) * pow(s, 900.0) * mix(6.0, 2.0, uNight), vec3(0.9, 0.93, 1.0) * (smoothstep(0.99985, 0.99992, s) * 1.6 + pow(s, 60.0) * 0.12), uMilky);   // sun, or the moon at night
         vec3 g = floor(d * 420.0); float st = hash(g);
-        c += vec3(0.9, 0.95, 1.0) * step(0.9965, st) * smoothstep(0.12, 0.5, h) * uNight * (0.5 + 0.5 * hash(g + 3.1));   // stars
+        c += vec3(0.9, 0.95, 1.0) * step(mix(0.9965, 0.988, uMilky), st) * smoothstep(0.08, 0.4, h) * uNight * (0.5 + 0.5 * hash(g + 3.1));   // stars
+        if (uMilky > 0.0) {
+          // the Milky Way: a bright, mottled band along a tilted great circle, with dark dust lanes
+          vec3 axis = normalize(vec3(0.74, 0.14, 0.66));   // the band arcs overhead, from horizon to horizon
+          float lat = dot(d, axis), band = exp(-lat * lat * 34.0), core = exp(-lat * lat * 140.0);
+          float cloud = fbm(d * 7.0 + 3.0), dust = smoothstep(0.45, 0.75, fbm(d * 13.0 - 7.0));
+          float glowMW = band * (0.55 + 0.45 * cloud) * (1.0 - 0.7 * dust * smoothstep(0.2, 1.0, core));
+          vec3 g2 = floor(d * 900.0); float dense = step(1.0 - 0.06 * band, hash(g2)) * (0.4 + 0.6 * hash(g2 + 1.7));
+          vec3 mw = vec3(0.55, 0.62, 0.85) * glowMW * 0.55 + vec3(0.95, 0.85, 0.7) * core * cloud * 0.25 + vec3(0.9, 0.95, 1.0) * dense * band * 0.9;
+          c += mw * uMilky * smoothstep(0.02, 0.3, h);
+        }
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -615,7 +641,7 @@ async function buildWorld() {
         #include <common>
         #include <fog_pars_fragment>
         #include <logdepthbuf_pars_fragment>
-        uniform float uTime, uExt, uNight; uniform sampler2D uDepth; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam; varying vec3 vW;
+        uniform float uTime, uExt, uNight, uDark; uniform sampler2D uDepth; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam; varying vec3 vW;
         void main(){
           #include <logdepthbuf_fragment>
           vec2 uv = clamp(vW.xz / uExt + 0.5, 0.002, 0.998);
@@ -629,7 +655,7 @@ async function buildWorld() {
           float fres = pow(1.0 - max(dot(n, V), 0.0), 4.0);
           vec3 col = mix(uShallow, uMid, smoothstep(0.5, 6.0, d));
           col = mix(col, uDeep, smoothstep(6.0, 24.0, d));
-          col *= mix(1.0, 0.62, uNight);                       // blue hour: the sea darkens
+          col *= uDark;                                        // the sea darkens toward night
           col = mix(col, uSky, fres * 0.55);
           vec3 Hh = normalize(uSun + V); col += mix(vec3(1.0, 0.93, 0.8), vec3(1.0, 0.6, 0.45), uNight) * pow(max(dot(n, Hh), 0.0), mix(220.0, 90.0, uNight)) * 1.6;
           float coast = smoothstep(0.12, 0.4, t.g) * (1.0 - smoothstep(0.5, 0.62, t.g));
@@ -641,7 +667,7 @@ async function buildWorld() {
           #include <fog_fragment>
         }`,
     });
-    mat.uniforms.uDepth.value = tex; mat.uniforms.uNight = NIGHT;
+    mat.uniforms.uDepth.value = tex; mat.uniforms.uNight = NIGHT; mat.uniforms.uDark = { value: 0.62 };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(160000, 160000).rotateX(-Math.PI / 2), mat);
     sea.receiveShadow = false; scene.add(sea);
     world.water = mat;
@@ -742,7 +768,7 @@ async function buildWorld() {
   await progress('Rolling in the clouds', 96);
   addClouds();
   applyTODExtras = (t) => {
-    world.water.uniforms.uSky.value.set(t.waterSky);
+    world.water.uniforms.uSky.value.set(t.waterSky); world.water.uniforms.uDark.value = t.waterDark;
     world.cloudMat.color.set(t.cloud); world.cloudMat.emissive.set(t.cloudEm); world.cloudMat.emissiveIntensity = t.cloudEmI;
     world.bulbs.visible = t.night > 0.5;
   };
@@ -2062,6 +2088,14 @@ function renderInfo() {
     if (doc.details) rows.push(['Details', doc.details]);
     for (const [k, v] of Object.entries(doc.attrs || {})) if (k) rows.push([k, String(v)]);
     kids.push(rows.length ? el('dl', {}, rows.map(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])) : el('div', { class: 'hint' }, store.canEdit ? 'No details yet.' : 'No details recorded yet.'));
+    if (store.canEdit && t.kind === 'building') {
+      const fl = styleFor(t).floors;
+      kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Floors'),
+        el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a floor', disabled: fl <= 1, onclick: () => changeFloors(id, -1) }, '−'),
+        el('span', { class: 'floors', 'aria-live': 'polite' }, String(fl)),
+        el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
+        el('span', { class: 'hint' }, 'or + / − keys')));
+    }
     if (store.canEdit) {
       const hasStyle = Object.keys(doc.style || {}).length > 0;
       kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => { startEditing(); renderInfo(); } }, 'Edit details'),
@@ -2075,6 +2109,21 @@ function renderInfo() {
   }
   box.replaceChildren(...kids);
   renderPromptHistory();
+}
+// Quick height edits: each click rebuilds the building at once; a burst of clicks is logged as one change
+const floorEdits = new Map();
+function changeFloors(id, delta) {
+  const t = targetOf(id); if (!t || t.kind !== 'building' || !store.canEdit) return;
+  const cur = styleFor(t).floors, next = clamp(cur + delta, 1, 40); if (next === cur) return;
+  const doc = docFor(id); let pend = floorEdits.get(id);
+  if (!pend) floorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
+  doc.style = { ...doc.style, floors: next }; doc.updatedAt = new Date().toISOString();
+  saveTarget(id, doc, 400);
+  clearTimeout(pend.timer);
+  pend.timer = setTimeout(() => {
+    floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
+    if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
+  }, 1500);
 }
 function resetLook(id) {
   const before = docFor(id), after = { ...before, style: {}, updatedAt: new Date().toISOString() };
@@ -2537,6 +2586,7 @@ function initControls() {
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
     if (k === 'h') toggleHelp();
     if (k === 't') toggleTOD();
+    if ((k === '+' || k === '=' || k === '-' || k === '_') && ui.selected && isBuildingId(ui.selected)) { e.preventDefault(); changeFloors(ui.selected, k === '-' || k === '_' ? -1 : 1); }
     if ((player.mode === 'walk' || player.mode === 'fly') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
     if (k === ' ' && player.mode === 'walk' && player.onGround) { player.vy = 6.2; player.onGround = false; }
     if (!$('intro').hidden && ['w', 'a', 's', 'd', 'arrowup'].includes(k) && player.mode === 'map') startExploring('walk');
@@ -2583,7 +2633,7 @@ function initControls() {
   initMinimap();
 }
 function toggleHelp() { const h = $('help'), c = h.dataset.collapsed !== 'true'; h.dataset.collapsed = String(c); $('help-toggle').setAttribute('aria-expanded', String(!c)); try { localStorage.setItem('amparacan-map-help', c ? '1' : '0'); } catch (e) {} }
-function toggleTOD() { const n = todState.name === 'dusk' ? 'day' : 'dusk'; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
+function toggleTOD() { const n = TOD_ORDER[(TOD_ORDER.indexOf(todState.name) + 1) % TOD_ORDER.length]; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
 function startExploring(mode) { $('intro').hidden = true; setMode(mode); canvas.focus(); }
 
 // ─────────────────────────── per-frame update ───────────────────────────
