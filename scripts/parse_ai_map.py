@@ -405,6 +405,94 @@ class LineSet:
                 "widths": b64("H", self.widths), "kinds": b64("B", self.kinds)}
 
 
+def _unpack(fmt, b64s):
+    raw = base64.b64decode(b64s)
+    return struct.unpack("<%d%s" % (len(raw) // struct.calcsize(fmt), fmt), raw)
+
+
+def decode_buildings(path):
+    """{id: (outer ring in metres, floors)} from a previously built map_data.json, or None."""
+    try:
+        d = json.load(open(path))["buildings"]
+    except (OSError, ValueError, KeyError):
+        return None
+    counts, lens, xy = _unpack("H", d["counts"]), _unpack("I", d["lens"]), _unpack("i", d["xy"])
+    ids, floors = d["ids"].split(","), _unpack("B", d["floors"])
+    out, ri, vi = {}, 0, 0
+    for k, n in enumerate(counts):
+        L = lens[ri]
+        out[ids[k]] = ([(xy[(vi + j) * 2] / Q, xy[(vi + j) * 2 + 1] / Q) for j in range(L)], floors[k])
+        vi += sum(lens[ri:ri + n])
+        ri += n
+    return out
+
+
+def _iou(a, b):
+    """Approximate intersection-over-union of two rings by grid sampling."""
+    xs = [p[0] for p in a + b]
+    ys = [p[1] for p in a + b]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    step = max(0.4, max(x1 - x0, y1 - y0) / 40)
+    inter = union = 0
+    y = y0 + step / 2
+    while y < y1:
+        x = x0 + step / 2
+        while x < x1:
+            ia, ib = pip((x, y), a), pip((x, y), b)
+            inter += ia and ib
+            union += ia or ib
+            x += step
+        y += step
+    return inter / union if union else 0.0
+
+
+def match_ids(final, previous):
+    """Give unmatched new footprints the id of the unmatched old footprint they best overlap.
+
+    final: list of [poly, id, floors, ring_m] (modified in place); previous: decode_buildings().
+    """
+    new_ids = {f[1] for f in final}
+    old_free = {k: v for k, v in previous.items() if k not in new_ids}
+    grid = {}
+    for k, (ring, _) in old_free.items():
+        cx = sum(p[0] for p in ring) / len(ring)
+        cy = sum(p[1] for p in ring) / len(ring)
+        grid.setdefault((int(cx // 25), int(cy // 25)), []).append((k, cx, cy))
+    kept = sum(1 for f in final if f[1] in previous)
+    pairs = []
+    for i, f in enumerate(final):
+        if f[1] in previous:
+            continue
+        ring = f[3]
+        cx = sum(p[0] for p in ring) / len(ring)
+        cy = sum(p[1] for p in ring) / len(ring)
+        area_new = abs(area(ring)) or 1e-6
+        for gx in range(int(cx // 25) - 1, int(cx // 25) + 2):
+            for gy in range(int(cy // 25) - 1, int(cy // 25) + 2):
+                for k, ox, oy in grid.get((gx, gy), []):
+                    d = math.hypot(cx - ox, cy - oy)
+                    if d > 30:
+                        continue
+                    old_ring = old_free[k][0]
+                    score = _iou(ring, old_ring)
+                    ratio = abs(area(old_ring)) / area_new
+                    if score < 0.5 and d < 3 and 0.7 < ratio < 1.4:
+                        score = 0.5
+                    if score >= 0.5:
+                        pairs.append((score, i, k))
+    pairs.sort(reverse=True)
+    used_new, used_old = set(), set()
+    for score, i, k in pairs:
+        if i in used_new or k in used_old:
+            continue
+        used_new.add(i)
+        used_old.add(k)
+        final[i][1] = k
+        final[i][2] = old_free[k][1]    # keep its old height too
+    return {"kept": kept, "remapped": len(used_new), "new": len(final) - kept - len(used_new),
+            "removed": len(old_free) - len(used_old)}
+
+
 def build(src, out):
     feats = parse(src)
     land, elev, water, pave, parks, streets_poly = (PolySet() for _ in range(6))
@@ -471,22 +559,37 @@ def build(src, out):
                     # plazas, gardens, ponds and kerbs drawn in the Built layer
                     {"pave": pave, "park": parks, "water": water, "street": streets_poly}.get(cls, pave).add(p, 0.1)
 
-    bld = PolySet()
-    ids, floors, seen = [], [], set()
+    # Stable ids: a hash of each footprint's position. On re-import, footprints that were
+    # moved or redrawn inherit the id of the old footprint they overlap, so edits made in
+    # the 3D map (stored by id) stay attached. See match_ids().
+    cand = []
     for p in bld_polys:
         r = p[0]
+        if not clean_ring(r, 0.06):
+            continue    # degenerate sliver, dropped from the output anyway
         cx = sum(q[0] for q in r) / len(r)
         cy = sum(q[1] for q in r) / len(r)
         wx, wz = world((cx, cy))
         h = hashlib.sha1(b"%d,%d" % (round(wx / 10), round(wz / 10))).hexdigest()
+        cand.append((p, h, [(world(q)[0] / Q, world(q)[1] / Q) for q in r]))
+    previous = decode_buildings(out)
+    seen, final = set(), []
+    for p, h, ring in cand:
         bid = "b" + h[:8]
         while bid in seen:
             h = hashlib.sha1(h.encode()).hexdigest()
             bid = "b" + h[:8]
+        seen.add(bid)
+        final.append([p, bid, 3 + int(h[8:12], 16) % 3, ring])    # 3–5 floors for now
+    if previous:
+        report = match_ids(final, previous)
+        print("re-import: %(kept)d kept, %(remapped)d remapped, %(new)d new, %(removed)d removed" % report)
+    bld = PolySet()
+    ids, floors = [], []
+    for p, bid, fl, _ in final:
         if bld.add(p, 0.06):
-            seen.add(bid)
             ids.append(bid)
-            floors.append(3 + int(h[8:12], 16) % 3)    # 3–5 floors for now
+            floors.append(fl)
 
     data = {
         "meta": {"source": src.split("/")[-1], "mPerPt": M_PER_PT, "artboardPt": ART, "quant": 1 / Q,

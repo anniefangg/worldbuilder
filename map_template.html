@@ -73,7 +73,7 @@ body {
 #loader h2 { margin: 0; font: 400 34px/1 var(--font-display); }
 #loader p { margin: 0; color: var(--ink-soft); line-height: 1.45; }
 .bar { height: 6px; background: rgba(18,50,63,.1); border-radius: 3px; overflow: hidden; }
-#load-bar { height: 100%; width: 0; background: var(--azulejo); transition: width .25s ease; }
+#load-bar { height: 100%; width: 0; background: var(--azulejo); }
 #load-label { font: 400 11px/1 var(--font-mono); color: var(--ink-soft); }
 #intro {
   position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
@@ -88,7 +88,73 @@ body {
 #joy i { position: absolute; left: 40px; top: 40px; width: 40px; height: 40px; border-radius: 50%; background: var(--plaster-solid); box-shadow: 0 4px 12px rgba(0,0,0,.18); }
 #fly-pad { position: fixed; right: max(24px, env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; }
 #fly-pad button { width: 56px; height: 56px; border-radius: 50%; font: 700 18px/1 var(--font-ui); }
+#plan { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: #a9d9e3; cursor: grab; }
+#plan.dragging { cursor: grabbing; }
+#scene.pointing, #plan.pointing { cursor: pointer; }
+#edit-pill {
+  position: fixed; left: 0; top: 0; z-index: 4; transform: translate(-50%, -100%);
+  font: 600 12px/1 var(--font-ui); padding: 7px 11px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--azulejo); color: var(--azulejo-ink); box-shadow: 0 6px 18px rgba(18, 50, 63, 0.28);
+}
+#edits-btn {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(124px + env(safe-area-inset-top, 0px));
+  font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
+}
+#edits-btn .count { background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 2px 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+#info {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(360px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box;
+  padding: 14px 16px; display: grid; gap: 10px; z-index: 3;
+}
+#info[data-pinned="false"] { pointer-events: none; }
+.eyebrow { font: 500 10.5px/1.2 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+#info header { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+#info h3 { margin: 2px 0 0; font: 400 21px/1.15 var(--font-display); text-wrap: balance; }
+#info .facts { font: 400 12px/1.3 var(--font-mono); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+#info .close { all: unset; cursor: pointer; font-size: 18px; line-height: 1; color: var(--ink-soft); padding: 2px 4px; border-radius: 6px; }
+#info dl { margin: 0; display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; font-size: 13px; }
+#info dt { color: var(--ink-soft); }
+#info dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font: 600 11px/1 var(--font-ui); padding: 4px 8px; border-radius: 999px; background: rgba(31, 87, 168, 0.1); color: var(--azulejo); }
+.hint { font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+.field { display: grid; gap: 4px; }
+.field label { font: 600 11px/1 var(--font-ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.field input, .field textarea, .kv input, #prompt-text {
+  font: 400 13.5px/1.4 var(--font-ui); color: var(--ink); background: var(--plaster-solid);
+  border: 1px solid var(--edge); border-radius: 8px; padding: 7px 9px; width: 100%; box-sizing: border-box; resize: vertical;
+}
+.field input:focus, .field textarea:focus, .kv input:focus, #prompt-text:focus { outline: 2px solid var(--azulejo); outline-offset: 0; border-color: transparent; }
+.kv { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; }
+.btn { font: 600 13px/1 var(--font-ui); border-radius: 8px; padding: 9px 12px; cursor: pointer; border: 1px solid var(--edge); background: var(--plaster-solid); color: var(--ink); }
+.btn.primary { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
+.btn.small { padding: 6px 9px; font-size: 12px; }
+.btn.link { border: 0; background: none; padding: 4px 0; color: var(--azulejo); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn:focus-visible, #edit-pill:focus-visible, #edits-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sep { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
+.status { font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-soft); min-height: 1em; }
+#tray {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
+  width: min(380px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
+  display: grid; gap: 12px; z-index: 5;
+}
+#tray h4 { margin: 0; font: 600 12px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.plist { display: grid; gap: 8px; }
+.pitem { display: grid; gap: 4px; padding: 9px 10px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(255,255,255,.55); }
+.pitem .who { font: 600 12.5px/1.2 var(--font-ui); }
+.pitem .txt { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.pill { display: inline-block; font: 600 10.5px/1 var(--font-mono); padding: 3px 6px; border-radius: 5px; background: rgba(18,50,63,.08); color: var(--ink-soft); }
+.pill.queued { background: rgba(233,180,76,.25); color: #7a5410; }
+.pill.applied, .pill.done { background: rgba(90,169,156,.22); color: #1d5f55; }
+.pill.failed { background: rgba(196,70,47,.18); color: #8c2f20; }
+body.tray-open #info { display: none; }
+#toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
+  #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
+  #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
+  #tray { top: calc(110px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
   #modes { top: auto; right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(96px + env(safe-area-inset-top, 0px)); }
@@ -98,6 +164,8 @@ body {
 </style>
 
 <canvas id="scene" tabindex="0" aria-label="3D map of Amparacán"></canvas>
+<canvas id="plan" tabindex="0" aria-label="2D plan of Amparacán" hidden></canvas>
+<button id="edit-pill" type="button" hidden>Edit</button>
 
 <div id="brand" class="plaque">
   <h1>Amparacán</h1>
@@ -109,7 +177,12 @@ body {
   <button id="mode-walk" type="button" aria-pressed="false">Walk</button>
   <button id="mode-fly" type="button" aria-pressed="false">Fly <kbd>F</kbd></button>
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
+  <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
 </div>
+<button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
+<section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
+<aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
+<div id="toast" class="plaque" role="status" hidden></div>
 
 <div id="compass" class="plaque" title="North">
   <svg viewBox="-20 -20 40 40" aria-hidden="true"><g id="needle"><path d="M0 -15 L5 0 L0 3 L-5 0 Z" fill="#c4462f"/><path d="M0 15 L5 0 L0 -3 L-5 0 Z" fill="#12323f" opacity=".55"/><text x="0" y="-16.5" text-anchor="middle" font-size="7" font-family="Figtree, sans-serif" font-weight="700" fill="#12323f">N</text></g></svg>
@@ -118,13 +191,14 @@ body {
 <div id="help" class="plaque" data-collapsed="false">
   <button id="help-toggle" type="button" aria-expanded="true">Controls · H</button>
   <dl>
-    <dt>W A S D</dt><dd>Move (arrow keys work too)</dd>
-    <dt>Drag</dt><dd>Look around · scroll to zoom</dd>
+    <dt>W A S D</dt><dd>Walk north, west, south, east (or arrow keys)</dd>
+    <dt>Drag</dt><dd>Tilt the camera · scroll to zoom</dd>
     <dt>Shift</dt><dd>Run / fly faster</dd>
     <dt>Space</dt><dd>Jump · rise when flying</dd>
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
-    <dt>M</dt><dd>Map view · double-click to drop in</dd>
+    <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
+    <dt>Click</dt><dd>Select a building to see or edit it</dd>
   </dl>
 </div>
 
@@ -153,7 +227,8 @@ body {
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.6/build/index.module.js"
 } }
 </script>
 <script id="map-data" type="application/json">__MAP_DATA__</script>
@@ -161,6 +236,10 @@ body {
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 // ───────────────────────────── helpers ─────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -379,6 +458,7 @@ async function buildWorld() {
   const parks = readPolys(RAW.parks), pave = readPolys(RAW.pavement), streetAreas = readPolys(RAW.streetAreas);
   const streets = readLines(RAW.streets), paths = readLines(RAW.paths), canals = readLines(RAW.canals), beaches = readLines(RAW.beaches);
   const B = RAW.buildings, bPolys = readPolys(B), bIds = B.ids.split(','), bFloors = arr(B.floors, Uint8Array);
+  world.layers = { land, water, parks, pave, streetAreas, streets, paths, canals, beaches };
 
   // ---- rasters: coastline mask, depth, hills, beaches, occupancy
   await progress('Shaping the coastline', 10);
@@ -552,78 +632,47 @@ async function buildWorld() {
   overlay(ribbonOverlay(paths, (L) => (L.kind ? trail : footpath)), stoneTex, 4);
   overlay(ribbonOverlay(streets, (L) => (L.kind ? kerbStone : L.w >= 9 ? asphalt : cobble)), stoneTex, 5);
 
-  // ---- buildings
+  // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
   await progress('Raising buildings', 44);
-  const TILE = 1750, TN = Math.ceil(EXT / TILE), tiles = new Map();
-  const bMat = buildingMaterial();
+  const TILE = 1750, TN = Math.ceil(EXT / TILE);
   const style = STYLES.default;
-  const cWall = new THREE.Color(), cRoof = new THREE.Color(), cShut = new THREE.Color(), cPar = new THREE.Color();
-  const EX = [['aWall', 4], ['aShut', 3]];
+  world.tileList = new Map(); world.byId = new Map();
   for (let bi = 0; bi < bPolys.length; bi++) {
-    if (bi % 3000 === 0) await progress(`Raising buildings · ${bi.toLocaleString()} of ${bPolys.length.toLocaleString()}`, 44 + 40 * bi / bPolys.length);
     const rings = bPolys[bi], outer = rings[0];
     if (outer.length < 6) continue;
     const rnd = mulberry(parseInt(bIds[bi].slice(1), 16));
     let cx = 0, cz = 0; for (let i = 0; i < outer.length; i += 2) { cx += outer[i]; cz += outer[i + 1]; } cx /= outer.length / 2; cz /= outer.length / 2;
     let base = Infinity; for (let i = 0; i < outer.length; i += 2) base = Math.min(base, H(outer[i], outer[i + 1]));
     base = Math.max(base, LAND_Y - 0.4);
-    const floors = bFloors[bi], gf = 4.0, fh = 3.3, top = base + gf + (floors - 1) * fh + rnd() * 0.6;
-    const area = Math.abs(ringArea(outer));
-    cWall.copy(linear(pickWeighted(style.walls, rnd())));
-    cShut.copy(linear(style.shutters[(rnd() * style.shutters.length) | 0]));
-    const tk = Math.floor(cx / TILE + TN / 2) * 1000 + Math.floor(cz / TILE + TN / 2);
-    let geo = tiles.get(tk); if (!geo) tiles.set(tk, geo = new Geo(EX));
-    const start = geo.count, idxStart = geo.i.length;
-    const nv = outer.length / 2, convex = rings.length === 1 && nv <= 12 && isConvex(outer);
+    const jitter = rnd() * 0.6, area = Math.abs(ringArea(outer)), nv = outer.length / 2;
+    const wall = pickWeighted(style.walls, rnd()), shutters = style.shutters[(rnd() * style.shutters.length) | 0];
+    const convex = rings.length === 1 && nv <= 12 && isConvex(outer);
     const pitched = convex && area > 25 && area < 1600 && rnd() < style.pitchedShare;
-    const parapet = pitched ? 0 : 0.9;
-    // walls
-    for (const r of rings) {
-      const outward = (r === outer) === (ringArea(r) > 0); // true → the right-hand normal points out of the solid
-      for (let i = 0, n = r.length; i < n; i += 2) {
-        const j = (i + 2) % n, ax = r[i], az = r[i + 1], bx = r[j], bz = r[j + 1], L = Math.hypot(bx - ax, bz - az);
-        if (L < 0.05) continue;
-        let nx = (bz - az) / L, nz = -(bx - ax) / L; if (!outward) { nx = -nx; nz = -nz; }
-        const y0 = base - 2.5, y1 = top + parapet, hgt = top - base;
-        const A = geo.v(ax, y0, az, nx, 0, nz, cWall), Bv = geo.v(bx, y0, bz, nx, 0, nz, cWall), C = geo.v(bx, y1, bz, nx, 0, nz, cWall), D = geo.v(ax, y1, az, nx, 0, nz, cWall);
-        geo.extra.aWall.push(0, -2.5, L, hgt, L, -2.5, L, hgt, L, y1 - base, L, hgt, 0, y1 - base, L, hgt);
-        for (let s = 0; s < 4; s++) geo.extra.aShut.push(cShut.r, cShut.g, cShut.b);
-        // winding so that face normal == (nx, nz)
-        // A,B,C winds to the left-hand normal; flip when the outward normal is the right-hand one
-        if (outward) geo.i.push(A, C, Bv, A, D, C); else geo.i.push(A, Bv, C, A, C, D);
-        if (parapet) { // inner face of the parapet
-          cPar.copy(cWall).multiplyScalar(0.85);
-          const a2 = geo.v(ax, top, az, -nx, 0, -nz, cPar), b2 = geo.v(bx, top, bz, -nx, 0, -nz, cPar), c2 = geo.v(bx, y1, bz, -nx, 0, -nz, cPar), d2 = geo.v(ax, y1, az, -nx, 0, -nz, cPar);
-          for (let s = 0; s < 4; s++) { geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
-          if (outward) geo.i.push(a2, b2, c2, a2, c2, d2); else geo.i.push(a2, c2, b2, a2, d2, c2);
-        }
-      }
-    }
-    // roof
-    if (pitched) {
-      cRoof.copy(linear(style.tileRoofs[(rnd() * style.tileRoofs.length) | 0]));
-      if (nv === 4) hipRoof(geo, outer, top, cRoof); else tentRoof(geo, outer, top, cRoof, cx, cz, clamp(Math.sqrt(area) * 0.2, 1.4, 4.5));
-    } else {
-      // roof terraces: lime-wash tinted toward the façade colour
-      cRoof.copy(linear(style.flatRoofs[(rnd() * style.flatRoofs.length) | 0])).lerp(cWall, 0.4);
-      const { pts, tris } = triangulate(rings), b0 = geo.count;
-      for (const v of pts) { geo.v(v.x, top, v.y, 0, 1, 0, cRoof); geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
-      for (const t of tris) geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
-    }
-    const rec = { id: bIds[bi], rings, base, top, cx, cz, tile: tk, vStart: start, vCount: geo.count - start };
-    world.buildings.push(rec);
-    // collision grid
+    const roofPick = rnd();
+    const tile = Math.floor(cx / TILE + TN / 2) * 1000 + Math.floor(cz / TILE + TN / 2);
+    const rec = {
+      idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, area, nv, convex, tile, top: base + 10,
+      auto: { wall, shutters, roofType: pitched ? 'hip' : 'flat', floors: bFloors[bi], groundFloor: 'arches', windows: 'shutters', jitter,
+        tileRoof: style.tileRoofs[(roofPick * style.tileRoofs.length) | 0], flatRoof: style.flatRoofs[(roofPick * style.flatRoofs.length) | 0] },
+    };
+    world.buildings.push(rec); world.byId.set(rec.id, rec);
+    let l = world.tileList.get(tile); if (!l) world.tileList.set(tile, l = []); l.push(rec.idx);
+    // footprint grid (picking in 2D, sinking, roofs)
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (let i = 0; i < outer.length; i += 2) { x0 = Math.min(x0, outer[i]); x1 = Math.max(x1, outer[i]); z0 = Math.min(z0, outer[i + 1]); z1 = Math.max(z1, outer[i + 1]); }
+    rec.bbox = [x0, z0, x1, z1];
     const G = world.GRID;
     for (let ix = Math.floor(x0 / G); ix <= Math.floor(x1 / G); ix++) for (let iz = Math.floor(z0 / G); iz <= Math.floor(z1 / G); iz++) {
-      const k = gkey(ix + 2000, iz + 2000); let l = world.bGrid.get(k); if (!l) world.bGrid.set(k, l = []); l.push(world.buildings.length - 1);
+      const k = gkey(ix + 2000, iz + 2000); let c = world.bGrid.get(k); if (!c) world.bGrid.set(k, c = []); c.push(rec.idx);
     }
   }
+  initBuildingState();
+  world.bMat = buildingMaterial(); world.bDepth = buildingDepthMaterial();
   world.tileMeshes = new Map();
-  for (const [tk, geo] of tiles) {
-    const m = new THREE.Mesh(geo.build(), bMat); m.castShadow = m.receiveShadow = true; m.renderOrder = 10;
-    scene.add(m); world.tileMeshes.set(tk, m);
+  let done = 0;
+  for (const tk of world.tileList.keys()) {
+    if (done++ % 4 === 0) await progress(`Raising buildings · tile ${done} of ${world.tileList.size}`, 44 + 36 * done / world.tileList.size);
+    rebuildTile(tk);
   }
 
   // ---- trees
@@ -633,6 +682,112 @@ async function buildWorld() {
   await progress('Rolling in the clouds', 96);
   addClouds();
 }
+
+// ─────────────────────────── building geometry & state ───────────────────────────
+const HEX = /^#[0-9a-f]{6}$/i;
+const GROUND = { arches: 0, shopfront: 1, plain: 2 }, WINDOWS = { shutters: 0, plain: 1, balconies: 2 };
+const EX = [['aWall', 4], ['aShut', 3], ['aBid', 1], ['aStyle', 2]];
+// The style a building is drawn with: generated defaults, overridden by saved edits.
+function styleOf(rec) {
+  const o = (store.buildings.get(rec.id) || {}).style || {}, a = rec.auto, s = { ...a };
+  if (HEX.test(o.wall || '')) s.wall = o.wall;
+  if (HEX.test(o.shutters || '')) s.shutters = o.shutters;
+  if (HEX.test(o.roof || '')) s.roof = o.roof;
+  if (o.roofType === 'flat' || o.roofType === 'hip') s.roofType = o.roofType;
+  if (Number.isFinite(+o.floors) && +o.floors >= 1) s.floors = clamp(Math.round(+o.floors), 1, 40);
+  if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
+  if (o.windows in WINDOWS) s.windows = o.windows;
+  if (s.roofType === 'hip' && !(rec.convex && rec.area < 4000)) s.roofType = 'flat';   // hips need a simple footprint
+  return s;
+}
+const _cW = new THREE.Color(), _cR = new THREE.Color(), _cS = new THREE.Color(), _cP = new THREE.Color();
+function emitBuilding(geo, rec) {
+  const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0];
+  const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
+  rec.top = top; rec.style = s;
+  const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
+  const start = geo.count, pitched = s.roofType === 'hip', parapet = pitched ? 0 : 0.9;
+  for (const r of rings) {
+    const outward = (r === outer) === (ringArea(r) > 0); // true → the right-hand normal points out of the solid
+    for (let i = 0, n = r.length; i < n; i += 2) {
+      const j = (i + 2) % n, ax = r[i], az = r[i + 1], bx = r[j], bz = r[j + 1], L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.05) continue;
+      let nx = (bz - az) / L, nz = -(bx - ax) / L; if (!outward) { nx = -nx; nz = -nz; }
+      const y0 = base - 2.5, y1 = top + parapet, hgt = top - base;
+      const A = geo.v(ax, y0, az, nx, 0, nz, cWall), Bv = geo.v(bx, y0, bz, nx, 0, nz, cWall), C = geo.v(bx, y1, bz, nx, 0, nz, cWall), D = geo.v(ax, y1, az, nx, 0, nz, cWall);
+      geo.extra.aWall.push(0, -2.5, L, hgt, L, -2.5, L, hgt, L, y1 - base, L, hgt, 0, y1 - base, L, hgt);
+      for (let k = 0; k < 4; k++) geo.extra.aShut.push(cShut.r, cShut.g, cShut.b);
+      // A,B,C winds to the left-hand normal; flip when the outward normal is the right-hand one
+      if (outward) geo.i.push(A, C, Bv, A, D, C); else geo.i.push(A, Bv, C, A, C, D);
+      if (parapet) { // inner face of the parapet
+        cPar.copy(cWall).multiplyScalar(0.85);
+        const a2 = geo.v(ax, top, az, -nx, 0, -nz, cPar), b2 = geo.v(bx, top, bz, -nx, 0, -nz, cPar), c2 = geo.v(bx, y1, bz, -nx, 0, -nz, cPar), d2 = geo.v(ax, y1, az, -nx, 0, -nz, cPar);
+        for (let k = 0; k < 4; k++) { geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
+        if (outward) geo.i.push(a2, b2, c2, a2, c2, d2); else geo.i.push(a2, c2, b2, a2, d2, c2);
+      }
+    }
+  }
+  if (pitched) {
+    _cR.copy(linear(s.roof || s.tileRoof));
+    if (nv === 4) hipRoof(geo, outer, top, _cR); else tentRoof(geo, outer, top, _cR, cx, cz, clamp(Math.sqrt(area) * 0.2, 1.4, 4.5));
+  } else {
+    // roof terraces: lime-wash tinted toward the façade colour
+    if (s.roof) _cR.copy(linear(s.roof)); else _cR.copy(linear(s.flatRoof)).lerp(cWall, 0.4);
+    const { pts, tris } = triangulate(rings), b0 = geo.count;
+    for (const v of pts) { geo.v(v.x, top, v.y, 0, 1, 0, _cR); geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
+    for (const t of tris) geo.triUp(b0 + t[0], b0 + t[1], b0 + t[2]);
+  }
+  const g = GROUND[s.groundFloor], w = WINDOWS[s.windows];
+  for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
+}
+function rebuildTile(tk) {
+  const geo = new Geo(EX);
+  for (const idx of world.tileList.get(tk)) emitBuilding(geo, world.buildings[idx]);
+  const g = geo.build(); g.computeBoundsTree();
+  let m = world.tileMeshes.get(tk);
+  if (m) { m.geometry.disposeBoundsTree(); m.geometry.dispose(); m.geometry = g; }
+  else {
+    m = new THREE.Mesh(g, world.bMat); m.customDepthMaterial = world.bDepth;
+    m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.tileMeshes.set(tk, m);
+  }
+}
+const dirtyTiles = new Set();
+function markDirty(id) { const r = world.byId.get(id); if (r) dirtyTiles.add(r.tile); }
+function flushDirty() { for (const tk of dirtyTiles) rebuildTile(tk); if (dirtyTiles.size && plan.active) plan.invalidate(true); dirtyTiles.clear(); }
+
+// Per-building animation state lives in a float texture the shaders read by building index:
+// R = sink depth (m), G = hover glow, B = selected, A = search highlight.
+const STATE_W = 256;
+const anim = new Map(); // idx → { sink, hover, sel, mark, wantSink, lastFlag, wantHover, wantSel, wantMark }
+function initBuildingState() {
+  const h = Math.ceil(world.buildings.length / STATE_W);
+  world.stateData = new Float32Array(STATE_W * h * 4);
+  world.stateTex = new THREE.DataTexture(world.stateData, STATE_W, h, THREE.RGBAFormat, THREE.FloatType);
+  world.stateTex.needsUpdate = true;
+  world.stateUniform = { value: world.stateTex };
+}
+function animOf(idx) { let a = anim.get(idx); if (!a) anim.set(idx, a = { sink: 0, hover: 0, sel: 0, mark: 0, wantSink: 0, lastFlag: -1, wantHover: 0, wantSel: 0, wantMark: 0 }); return a; }
+function stepAnim(dt, t) {
+  if (!anim.size) return;
+  const d = world.stateData; let changed = false;
+  for (const [idx, a] of anim) {
+    const sinkTarget = a.wantSink && t - a.lastFlag < 0.6 ? 1 : 0;
+    const before = a.sink + a.hover + a.sel + a.mark;
+    a.sink = sinkTarget ? Math.min(1, a.sink + dt / 0.2) : Math.max(0, a.sink - dt / 0.4);
+    if (!sinkTarget) a.wantSink = 0;
+    a.hover += (a.wantHover - a.hover) * (1 - Math.exp(-dt * 16));
+    a.sel += (a.wantSel - a.sel) * (1 - Math.exp(-dt * 12));
+    a.mark += (a.wantMark - a.mark) * (1 - Math.exp(-dt * 8));
+    const r = world.buildings[idx], k = idx * 4, ease = a.sink * a.sink * (3 - 2 * a.sink);
+    d[k] = ease * (r.top - r.base + 4); d[k + 1] = a.hover; d[k + 2] = a.sel; d[k + 3] = a.mark;
+    if (Math.abs(before - (a.sink + a.hover + a.sel + a.mark)) > 1e-4) changed = true;
+    if (!a.wantSink && !a.wantHover && !a.wantSel && !a.wantMark && a.sink === 0 && a.hover < 0.002 && a.sel < 0.002 && a.mark < 0.002) {
+      d[k] = d[k + 1] = d[k + 2] = d[k + 3] = 0; anim.delete(idx); changed = true;
+    }
+  }
+  if (changed) world.stateTex.needsUpdate = true;
+}
+const isSunk = (idx) => { const a = anim.get(idx); return !!a && a.sink > 0.25; };
 
 function isConvex(r) {
   let sign = 0; const n = r.length;
@@ -669,14 +824,18 @@ function hipRoof(geo, r, top, col) {
   face(d, a, r1); face(b, c, r2); face(a, b, r2, r1); face(c, d, r1, r2);
 }
 
+const STATE_VERTEX = `
+  vec4 bState = texelFetch(uState, ivec2(int(mod(aBid, 256.0)), int(aBid / 256.0)), 0);
+  transformed.y += -bState.r + bState.g * 1.2;`;
 function buildingMaterial() {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
   m.onBeforeCompile = (sh) => {
+    sh.uniforms.uState = world.stateUniform;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 aWall; attribute vec3 aShut; varying vec4 vWall; varying vec3 vShut; varying float vWY;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWall = aWall; vShut = aShut; vWY = (modelMatrix * vec4(transformed, 1.0)).y;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 aWall; attribute vec3 aShut; attribute float aBid; attribute vec2 aStyle; uniform highp sampler2D uState;\nvarying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + STATE_VERTEX + '\nvWall = aWall; vShut = aShut; vStyle = aStyle; vState = bState.gba; vWY = (modelMatrix * vec4(transformed, 1.0)).y;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec4 vWall; varying vec3 vShut; varying float vWY;')
+      .replace('#include <common>', '#include <common>\nvarying vec4 vWall; varying vec3 vShut; varying vec2 vStyle; varying vec3 vState; varying float vWY;')
       .replace('#include <color_fragment>', `#include <color_fragment>
       if (vWall.z > 0.5) {
         float L = vWall.z, u = vWall.x, v = vWall.y, top = vWall.w;
@@ -686,30 +845,58 @@ function buildingMaterial() {
         float fy = ground > 0.5 ? v / gf : fract((v - gf) / fh);
         float n = max(1.0, floor(L / 3.4)); float cx = fract(u / (L / n)); float x = abs(cx - 0.5);
         float can = step(2.4, L) * step(0.0, v) * step(v, top - 0.7);
-        float win, frame, shut = 0.0;
-        if (ground > 0.5) {
+        float win = 0.0, frame = 0.0, shut = 0.0, iron = 0.0, awning = 0.0;
+        float gStyle = vStyle.x, wStyle = vStyle.y;
+        if (ground > 0.5 && gStyle < 0.5) {           // arcade of arches
           float ay = max((fy - 0.6) / 0.2, 0.0);
           win = step(x * x / 0.045 + ay * ay, 1.0) * step(0.02, fy) * step(fy, 0.8);
           frame = step(x * x / 0.065 + ay * ay * 0.7, 1.0) * step(fy, 0.86) * (1.0 - win);
-        } else {
-          win = step(x, 0.14) * step(0.26, fy) * step(fy, 0.8);
-          frame = step(x, 0.18) * step(0.22, fy) * step(fy, 0.84) * (1.0 - win);
-          shut = step(0.18, x) * step(x, 0.3) * step(0.26, fy) * step(fy, 0.8);
-          frame = max(frame, step(x, 0.24) * step(0.19, fy) * step(fy, 0.225)); // little balcony ledge
+        } else if (ground > 0.5 && gStyle < 1.5) {    // shopfronts with awnings
+          win = step(x, 0.42) * step(0.04, fy) * step(fy, 0.72);
+          frame = step(x, 0.46) * step(fy, 0.76) * (1.0 - win);
+          awning = step(0.76, fy) * step(fy, 0.9) * step(x, 0.48);
+        } else {                                       // upper floors (and plain ground floors)
+          float tall = wStyle > 1.5 ? 1.0 : 0.0;       // balconies get French doors
+          float lo = mix(0.26, 0.2, tall);
+          win = step(x, 0.14) * step(lo, fy) * step(fy, 0.8);
+          frame = step(x, 0.18) * step(lo - 0.04, fy) * step(fy, 0.84) * (1.0 - win);
+          if (wStyle < 0.5) shut = step(0.18, x) * step(x, 0.3) * step(lo, fy) * step(fy, 0.8);
+          frame = max(frame, step(x, 0.24) * step(0.19, fy) * step(fy, 0.225));
+          if (tall > 0.5 && ground < 0.5) {
+            frame = max(frame, step(x, 0.33) * step(0.16, fy) * step(fy, 0.2));           // balcony slab
+            iron = step(x, 0.32) * step(0.2, fy) * step(fy, 0.42) * (step(0.6, fract(u * 3.0)) + step(0.38, fy));
+          }
         }
-        win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0)));
+        win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0))); iron = min(iron, 1.0) * can; awning *= can;
         vec3 glass = mix(vec3(0.03, 0.05, 0.08), vec3(0.18, 0.27, 0.36), smoothstep(0.3, 0.8, fy));
         vec3 trim = mix(wall, vec3(1.0, 0.97, 0.92), 0.75);
         vec3 c = wall * mix(0.7, 1.0, smoothstep(-0.5, 2.0, v));                // grime at the base
         c = mix(c, trim, step(top - 0.45, v) * step(v, top) * 0.8);              // cornice band
         c = mix(c, trim, step(gf - 0.25, v) * step(v, gf) * 0.6);                // ground-floor string course
         c = mix(c, trim, frame);
-        c = mix(c, vShut, shut);
-        c = mix(c, glass, win);
+        c = mix(c, vShut, max(shut, awning * step(0.5, fract(u * 1.2))));
+        c = mix(c, mix(vShut, vec3(1.0), 0.5), awning * (1.0 - step(0.5, fract(u * 1.2))));
+        c = mix(c, glass, win * (1.0 - iron));
+        c = mix(c, vec3(0.08, 0.08, 0.09), iron);
         diffuseColor.rgb = c;
       } else if (vWall.z < -0.5) {
         diffuseColor.rgb *= 0.86 + 0.14 * smoothstep(0.0, 0.25, fract(vWY * 2.6)); // tile courses
-      }`);
+      }
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.15 + vec3(0.16, 0.11, 0.02), vState.x);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.38, 0.82), vState.y * 0.32);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.82, 0.25), vState.z * 0.55);`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.42, 0.3, 0.08) * vState.x + vec3(0.03, 0.08, 0.22) * vState.y + vec3(0.3, 0.22, 0.02) * vState.z;');
+  };
+  return m;
+}
+// Shadow pass with the same sink/lift so sunken buildings stop casting shadows.
+function buildingDepthMaterial() {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uState = world.stateUniform;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aBid; uniform highp sampler2D uState;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + STATE_VERTEX);
   };
   return m;
 }
@@ -782,7 +969,7 @@ function plantTrees({ parks, streets, paths, pave, streetAreas, sS, sBeach }) {
     if (m < 0.75 || occAt(px, pz) > 0.2) continue;
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
-    const p = coast ? 0.25 : smooth(0.42, 0.72, forest) * 0.85 + 0.04;
+    const p = coast ? 0.22 : smooth(0.5, 0.78, forest) * 0.75 + 0.015;
     if (rnd() > p) continue;
     add(coast || rnd() < 0.25 ? 'palm' : 'broad', px, pz, coast ? 0.9 + rnd() * 0.5 : 1.0 + rnd() * 0.9); wild++;
   }
@@ -840,7 +1027,7 @@ function makeCharacter() {
   return g;
 }
 
-// ─────────────────────────── collision ───────────────────────────
+// ─────────────────────────── footprints & collision ───────────────────────────
 function pointInRings(x, z, rings) {
   let inside = false;
   for (const r of rings) for (let i = 0, n = r.length, j = n - 2; i < n; j = i, i += 2) {
@@ -854,11 +1041,22 @@ function nearbyBuildings(x, z, out) {
   for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = world.bGrid.get(gkey(ix + a, iz + b)); if (l) for (const k of l) out.add(k); }
   return out;
 }
+// Building whose footprint contains (x, z), or -1
+function buildingAt(x, z, test) {
+  const G = world.GRID, l = world.bGrid.get(gkey(Math.floor(x / G) + 2000, Math.floor(z / G) + 2000));
+  if (!l) return -1;
+  for (const k of l) {
+    const b = world.buildings[k], bb = b.bbox;
+    if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || (test && !test(b))) continue;
+    if (pointInRings(x, z, b.rings)) return k;
+  }
+  return -1;
+}
 const _near = new Set();
 function groundAt(x, z, feet) {
   let g = H(x, z);
   nearbyBuildings(x, z, _near);
-  for (const k of _near) { const b = world.buildings[k]; if (b.top <= feet + 0.7 && b.top > g && pointInRings(x, z, b.rings)) g = b.top; }
+  for (const k of _near) { const b = world.buildings[k]; if (!isSunk(k) && b.top <= feet + 0.7 && b.top > g && pointInRings(x, z, b.rings)) g = b.top; }
   return g;
 }
 function collide(pos, R) {
@@ -881,31 +1079,520 @@ function collide(pos, R) {
     }
   }
 }
+// Buildings in the character's way, or between the camera and the character, sink out of sight.
+function flagSink(x, z, test, t) {
+  const G = world.GRID, l = world.bGrid.get(gkey(Math.floor(x / G) + 2000, Math.floor(z / G) + 2000));
+  if (!l) return;
+  for (const k of l) {
+    const b = world.buildings[k], bb = b.bbox;
+    if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || !test(b)) continue;
+    if (pointInRings(x, z, b.rings)) { const a = animOf(k); a.wantSink = 1; a.lastFlag = t; }
+  }
+}
+function updateSinking(t) {
+  if (player.mode !== 'walk' && player.mode !== 'fly') return;
+  const P = player.pos, feet = P.y, head = P.y + 1.5, c = camera.position;
+  const len = Math.hypot(P.x - c.x, head - c.y, P.z - c.z), n = Math.min(90, Math.ceil(len / 1.5));
+  for (let i = 0; i <= n; i++) {
+    const f = (i / n) * 0.96, x = c.x + (P.x - c.x) * f, y = c.y + (head - c.y) * f, z = c.z + (P.z - c.z) * f;
+    flagSink(x, z, (b) => y < b.top + 1.2, t);
+  }
+  const vx = player.vel.x, vz = player.vel.z, sp = Math.hypot(vx, vz), inWay = (b) => b.top > feet + 0.5;
+  flagSink(P.x, P.z, inWay, t);
+  if (sp > 0.2) {
+    const ux = vx / sp, uz = vz / sp, look = 0.7 + sp * 0.35;
+    for (const [f, side] of [[0.5, 0], [1, 0], [1, 0.45], [1, -0.45], [0.6, 0.45], [0.6, -0.45]]) flagSink(P.x + ux * look * f - uz * side, P.z + uz * look * f + ux * side, inWay, t);
+  }
+}
+
+// ─────────────────────────── saved edits (artifact db, owner-only writes) ───────────────────────────
+const store = {
+  kind: 'none', canEdit: false, buildings: new Map(), prompts: new Map(), listeners: new Set(),
+  on(fn) { this.listeners.add(fn); }, emit(what, ids) { for (const f of this.listeners) f(what, ids); },
+};
+let DB = null, SAMPLE;
+const LOCAL_KEY = 'amparacan-map-edits';
+const pending = new Map(); // "col/id" → { body, timer, inflight }
+const blankDoc = () => ({ name: '', address: '', tags: [], history: '', details: '', attrs: {}, style: {} });
+const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+async function initStore() {
+  if (!(window.claude && window.claude.use)) { // local preview: keep edits in this browser so the tools can be tried
+    store.kind = 'local'; store.canEdit = true;
+    try { const j = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}'); for (const [k, v] of Object.entries(j.buildings || {})) store.buildings.set(k, v); for (const [k, v] of Object.entries(j.prompts || {})) store.prompts.set(k, v); } catch (e) {}
+    store.emit('buildings', [...store.buildings.keys()]); store.emit('prompts'); store.emit('ready');
+    return;
+  }
+  const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+  store.canEdit = user ? !!(await user.isOwner()) : false;
+  if (!db) { store.canEdit = false; store.emit('ready'); return; }
+  DB = db; store.kind = 'db';
+  db.collection('buildings').onSnapshot((snap) => {
+    const ids = [];
+    for (const ch of snap.docChanges()) {
+      const id = ch.doc.id; if (pending.has('buildings/' + id)) continue; // our own unsaved typing wins
+      ids.push(id);
+      if (ch.type === 'removed') store.buildings.delete(id); else store.buildings.set(id, clone(ch.doc.data()));
+    }
+    if (ids.length) store.emit('buildings', ids);
+  }, (e) => console.warn('Building edits stopped syncing', e));
+  db.collection('prompts').onSnapshot((snap) => {
+    for (const ch of snap.docChanges()) {
+      const id = ch.doc.id; if (pending.has('prompts/' + id)) continue;
+      if (ch.type === 'removed') store.prompts.delete(id); else store.prompts.set(id, clone(ch.doc.data()));
+    }
+    store.emit('prompts');
+  }, (e) => console.warn('Prompts stopped syncing', e));
+  store.emit('ready');
+}
+function persistLocal() {
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ buildings: Object.fromEntries(store.buildings), prompts: Object.fromEntries(store.prompts) })); } catch (e) {}
+}
+function saveDoc(col, id, body, delay = 500) {
+  (col === 'buildings' ? store.buildings : store.prompts).set(id, body);
+  if (store.kind === 'local') { persistLocal(); return; }
+  if (store.kind !== 'db') return;
+  const path = col + '/' + id; let w = pending.get(path);
+  if (!w) pending.set(path, w = { body, timer: 0, inflight: null });
+  w.body = body; clearTimeout(w.timer); w.timer = setTimeout(() => flushDoc(path), delay);
+}
+async function flushDoc(path) {
+  const w = pending.get(path); if (!w || w.inflight) return; // one write at a time per document
+  const body = w.body, [col, id] = path.split('/');
+  w.inflight = DB.collection(col).doc(id).set(body);
+  try { await w.inflight; }
+  catch (e) { toast(e && e.code === 'quota_exceeded' ? 'The map’s edit storage is full. Remove some edits first.' : 'Couldn’t save that change. Try again in a moment.'); }
+  w.inflight = null;
+  if (w.body === body) pending.delete(path); else flushDoc(path);
+}
+function deleteDoc(col, id) {
+  (col === 'buildings' ? store.buildings : store.prompts).delete(id);
+  if (store.kind === 'local') { persistLocal(); return; }
+  if (store.kind === 'db') DB.collection(col).doc(id).delete().catch(() => toast('Couldn’t remove that. Try again.'));
+}
+function docFor(id) { return { ...blankDoc(), ...clone(store.buildings.get(id)) }; }
+function newPrompt(bId, text, status) {
+  const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), now = new Date().toISOString();
+  saveDoc('prompts', id, { bId, text, status, result: '', createdAt: now, updatedAt: now }, 0);
+  store.emit('prompts'); return id;
+}
+function patchPrompt(id, patch) { const p = store.prompts.get(id); if (!p) return; saveDoc('prompts', id, { ...p, ...patch, updatedAt: new Date().toISOString() }, 0); store.emit('prompts'); }
+
+// ─────────────────────────── instant edits (Claude inside the page) ───────────────────────────
+function cleanStyle(o) {
+  const s = {}; if (!o || typeof o !== 'object') return s;
+  for (const k of ['wall', 'shutters', 'roof']) if (typeof o[k] === 'string' && HEX.test(o[k].trim())) s[k] = o[k].trim().toLowerCase();
+  if (o.roofType === 'flat' || o.roofType === 'hip') s.roofType = o.roofType;
+  if (Number.isFinite(+o.floors) && +o.floors >= 1) s.floors = clamp(Math.round(+o.floors), 1, 40);
+  if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
+  if (o.windows in WINDOWS) s.windows = o.windows;
+  return s;
+}
+function cleanAttrs(o) {
+  const a = {}; if (!o || typeof o !== 'object') return a;
+  for (const k of ['name', 'address', 'history', 'details']) if (typeof o[k] === 'string') a[k] = o[k].slice(0, 4000);
+  if (Array.isArray(o.tags)) a.tags = [...new Set(o.tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 30);
+  return a;
+}
+function promptFor(rec, doc, text) {
+  const cur = rec.style || styleOf(rec);
+  const info = { id: rec.id, name: doc.name || null, address: doc.address || null, tags: doc.tags, details: doc.details || null,
+    footprint_m2: Math.round(rec.area), footprint_vertices: rec.nv, can_have_hipped_roof: rec.convex && rec.area < 4000,
+    current_style: { wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows } };
+  return `You restyle one building in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean. Its architecture blends Latin American colonial and Mediterranean styles (Havana, San Juan, Cartagena, Campeche, Oaxaca, Guanajuato, Querétaro, Seville, Cádiz, Granada, Barcelona, Arles, Monaco, Amalfi, Venice, Istanbul) in a vibrant, slightly storybook way.
+
+Building: ${JSON.stringify(info)}
+
+The author's request: ${JSON.stringify(text)}
+
+Style fields you may set (include only the ones that change):
+- wall: façade colour, "#rrggbb"
+- shutters: window-shutter and awning colour, "#rrggbb"
+- roof: roof colour, "#rrggbb"
+- roofType: "flat" (roof terrace behind a parapet) or "hip" (tiled hipped roof, only if can_have_hipped_roof)
+- floors: whole number 1-40
+- groundFloor: "arches" (arcade), "shopfront" (wide shop windows with striped awnings) or "plain"
+- windows: "shutters", "plain" or "balconies" (French doors with iron balconies)
+Only if the request asks for it, you may also set attributes: name, address, tags (array of strings), history, details.
+
+Reply with only JSON in this shape:
+{"style": {...}, "attributes": {...}, "summary": "one short sentence describing the change", "needsCode": "empty string, or the part of the request these fields cannot express"}`;
+}
+async function applyPrompt(pid) {
+  const p = store.prompts.get(pid), rec = p && world.byId.get(p.bId);
+  if (!rec) return false;
+  if (SAMPLE === undefined) SAMPLE = window.claude && window.claude.use ? await claude.use('sample') : null;
+  if (!SAMPLE) { toast('Instant edits run in the published map. This prompt stays in your batch.'); return false; }
+  patchPrompt(pid, { status: 'applying' });
+  try {
+    const doc = docFor(rec.id), r = await SAMPLE.json(promptFor(rec, doc, p.text), { modelTier: 'default' });
+    const style = cleanStyle(r && r.style), attrs = cleanAttrs(r && r.attributes);
+    const next = { ...doc, ...attrs, style: { ...doc.style, ...style }, updatedAt: new Date().toISOString() };
+    saveDoc('buildings', rec.id, next, 0); store.emit('buildings', [rec.id]);
+    const needs = String((r && r.needsCode) || '').trim();
+    patchPrompt(pid, { status: 'applied', result: String((r && r.summary) || 'Applied').slice(0, 300) + (needs ? ' · Sent the rest to Claude Code.' : '') });
+    if (needs) newPrompt(rec.id, `${p.text}\n\nStill needed: ${needs}`, 'queued');
+    const a = animOf(rec.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400);
+    return true;
+  } catch (e) {
+    const msg = { not_granted: 'Claude access wasn’t allowed for this map, so the prompt stays in your batch.', rate_limited: 'Too many requests at once. Wait a moment and try again.', invalid_json: 'Claude’s answer couldn’t be read. Try rephrasing the prompt.' }[e && e.code] || 'That edit didn’t go through. Try again.';
+    patchPrompt(pid, { status: e && e.code === 'not_granted' ? 'draft' : 'failed', result: msg }); toast(msg);
+    return false;
+  }
+}
+
+// ─────────────────────────── selection, hover, info panel ───────────────────────────
+const ui = { hover: -1, selected: -1, editing: false, trayOpen: false };
+function el(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : v); }
+  for (const c of kids.flat(Infinity)) if (c !== null && c !== undefined && c !== false) e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return e;
+}
+let toastTimer = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3600); }
+function setHover(idx) {
+  if (idx === ui.hover) return;
+  if (ui.hover >= 0) animOf(ui.hover).wantHover = 0;
+  ui.hover = idx; if (idx >= 0) animOf(idx).wantHover = 1;
+  canvas.classList.toggle('pointing', idx >= 0); plan.canvas.classList.toggle('pointing', idx >= 0);
+  if (ui.selected < 0) renderInfo();
+  plan.invalidate();
+}
+function select(idx, { edit = false, focusPrompt = false } = {}) {
+  if (ui.selected >= 0 && ui.selected !== idx) animOf(ui.selected).wantSel = 0;
+  ui.selected = idx; ui.editing = edit && store.canEdit;
+  if (idx >= 0) animOf(idx).wantSel = 1;
+  renderInfo(); plan.invalidate(); if (ui.trayOpen) renderTray();
+  try { history.replaceState(null, '', idx >= 0 ? '#' + world.buildings[idx].id : location.pathname + location.search); } catch (e) {}
+  if (focusPrompt) setTimeout(() => { const t = $('prompt-text'); if (t) t.focus(); }, 0);
+}
+function facts(rec) {
+  const s = rec.style || styleOf(rec);
+  return `${s.floors} floor${s.floors > 1 ? 's' : ''} · ${(rec.top - rec.base).toFixed(1)} m · ${Math.round(rec.area).toLocaleString()} m²`;
+}
+function renderInfo() {
+  const box = $('info'), idx = ui.selected >= 0 ? ui.selected : ui.hover;
+  if (idx < 0) { box.hidden = true; box.replaceChildren(); return; }
+  const rec = world.buildings[idx], doc = docFor(rec.id), pinned = ui.selected >= 0;
+  box.dataset.pinned = String(pinned); box.hidden = false;
+  const title = el('h3', {}, doc.name || 'Unnamed building');
+  const head = el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, `Building · ${rec.id}`), title, el('div', { class: 'facts' }, facts(rec))),
+    pinned ? el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => select(-1) }, '×') : null);
+  const kids = [head];
+  if (!pinned) {
+    if (doc.address) kids.push(el('div', {}, doc.address));
+    if (doc.tags.length) kids.push(el('div', { class: 'chips' }, doc.tags.map((t) => el('span', { class: 'chip' }, t))));
+    if (doc.details) kids.push(el('div', { class: 'hint' }, doc.details.length > 160 ? doc.details.slice(0, 160) + '…' : doc.details));
+    kids.push(el('div', { class: 'hint' }, store.canEdit ? 'Click to open it, add details or restyle it.' : 'Click for details.'));
+  } else if (ui.editing) {
+    kids.push(editForm(rec, title));
+  } else {
+    const rows = [];
+    if (doc.address) rows.push(['Address', doc.address]);
+    if (doc.tags.length) rows.push(['Tags', el('div', { class: 'chips' }, doc.tags.map((t) => el('span', { class: 'chip' }, t)))]);
+    if (doc.history) rows.push(['History', doc.history]);
+    if (doc.details) rows.push(['Details', doc.details]);
+    for (const [k, v] of Object.entries(doc.attrs || {})) if (k) rows.push([k, String(v)]);
+    kids.push(rows.length ? el('dl', {}, rows.map(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])) : el('div', { class: 'hint' }, store.canEdit ? 'No details yet.' : 'No details recorded for this building yet.'));
+    if (store.canEdit) {
+      const hasStyle = Object.keys(doc.style || {}).length > 0;
+      kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => { ui.editing = true; renderInfo(); } }, 'Edit details'),
+        hasStyle ? el('button', { class: 'btn small', type: 'button', onclick: () => resetLook(rec) }, 'Reset look') : null));
+      kids.push(el('hr', { class: 'sep' }), promptBox(rec));
+    }
+  }
+  box.replaceChildren(...kids);
+  renderPromptHistory();
+}
+function resetLook(rec) { const d = docFor(rec.id); d.style = {}; d.updatedAt = new Date().toISOString(); saveDoc('buildings', rec.id, d, 0); store.emit('buildings', [rec.id]); toast('Back to the generated look.'); }
+function editForm(rec, title) {
+  const doc = docFor(rec.id);
+  const form = el('form', { class: 'field', style: 'gap:10px', onsubmit: (e) => e.preventDefault() });
+  const field = (id, label, value, multi) => el('div', { class: 'field' }, el('label', { for: id }, label),
+    multi ? el('textarea', { id, rows: 3 }, value) : el('input', { id, type: 'text', value }));
+  const kvBox = el('div', { class: 'field', style: 'gap:6px' });
+  const save = () => {
+    const d = docFor(rec.id);
+    d.name = $('f-name').value.trim(); d.address = $('f-address').value.trim();
+    d.tags = [...new Set($('f-tags').value.split(',').map((t) => t.trim()).filter(Boolean))].slice(0, 30);
+    d.history = $('f-history').value; d.details = $('f-details').value;
+    d.attrs = {}; for (const row of kvBox.querySelectorAll('.kv')) { const [ki, vi] = row.querySelectorAll('input'); const k = ki.value.trim(); if (k) d.attrs[k] = vi.value; }
+    d.updatedAt = new Date().toISOString();
+    saveDoc('buildings', rec.id, d); $('f-status').textContent = store.kind === 'db' ? 'Saving…' : 'Saved in this browser';
+    title.textContent = d.name || 'Unnamed building';
+    clearTimeout(form._t); form._t = setTimeout(() => { const st = $('f-status'); if (st) st.textContent = 'Saved'; if (ui.trayOpen) renderTray(); plan.invalidate(true); }, 900);
+  };
+  const addKV = (k = '', v = '') => {
+    const row = el('div', { class: 'kv' }, el('input', { type: 'text', placeholder: 'Attribute', value: k, 'aria-label': 'Attribute name', maxlength: 40 }),
+      el('input', { type: 'text', placeholder: 'Value', value: v, 'aria-label': 'Attribute value' }),
+      el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove attribute', onclick: () => { row.remove(); save(); } }, '×'));
+    kvBox.append(row);
+  };
+  for (const [k, v] of Object.entries(doc.attrs || {})) addKV(k, String(v));
+  form.append(field('f-name', 'Name', doc.name), field('f-address', 'Street address', doc.address),
+    field('f-tags', 'Tags (comma separated)', doc.tags.join(', ')), field('f-history', 'History', doc.history, true), field('f-details', 'Details', doc.details, true),
+    el('div', { class: 'field' }, el('label', {}, 'More attributes'), kvBox, el('button', { class: 'btn link', type: 'button', onclick: () => { addKV(); kvBox.lastChild.querySelector('input').focus(); } }, '+ Add attribute')),
+    el('div', { class: 'row' }, el('button', { class: 'btn primary small', type: 'button', onclick: () => { ui.editing = false; renderInfo(); } }, 'Done'), el('span', { class: 'status', id: 'f-status' })));
+  form.addEventListener('input', save);
+  return form;
+}
+function promptBox(rec) {
+  return el('div', { class: 'field', style: 'gap:8px' },
+    el('label', { for: 'prompt-text' }, 'Change this building'),
+    el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'e.g. Make it a pink Havana townhouse with an arcade, green shutters and a tiled roof' }),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn primary small', type: 'button', onclick: () => submitPrompt(rec, 'now') }, 'Apply now'),
+      el('button', { class: 'btn small', type: 'button', onclick: () => submitPrompt(rec, 'batch') }, 'Add to batch')),
+    el('div', { class: 'plist', id: 'info-prompts' }));
+}
+async function submitPrompt(rec, how) {
+  const t = $('prompt-text'), text = t.value.trim(); if (!text) { t.focus(); return; }
+  t.value = '';
+  const id = newPrompt(rec.id, text, 'draft');
+  if (how === 'now') await applyPrompt(id); else toast('Added to your batch.');
+}
+const STATUS_LABEL = { draft: 'In batch', queued: 'Sent to Claude Code', applying: 'Applying…', applied: 'Applied', done: 'Done by Claude Code', failed: 'Didn’t apply' };
+function promptItem(id, p, withWho) {
+  const rec = world.byId.get(p.bId), doc = rec ? docFor(rec.id) : null;
+  return el('div', { class: 'pitem' },
+    el('div', { class: 'row', style: 'justify-content:space-between' },
+      withWho ? el('button', { class: 'btn link who', type: 'button', onclick: () => rec && focusBuilding(rec.idx) }, (doc && doc.name) || (rec ? `Building ${rec.id}` : `Missing building ${p.bId}`)) : el('span'),
+      el('span', { class: 'pill ' + p.status }, STATUS_LABEL[p.status] || p.status)),
+    el('div', { class: 'txt' }, p.text),
+    p.result ? el('div', { class: 'hint' }, p.result) : null,
+    store.canEdit && (p.status === 'draft' || p.status === 'failed') ? el('div', { class: 'row' },
+      el('button', { class: 'btn small', type: 'button', onclick: () => applyPrompt(id) }, 'Apply now'),
+      el('button', { class: 'btn small', type: 'button', onclick: () => { deleteDoc('prompts', id); store.emit('prompts'); } }, 'Remove')) : null);
+}
+function renderPromptHistory() {
+  const list = $('info-prompts'); if (!list || ui.selected < 0) return;
+  const id = world.buildings[ui.selected].id;
+  const items = [...store.prompts].filter(([, p]) => p.bId === id).sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || '')).slice(0, 4);
+  list.replaceChildren(...items.map(([pid, p]) => promptItem(pid, p, false)));
+}
+function focusBuilding(idx) {
+  const r = world.buildings[idx];
+  select(idx);
+  if (player.mode === 'plan') { plan.cx = r.cx; plan.cz = r.cz; plan.scale = Math.max(plan.scale, 1.2); plan.invalidate(); return; }
+  if (player.mode !== 'map') setMode('map');
+  tweenCamera(new THREE.Vector3(r.cx + 60, r.top + 160, r.cz + 200), new THREE.Vector3(r.cx, r.base + 6, r.cz), 1.6);
+}
+
+// ─────────────────────────── edits tray (batch, history, orphans, export) ───────────────────────────
+function renderTray() {
+  const drafts = [], queued = [], recent = [];
+  for (const [id, p] of store.prompts) (p.status === 'draft' || p.status === 'applying' ? drafts : p.status === 'queued' ? queued : recent).push([id, p]);
+  const byNew = (a, b) => (b[1].updatedAt || '').localeCompare(a[1].updatedAt || '');
+  drafts.sort(byNew); queued.sort(byNew); recent.sort(byNew);
+  $('edits-count').textContent = String(drafts.length + queued.length);
+  $('edits-btn').hidden = !store.canEdit;
+  if (!ui.trayOpen) return;
+  const named = [...store.buildings].filter(([id, d]) => world.byId.has(id) && (d.name || (d.tags || []).length || Object.keys(d.style || {}).length));
+  const orphans = [...store.buildings].filter(([id]) => !world.byId.has(id));
+  $('tray').replaceChildren(...[
+    el('div', { class: 'row', style: 'justify-content:space-between' }, el('h4', {}, 'Batch'), el('button', { class: 'btn link', type: 'button', onclick: toggleTray }, 'Close')),
+    drafts.length ? el('div', { class: 'plist' }, drafts.map(([id, p]) => promptItem(id, p, true))) : el('div', { class: 'hint' }, 'Select a building and choose “Add to batch” to collect prompts here.'),
+    drafts.length ? el('div', { class: 'row' },
+      el('button', { class: 'btn primary small', type: 'button', onclick: async (e) => { e.target.disabled = true; for (const [id] of drafts) { if (!(await applyPrompt(id)) && !SAMPLE) break; } } }, `Apply all ${drafts.length} now`),
+      el('button', { class: 'btn small', type: 'button', onclick: () => { for (const [id] of drafts) patchPrompt(id, { status: 'queued' }); toast(`Sent ${drafts.length} prompt${drafts.length > 1 ? 's' : ''} to Claude Code.`); } }, 'Send to Claude Code')) : null,
+    queued.length ? el('h4', {}, `Waiting for Claude Code · ${queued.length}`) : null,
+    queued.length ? el('div', { class: 'plist' }, queued.map(([id, p]) => promptItem(id, p, true))) : null,
+    queued.length ? el('div', { class: 'hint' }, 'Ask Claude Code to “process the map batch”. It makes these changes, then marks them done.') : null,
+    named.length ? el('h4', {}, `Edited buildings · ${named.length}`) : null,
+    named.length ? el('div', { class: 'chips' }, named.slice(0, 60).map(([id, d]) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', onclick: () => focusBuilding(world.byId.get(id).idx) }, d.name || id))) : null,
+    orphans.length ? el('h4', {}, `Edits without a building · ${orphans.length}`) : null,
+    orphans.length ? el('div', { class: 'hint' }, 'These buildings were removed or redrawn in Illustrator and couldn’t be matched. Their details are kept: select a building and choose “Move here” to reattach them.') : null,
+    orphans.length ? el('div', { class: 'plist' }, orphans.map(([id, d]) => el('div', { class: 'pitem' }, el('div', { class: 'who' }, d.name || id),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn small', type: 'button', disabled: ui.selected < 0, onclick: () => reattach(id) }, 'Move here'),
+        el('button', { class: 'btn small', type: 'button', onclick: () => { deleteDoc('buildings', id); renderTray(); } }, 'Discard'))))) : null,
+    recent.length ? el('h4', {}, 'Recent') : null,
+    recent.length ? el('div', { class: 'plist' }, recent.slice(0, 8).map(([id, p]) => promptItem(id, p, true))) : null,
+    el('hr', { class: 'sep' }),
+    el('h4', {}, 'Illustrator'),
+    el('div', { class: 'hint' }, 'Keep editing your original .ai file and give it to Claude Code to re-import. Buildings keep their ids, so these edits stay attached. The SVG export is for reference and new layers; each building is named by its id.'),
+    el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: exportSVG }, 'Export map as SVG'))].filter(Boolean));
+}
+function toggleTray() { ui.trayOpen = !ui.trayOpen; $('tray').hidden = !ui.trayOpen; document.body.classList.toggle('tray-open', ui.trayOpen); $('edits-btn').setAttribute('aria-expanded', String(ui.trayOpen)); renderTray(); }
+function reattach(oldId) {
+  if (ui.selected < 0) return;
+  const rec = world.buildings[ui.selected], d = store.buildings.get(oldId);
+  saveDoc('buildings', rec.id, { ...docFor(rec.id), ...clone(d), updatedAt: new Date().toISOString() }, 0); deleteDoc('buildings', oldId);
+  for (const [pid, p] of store.prompts) if (p.bId === oldId) patchPrompt(pid, { bId: rec.id });
+  store.emit('buildings', [rec.id]); toast('Details moved to this building.');
+}
+
+// ─────────────────────────── export for Illustrator ───────────────────────────
+function exportSVG() {
+  const L = world.layers, f = (v) => (Math.round(v * 100) / 100).toString();
+  const pt = (x, z) => f(x / 5 + 1750) + ' ' + f(z / 5 + 1750);
+  const ringD = (r, close = true) => { let d = 'M' + pt(r[0], r[1]); for (let i = 2; i < r.length; i += 2) d += 'L' + pt(r[i], r[i + 1]); return d + (close ? 'Z' : ''); };
+  const polyD = (rings) => rings.map((r) => ringD(r)).join('');
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<!-- Amparacán map export. 1pt = 5m. Building paths are named by their stable id. -->',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="3500pt" height="3500pt" viewBox="0 0 3500 3500">',
+    '<g id="Seas"><rect width="3500" height="3500" fill="#afe8dd"/></g>'];
+  const polys = (id, list, fill) => { out.push(`<g id="${id}">`); for (const p of list) out.push(`<path d="${polyD(p)}" fill="${fill}" fill-rule="evenodd"/>`); out.push('</g>'); };
+  const lines = (id, list, stroke, scale = 1) => { out.push(`<g id="${id}" fill="none" stroke="${stroke}" stroke-linecap="round" stroke-linejoin="round">`); for (const l of list) out.push(`<path d="${ringD(l.pts, false)}" stroke-width="${f(l.w / 5 * scale)}"/>`); out.push('</g>'); };
+  polys('Island', L.land, '#d8ffd3'); polys('Water', L.water, '#afe8dd'); polys('Parks', L.parks, '#8fd78e'); polys('Pavement', L.pave, '#bebca5');
+  lines('Canals', L.canals, '#afe8dd'); lines('Streets', L.streets, '#4f5b5e'); lines('Paths', L.paths, '#4f5b5e'); lines('Beaches', L.beaches, '#000000', 0.01);
+  out.push('<g id="Built">');
+  for (const b of world.buildings) {
+    const d = store.buildings.get(b.id), name = d && d.name;
+    out.push(`<path id="${b.id}" d="${polyD(b.rings)}" fill="${d && d.style && HEX.test(d.style.wall || '') ? d.style.wall : '#c8597f'}" fill-rule="evenodd">${name ? `<title>${esc(name)}</title>` : ''}</path>`);
+  }
+  out.push('</g></svg>');
+  saveFile('amparacan-map.svg', out.join('\n'), 'image/svg+xml');
+}
+async function saveFile(name, text, type) {
+  if (window.claude && window.claude.use) {
+    const dl = await claude.use('downloads');
+    if (!dl) { toast('Downloads aren’t available in this view.'); return; }
+    try { await dl.save({ filename: name, data: text }); } catch (e) { if (e && e.code !== 'declined') toast('Couldn’t save the file. Try again.'); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+// ─────────────────────────── 2D plan view ───────────────────────────
+const plan = {
+  active: false, canvas: $('plan'), ctx: null, cx: 0, cz: 0, scale: 0.3, need: true, bldDirty: true, paths: null,
+  invalidate(geom) { this.need = true; if (geom) this.bldDirty = true; },
+};
+function addRings(p, rings) { for (const r of rings) { p.moveTo(r[0], r[1]); for (let i = 2; i < r.length; i += 2) p.lineTo(r[i], r[i + 1]); p.closePath(); } return p; }
+function ringPath(rings) { return addRings(new Path2D(), rings); }
+function initPlan() {
+  const L = world.layers, P = (list) => { const p = new Path2D(); for (const poly of list) addRings(p, poly); return p; };
+  const byWidth = (list) => { const m = new Map(); for (const l of list) { const w = Math.round(l.w * 2) / 2; let p = m.get(w); if (!p) m.set(w, p = new Path2D()); p.moveTo(l.pts[0], l.pts[1]); for (let i = 2; i < l.pts.length; i += 2) p.lineTo(l.pts[i], l.pts[i + 1]); } return m; };
+  plan.paths = { land: P(L.land), water: P(L.water), parks: P(L.parks), pave: P(L.pave), streetAreas: P(L.streetAreas),
+    streets: byWidth(L.streets.filter((l) => !l.kind)), kerbs: byWidth(L.streets.filter((l) => l.kind)), foot: byWidth(L.paths.filter((l) => !l.kind)),
+    trails: byWidth(L.paths.filter((l) => l.kind)), canals: byWidth(L.canals), beaches: byWidth(L.beaches) };
+  plan.ctx = plan.canvas.getContext('2d');
+}
+function planBuildings() {
+  // default-styled buildings share one Path2D per tile; edited or named ones are drawn in their own colour
+  plan.tiles = new Map(); plan.custom = [];
+  for (const [tk, list] of world.tileList) {
+    const p = new Path2D(); let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const idx of list) {
+      const b = world.buildings[idx], d = store.buildings.get(b.id);
+      x0 = Math.min(x0, b.bbox[0]); z0 = Math.min(z0, b.bbox[1]); x1 = Math.max(x1, b.bbox[2]); z1 = Math.max(z1, b.bbox[3]);
+      if (d && ((d.style && HEX.test(d.style.wall || '')) || d.name)) { plan.custom.push(idx); continue; }
+      addRings(p, b.rings);
+    }
+    plan.tiles.set(tk, { p, bb: [x0, z0, x1, z1] });
+  }
+  plan.bldDirty = false;
+}
+function drawPlan() {
+  const c = plan.canvas, dpr = Math.min(devicePixelRatio, 2), w = innerWidth, h = innerHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  if (plan.bldDirty) planBuildings();
+  const g = plan.ctx, s = plan.scale, px = 1 / s, P = plan.paths;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#a9d9e3'; g.fillRect(0, 0, w, h);
+  g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (w / 2 - plan.cx * s), dpr * (h / 2 - plan.cz * s));
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.fillStyle = '#e4f2d8'; g.fill(P.land, 'evenodd');
+  g.fillStyle = '#a9d9e3'; g.fill(P.water, 'evenodd');
+  g.strokeStyle = '#a9d9e3'; for (const [lw, p] of P.canals) { g.lineWidth = lw; g.stroke(p); }
+  g.strokeStyle = '#efe0b0'; for (const [lw, p] of P.beaches) { g.lineWidth = Math.max(lw, 2 * px); g.stroke(p); }
+  g.fillStyle = '#ece3cf'; g.fill(P.pave, 'evenodd');
+  g.fillStyle = '#9fd38c'; g.fill(P.parks, 'evenodd');
+  g.fillStyle = '#c9c0b0'; g.fill(P.streetAreas, 'evenodd');
+  g.strokeStyle = '#c2b8a6'; for (const [lw, p] of P.streets) { g.lineWidth = lw + 1.2 * px; g.stroke(p); }
+  g.strokeStyle = '#fbf8f0'; for (const [lw, p] of P.streets) { g.lineWidth = lw; g.stroke(p); }
+  g.strokeStyle = '#e6dcc4'; for (const [lw, p] of P.kerbs) { g.lineWidth = lw; g.stroke(p); }
+  g.strokeStyle = '#efe6d2'; for (const [lw, p] of P.foot) { g.lineWidth = lw; g.stroke(p); }
+  g.strokeStyle = '#b99d74'; g.setLineDash([3 * px, 3 * px]); for (const [lw, p] of P.trails) { g.lineWidth = Math.max(lw, 1.2 * px); g.stroke(p); } g.setLineDash([]);
+  // buildings, culled by tile
+  const vx0 = plan.cx - w / 2 * px, vx1 = plan.cx + w / 2 * px, vz0 = plan.cz - h / 2 * px, vz1 = plan.cz + h / 2 * px;
+  const vis = (bb) => bb[2] > vx0 && bb[0] < vx1 && bb[3] > vz0 && bb[1] < vz1;
+  g.fillStyle = '#d4707d';
+  for (const { p, bb } of plan.tiles.values()) if (vis(bb)) g.fill(p, 'evenodd');
+  if (s > 0.9) { g.strokeStyle = 'rgba(66,20,33,.45)'; g.lineWidth = 0.6 * px; for (const { p, bb } of plan.tiles.values()) if (vis(bb)) g.stroke(p); }
+  for (const idx of plan.custom) { const b = world.buildings[idx]; if (!vis(b.bbox)) continue; const p = ringPath(b.rings), st = b.style || styleOf(b); g.fillStyle = st.wall; g.fill(p, 'evenodd'); g.strokeStyle = 'rgba(18,50,63,.55)'; g.lineWidth = 1 * px; g.stroke(p); }
+  for (const [idx, col, lw] of [[ui.hover, '#e9a21b', 2.5], [ui.selected, '#1f57a8', 3.5]]) if (idx >= 0) {
+    const p = ringPath(world.buildings[idx].rings); g.fillStyle = 'rgba(255,255,255,.35)'; g.fill(p, 'evenodd'); g.strokeStyle = col; g.lineWidth = lw * px; g.stroke(p);
+  }
+  for (const idx of marked) { const p = ringPath(world.buildings[idx].rings); g.fillStyle = 'rgba(255,211,77,.85)'; g.fill(p, 'evenodd'); }
+  // labels for named buildings
+  if (s > 0.45) {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.font = '600 12px Figtree, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const [id, d] of store.buildings) {
+      const b = world.byId.get(id); if (!b || !d.name) continue;
+      const sx = (b.cx - plan.cx) * s + w / 2, sy = (b.cz - plan.cz) * s + h / 2; if (sx < -100 || sx > w + 100 || sy < -20 || sy > h + 20) continue;
+      g.lineWidth = 3; g.strokeStyle = 'rgba(251,248,240,.9)'; g.strokeText(d.name, sx, sy); g.fillStyle = '#12323f'; g.fillText(d.name, sx, sy);
+    }
+  }
+  plan.need = false;
+}
+const planWorld = (sx, sy) => [plan.cx + (sx - innerWidth / 2) / plan.scale, plan.cz + (sy - innerHeight / 2) / plan.scale];
+function initPlanInput() {
+  const c = plan.canvas; let drag = null;
+  c.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; c.setPointerCapture(e.pointerId); });
+  c.addEventListener('pointermove', (e) => {
+    if (drag && e.pointerId === drag.id) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (drag.moved || Math.hypot(dx, dy) > 4) { drag.moved = true; c.classList.add('dragging'); plan.cx -= dx / plan.scale; plan.cz -= dy / plan.scale; drag.x = e.clientX; drag.y = e.clientY; plan.invalidate(); }
+      return;
+    }
+    const [x, z] = planWorld(e.clientX, e.clientY); setHover(buildingAt(x, z));
+  });
+  c.addEventListener('pointerup', (e) => {
+    c.classList.remove('dragging');
+    if (drag && !drag.moved) { const [x, z] = planWorld(e.clientX, e.clientY); select(buildingAt(x, z)); }
+    drag = null;
+  });
+  c.addEventListener('pointerleave', (e) => { if (e.relatedTarget !== $('edit-pill')) setHover(-1); });
+  c.addEventListener('wheel', (e) => {
+    e.preventDefault(); const [x, z] = planWorld(e.clientX, e.clientY);
+    plan.scale = clamp(plan.scale * Math.exp(-e.deltaY * 0.0015), 0.03, 12);
+    plan.cx = x - (e.clientX - innerWidth / 2) / plan.scale; plan.cz = z - (e.clientY - innerHeight / 2) / plan.scale; plan.invalidate();
+  }, { passive: false });
+  c.addEventListener('dblclick', (e) => { const [x, z] = planWorld(e.clientX, e.clientY); dropIn(x, z); });
+}
 
 // ─────────────────────────── controls ───────────────────────────
 const keys = new Set();
 const player = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), vy: 0, yaw: 0, onGround: true, mode: 'map', walkPhase: 0 };
-const cam = { yaw: 0, pitch: 0.32, dist: 9, target: new THREE.Vector3() };
+const cam = { pitch: 0.42, dist: 11 };     // no yaw: the camera always looks north
 let character, controls, tween = null;
 const joy = { x: 0, y: 0, active: false }, pad = { up: false, down: false };
 
 function setMode(mode) {
-  const prev = player.mode; player.mode = mode;
-  for (const m of ['walk', 'fly', 'map']) $('mode-' + m).setAttribute('aria-pressed', String(m === mode));
+  const prev = player.mode; if (prev === mode) return;
+  player.mode = mode;
+  for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).setAttribute('aria-pressed', String(m === mode));
   character.userData.wing.visible = mode === 'fly';
   controls.enabled = mode === 'map';
   const touch = matchMedia('(pointer: coarse)').matches;
-  $('joy').hidden = !(touch && mode !== 'map'); $('fly-pad').hidden = !(touch && mode === 'fly');
+  $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
+  plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
+  setHover(-1);
+  if (mode === 'plan') {
+    const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
+    plan.scale = prev === 'map' ? clamp(innerHeight / (camera.position.distanceTo(controls.target) * 1.1), 0.03, 12) : 2;
+    plan.invalidate(); plan.canvas.focus(); return;
+  }
+  if (prev === 'plan' && mode === 'map') { // come back to 3D over the spot the plan was showing
+    const d = clamp(innerHeight / plan.scale, 150, 20000);
+    controls.target.set(plan.cx, 0, plan.cz); camera.position.set(plan.cx, d * 0.75, plan.cz + d * 0.6); controls.update(); tween = null; return;
+  }
   if (mode === 'map') {
     controls.target.copy(player.pos); controls.update();
-    if (prev !== 'map') { tweenCamera(player.pos.clone().add(new THREE.Vector3(0, 1100, 900)), player.pos.clone(), 1.6); }
-  } else if (prev === 'map') {
-    const from = camera.position.clone(); cam.yaw = Math.atan2(from.x - player.pos.x, from.z - player.pos.z); cam.dist = mode === 'fly' ? 26 : 9; cam.pitch = mode === 'fly' ? 0.35 : 0.3;
-    tween = { t: 0, dur: 2.2, fromPos: from, fromTarget: controls.target.clone() };
+    tweenCamera(player.pos.clone().add(new THREE.Vector3(0, 1100, 900)), player.pos.clone(), 1.6);
+  } else if (prev === 'map' || prev === 'plan') {
+    cam.dist = mode === 'fly' ? 28 : 11; cam.pitch = mode === 'fly' ? 0.4 : 0.42;
+    tween = prev === 'plan' ? null : { t: 0, dur: 2.2, fromPos: camera.position.clone(), fromTarget: controls.target.clone() };
   }
   if (mode === 'fly' && prev === 'walk') player.vy = 8;
 }
 function tweenCamera(toPos, toTarget, dur) { tween = { t: 0, dur, fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos, toTarget, map: true }; }
+function dropIn(x, z) {
+  player.pos.set(x, 0, z); collide(player.pos, 0.4); player.pos.y = groundAt(player.pos.x, player.pos.z, 999); player.vy = 0;
+  $('intro').hidden = true; setMode('walk'); tween = null;
+}
 
 function spawnPoint() {
   // Heart of the densest neighbourhood, on the nearest street
@@ -920,40 +1607,56 @@ function spawnPoint() {
   const p = new THREE.Vector3(bx, 0, bz); collide(p, 0.4); p.y = H(p.x, p.z); return p;
 }
 
+// 3D picking (BVH-accelerated); sunk buildings are skipped
+const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+function pick3D(sx, sy) {
+  _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
+  const hits = raycaster.intersectObjects([...world.tileMeshes.values()], false);
+  for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return idx; }
+  return -1;
+}
+
 function initControls() {
   controls = new MapControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.08; controls.screenSpacePanning = false;
   controls.minDistance = 30; controls.maxDistance = 22000; controls.maxPolarAngle = Math.PI * 0.47; controls.zoomSpeed = 1.2;
   addEventListener('keydown', (e) => {
-    if (e.target.closest && e.target.closest('input, textarea')) return;
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
-    if (k === 'f' && player.mode !== 'map') setMode(player.mode === 'fly' ? 'walk' : 'fly');
-    else if (k === 'f' && player.mode === 'map') setMode('fly');
+    if (k === 'escape') { if (ui.trayOpen) toggleTray(); else select(-1); }
+    if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
+    if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
     if (k === 'h') toggleHelp();
-    if (player.mode !== 'map' && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+    if ((player.mode === 'walk' || player.mode === 'fly') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
     if (k === ' ' && player.mode === 'walk' && player.onGround) { player.vy = 6.2; player.onGround = false; }
     if (!$('intro').hidden && ['w', 'a', 's', 'd', 'arrowup'].includes(k) && player.mode === 'map') startExploring('walk');
   });
   addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   addEventListener('blur', () => keys.clear());
-  // drag to look (walk/fly)
-  let drag = null;
-  canvas.addEventListener('pointerdown', (e) => { if (player.mode === 'map') return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; canvas.setPointerCapture(e.pointerId); });
+  // drag tilts the camera (walk/fly); a click without dragging selects a building
+  let drag = null, lastPick = 0, pickTimer = 0;
+  canvas.addEventListener('pointerdown', (e) => { drag = { y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, moved: false }; if (player.mode !== 'map') canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    cam.yaw -= (e.clientX - drag.x) * 0.005; cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.35, 1.45);
-    drag.x = e.clientX; drag.y = e.clientY;
+    if (drag && e.pointerId === drag.id) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) drag.moved = true;
+      if (player.mode !== 'map') { cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.2, 1.45); drag.y = e.clientY; }
+      return;
+    }
+    const run = () => { lastPick = performance.now(); setHover(pick3D(e.clientX, e.clientY)); };
+    clearTimeout(pickTimer); if (performance.now() - lastPick > 50) run(); else pickTimer = setTimeout(run, 50);
   });
-  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) select(pick3D(e.clientX, e.clientY)); drag = null; });
+  canvas.addEventListener('pointerleave', (e) => { clearTimeout(pickTimer); if (e.relatedTarget !== $('edit-pill')) setHover(-1); });
   canvas.addEventListener('wheel', (e) => { if (player.mode === 'map') return; e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 2.5, 600); }, { passive: false });
   canvas.addEventListener('dblclick', (e) => {
     if (player.mode !== 'map') return;
-    const r = new THREE.Raycaster(); r.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hit = new THREE.Vector3(); if (!r.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) return;
-    player.pos.set(hit.x, 0, hit.z); collide(player.pos, 0.4); player.pos.y = groundAt(player.pos.x, player.pos.z, 999); player.vy = 0;
-    $('intro').hidden = true; setMode('walk');
+    raycaster.setFromCamera(_ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
+  $('edit-pill').addEventListener('click', () => { if (ui.hover >= 0) select(ui.hover, { focusPrompt: true }); });
+  $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(-1); });
+  $('edits-btn').addEventListener('click', toggleTray);
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
@@ -961,40 +1664,46 @@ function initControls() {
   J.addEventListener('pointerup', () => { joy.active = false; joy.x = joy.y = 0; knob.style.transform = ''; });
   function moveJoy(e) { const r = J.getBoundingClientRect(); let x = (e.clientX - r.left) / r.width * 2 - 1, y = (e.clientY - r.top) / r.height * 2 - 1; const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } joy.x = x; joy.y = y; knob.style.transform = `translate(${x * 40}px, ${y * 40}px)`; }
   for (const [id, key] of [['pad-up', 'up'], ['pad-down', 'down']]) { $(id).addEventListener('pointerdown', () => { pad[key] = true; }); $(id).addEventListener('pointerup', () => { pad[key] = false; }); $(id).addEventListener('pointerleave', () => { pad[key] = false; }); }
-  for (const m of ['walk', 'fly', 'map']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
+  for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
   $('help-toggle').addEventListener('click', toggleHelp);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
   $('start-fly').addEventListener('click', () => startExploring('fly'));
   $('stay-map').addEventListener('click', () => { $('intro').hidden = true; });
+  initPlanInput();
 }
 function toggleHelp() { const h = $('help'), c = h.dataset.collapsed !== 'true'; h.dataset.collapsed = String(c); $('help-toggle').setAttribute('aria-expanded', String(!c)); try { localStorage.setItem('amparacan-map-help', c ? '1' : '0'); } catch (e) {} }
 function startExploring(mode) { $('intro').hidden = true; setMode(mode); canvas.focus(); }
 
 // ─────────────────────────── per-frame update ───────────────────────────
 const hud = { get needle() { return this._n || (this._n = $('needle')); }, get readout() { return this._r || (this._r = $('readout')); } };
-const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _move = new THREE.Vector3(), _desired = new THREE.Vector3(), _look = new THREE.Vector3();
+const _move = new THREE.Vector3(), _desired = new THREE.Vector3(), _look = new THREE.Vector3(), _proj = new THREE.Vector3(), _want = new THREE.Vector3(), _tg = new THREE.Vector3();
 function update(dt, t) {
   const k = (...ks) => ks.some((x) => keys.has(x));
+  if (player.mode === 'plan') {
+    stepAnim(dt, t);
+    if (plan.need) drawPlan();
+    placePill();
+    const ew = plan.cx / 1000, ns = -plan.cz / 1000;
+    hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · 1 px = ${(1 / plan.scale).toFixed(1)} m`;
+    return false;
+  }
   if (player.mode !== 'map') {
+    // compass movement: W/↑ north, S/↓ south, A/← west, D/→ east
     const ix = (k('d', 'arrowright') ? 1 : 0) - (k('a', 'arrowleft') ? 1 : 0) + joy.x;
-    const iz = (k('w', 'arrowup') ? 1 : 0) - (k('s', 'arrowdown') ? 1 : 0) - joy.y;
-    _fwd.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw)); _right.set(-_fwd.z, 0, _fwd.x);
-    _move.copy(_fwd).multiplyScalar(iz).addScaledVector(_right, ix);
+    const iz = (k('s', 'arrowdown') ? 1 : 0) - (k('w', 'arrowup') ? 1 : 0) + joy.y;
+    _move.set(ix, 0, iz);
     const mag = Math.min(1, _move.length()); if (mag > 0.01) _move.normalize();
     const fast = k('shift');
     if (player.mode === 'walk') {
-      const ground0 = groundAt(player.pos.x, player.pos.z, player.pos.y);
-      const swim = ground0 < -0.4;
+      const swim = H(player.pos.x, player.pos.z) < -0.4;
       const speed = (fast ? 9 : 4.2) * (swim ? 0.55 : 1);
       player.vel.x = lerp(player.vel.x, _move.x * speed * mag, 1 - Math.exp(-dt * 10));
       player.vel.z = lerp(player.vel.z, _move.z * speed * mag, 1 - Math.exp(-dt * 10));
       player.pos.x += player.vel.x * dt; player.pos.z += player.vel.z * dt;
-      collide(player.pos, 0.35);
       player.vy -= 20 * dt; player.pos.y += player.vy * dt;
       let g = groundAt(player.pos.x, player.pos.z, player.pos.y); if (g < -0.4) g = -1.0; // wading / swimming
-      if (player.pos.y <= g) { // snap up small steps, land from jumps
-        player.pos.y = g; player.vy = 0; player.onGround = true;
-      } else if (player.onGround && player.pos.y - g < 0.6 && player.vy <= 0) { player.pos.y = g; player.vy = 0; } else player.onGround = false;
+      if (player.pos.y <= g) { player.pos.y = g; player.vy = 0; player.onGround = true; }
+      else if (player.onGround && player.pos.y - g < 0.6 && player.vy <= 0) { player.pos.y = g; player.vy = 0; } else player.onGround = false;
     } else { // fly
       const speed = fast ? 140 : 32;
       _desired.copy(_move).multiplyScalar(speed * mag);
@@ -1003,14 +1712,13 @@ function update(dt, t) {
       player.vel.lerp(_desired, 1 - Math.exp(-dt * 2.5));
       player.vy = lerp(player.vy, 0, 1 - Math.exp(-dt * 2)); player.vel.y += player.vy * dt * 2;
       player.pos.addScaledVector(player.vel, dt);
-      collide(player.pos, 0.6);
       const g = Math.max(groundAt(player.pos.x, player.pos.z, player.pos.y), 0);
       if (player.pos.y < g + 0.5) { player.pos.y = g + 0.5; player.vel.y = Math.max(0, player.vel.y); }
       player.pos.y = Math.min(player.pos.y, 3500);
     }
     const hv = Math.hypot(player.vel.x, player.vel.z);
     if (hv > 0.3) { const target = Math.atan2(player.vel.x, player.vel.z); let d = target - player.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); player.yaw += d * (1 - Math.exp(-dt * 10)); }
-    // animate
+    // animate the character
     const u = character.userData;
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
     if (player.mode === 'walk') {
@@ -1022,15 +1730,16 @@ function update(dt, t) {
       character.rotation.x = lean * 0.45; character.rotation.z = Math.sin(t * 1.3) * 0.05;
       u.legL.rotation.x = u.legR.rotation.x = 0.25 * lean; u.armL.rotation.set(0, 0, -2.75); u.armR.rotation.set(0, 0, 2.75);
     }
-    // chase camera
-    const head = _look.copy(player.pos).add(new THREE.Vector3(0, 1.5, 0));
-    const cp = Math.cos(cam.pitch), want = new THREE.Vector3(head.x + Math.sin(cam.yaw) * cp * cam.dist, head.y + Math.sin(cam.pitch) * cam.dist, head.z + Math.cos(cam.yaw) * cp * cam.dist);
+    // chase camera, south of the character looking north
+    const head = _look.copy(player.pos); head.y += 1.5;
+    const want = _want.set(head.x, head.y + Math.sin(cam.pitch) * cam.dist, head.z + Math.cos(cam.pitch) * cam.dist);
     const gy = H(want.x, want.z) + 0.6; if (want.y < gy) want.y = gy;
     if (tween) {
       tween.t += dt / tween.dur; const e = 1 - Math.pow(1 - Math.min(tween.t, 1), 3);
-      camera.position.lerpVectors(tween.fromPos, want, e); const tg = new THREE.Vector3().lerpVectors(tween.fromTarget, head, e); camera.lookAt(tg);
+      camera.position.lerpVectors(tween.fromPos, want, e); camera.lookAt(_tg.lerpVectors(tween.fromTarget, head, e));
       if (tween.t >= 1) tween = null;
     } else { camera.position.copy(want); camera.lookAt(head); }
+    updateSinking(t);
   } else {
     if (tween && tween.map) {
       tween.t += dt / tween.dur; const e = 1 - Math.pow(1 - Math.min(tween.t, 1), 3);
@@ -1040,10 +1749,11 @@ function update(dt, t) {
     controls.update();
     character.position.copy(player.pos);
   }
+  stepAnim(dt, t);
   // sun & shadows follow the view
   const focus = player.mode === 'map' ? controls.target : player.pos, dist = camera.position.distanceTo(focus);
-  const S = clamp(dist * 1.4, 70, 2600);
-  const sc = sun.shadow.camera;
+  sun.castShadow = dist < 2200;   // from high above, shadows are invisible but cost a full extra pass
+  const S = clamp(dist * 1.4, 70, 2600), sc = sun.shadow.camera;
   if (Math.abs(sc.right - S) / S > 0.08) { sc.left = -S; sc.right = S; sc.top = S; sc.bottom = -S; sc.near = 10; sc.far = 9000; sc.updateProjectionMatrix(); sun.shadow.normalBias = S / 1500; }
   const texel = (2 * S) / sun.shadow.mapSize.x;
   sun.target.position.set(Math.round(focus.x / texel) * texel, 0, Math.round(focus.z / texel) * texel);
@@ -1054,60 +1764,97 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t;
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
+  placePill();
   // HUD
-  const yaw = player.mode === 'map' ? Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) : cam.yaw;
+  const yaw = player.mode === 'map' ? Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) : 0;
   hud.needle.setAttribute('transform', `rotate(${(yaw * 180 / Math.PI).toFixed(1)})`);
-  const p = player.mode === 'map' ? controls.target : player.pos;
-  const ew = p.x / 1000, ns = -p.z / 1000;
+  const p = player.mode === 'map' ? controls.target : player.pos, ew = p.x / 1000, ns = -p.z / 1000;
   hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · ${player.mode === 'map' ? 'eye' : 'alt'} ${Math.round(player.mode === 'map' ? camera.position.y : player.pos.y)} m`;
+  return true;
+}
+// Adaptive resolution: drop the pixel ratio when frames run long, restore it when there's headroom.
+const res = { max: Math.min(devicePixelRatio, 1.75), cur: Math.min(devicePixelRatio, 1.75), last: 0, acc: 0, n: 0, since: 0 };
+function adaptResolution(now, drew) {
+  if (!drew || document.hidden) { res.last = 0; return; }
+  if (res.last) { res.acc += now - res.last; res.n++; }
+  res.last = now;
+  if (now - res.since < 1500 || res.n < 30) return;
+  const avg = res.acc / res.n; res.acc = 0; res.n = 0; res.since = now;
+  let next = res.cur;
+  if (avg > 24 && res.cur > 1) next = Math.max(1, res.cur - 0.25);
+  else if (avg < 13 && res.cur < res.max) next = Math.min(res.max, res.cur + 0.25);
+  if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); }
+}
+// The floating Edit pill sits above the hovered building
+function placePill() {
+  const pill = $('edit-pill'), idx = ui.hover;
+  if (idx < 0 || idx === ui.selected) { pill.hidden = true; return; }
+  const b = world.buildings[idx]; let sx, sy;
+  if (player.mode === 'plan') { sx = (b.cx - plan.cx) * plan.scale + innerWidth / 2; sy = (b.bbox[1] - plan.cz) * plan.scale + innerHeight / 2 - 6; }
+  else { _proj.set(b.cx, b.top + 2, b.cz).project(camera); if (_proj.z > 1) { pill.hidden = true; return; } sx = (_proj.x + 1) / 2 * innerWidth; sy = (1 - _proj.y) / 2 * innerHeight - 6; }
+  pill.textContent = store.canEdit ? 'Edit' : 'Details'; pill.hidden = false;
+  pill.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy)}px) translate(-50%, -100%)`;
 }
 
-// ─────────────────────────── public hooks for later phases ───────────────────────────
+// ─────────────────────────── public hooks ───────────────────────────
 // Building ids are stable hashes of each footprint's position, so wiki pages,
-// search results and editor changes can refer to them across map re-exports.
-function highlight(ids, color = '#ffd34d') {
-  clearHighlight(); const want = new Set(ids), c = linear(color); world.highlighted = [];
-  for (const b of world.buildings) if (want.has(b.id)) {
-    const attr = world.tileMeshes.get(b.tile).geometry.attributes.color;
-    const saved = attr.array.slice(b.vStart * 3, (b.vStart + b.vCount) * 3);
-    world.highlighted.push({ attr, b, saved });
-    for (let i = b.vStart; i < b.vStart + b.vCount; i++) attr.setXYZ(i, c.r, c.g, c.b);
-    attr.needsUpdate = true;
-  }
-  return world.highlighted.length;
-}
-function clearHighlight() {
-  for (const { attr, b, saved } of world.highlighted || []) { attr.array.set(saved, b.vStart * 3); attr.needsUpdate = true; }
-  world.highlighted = [];
-}
+// search results and editor changes can refer to them across map re-imports.
+let marked = [];
+function highlight(ids) { clearHighlight(); for (const id of ids) { const r = world.byId.get(id); if (r) { animOf(r.idx).wantMark = 1; marked.push(r.idx); } } plan.invalidate(); return marked.length; }
+function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; marked = []; plan.invalidate(); }
 window.amparacan = {
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
-  stats() { return { buildings: world.buildings.length, trees: world.trees, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls }; },
+  select(id) { const r = world.byId.get(id); if (r) focusBuilding(r.idx); return !!r; },
+  stats() { return { buildings: world.buildings.length, trees: world.trees, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size, prompts: store.prompts.size }; },
+  dropIn(x, z) { dropIn(x, z); },
   flyTo(x, z) { setMode('map'); tweenCamera(new THREE.Vector3(x, 900, z + 750), new THREE.Vector3(x, 0, z), 1.8); },
   setMode,
 };
 
 // ─────────────────────────── boot ───────────────────────────
+store.on((what, ids) => {
+  if (!world.tileMeshes) return;            // the first build applies every saved style
+  if (what === 'buildings') {
+    for (const id of ids || []) { const r = world.byId.get(id); if (r && JSON.stringify(styleOf(r)) !== JSON.stringify(r.style)) markDirty(id); }
+    flushDirty(); plan.invalidate(true);
+    const sel = ui.selected >= 0 ? world.buildings[ui.selected].id : null;
+    if (!ui.editing && sel && (ids || []).includes(sel)) renderInfo();
+  }
+  if (what === 'prompts') renderPromptHistory();
+  renderTray();
+});
 (async function boot() {
   try {
     try { if (localStorage.getItem('amparacan-map-help') === '1') { $('help').dataset.collapsed = 'true'; $('help-toggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
+    const storeReady = initStore().catch((e) => console.warn('Edits unavailable', e));
+    await Promise.race([storeReady, new Promise((r) => setTimeout(r, 2500))]); // saved looks before the first build when they arrive quickly
     await buildWorld();
+    for (const id of store.buildings.keys()) { const r = world.byId.get(id); if (r && JSON.stringify(styleOf(r)) !== JSON.stringify(r.style)) markDirty(id); }
+    flushDirty();
     character = makeCharacter(); scene.add(character);
-    player.pos.copy(spawnPoint()); player.yaw = 0;
-    initControls();
+    player.pos.copy(spawnPoint()); player.yaw = Math.PI;
+    initPlan(); initControls();
     setMode('map');
     const { cx, cz } = world.bounds;
     camera.position.set(cx - 1500, 7800, cz + 9500); controls.target.set(cx, 0, cz - 400); controls.update();
+    renderTray();
     await progress('Ready', 100);
     $('loader').style.opacity = '0'; setTimeout(() => $('loader').remove(), 700);
-    $('intro').hidden = false;
+    const deep = location.hash.match(/^#(b[0-9a-f]{8})$/);
+    if (deep && world.byId.has(deep[1])) focusBuilding(world.byId.get(deep[1]).idx); else $('intro').hidden = false;
     const clock = new THREE.Clock();
-    renderer.setAnimationLoop(() => { const dt = Math.min(clock.getDelta(), 0.05); update(dt, clock.elapsedTime); renderer.render(scene, camera); });
+    const perf = window.amparacan.perf = { update: 0, render: 0 };
+    renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.05), t0 = performance.now(), draw = update(dt, clock.elapsedTime), t1 = performance.now();
+      if (draw) renderer.render(scene, camera);
+      const t2 = performance.now(); perf.update = perf.update * 0.9 + (t1 - t0) * 0.1; perf.render = perf.render * 0.9 + (t2 - t1) * 0.1;
+      adaptResolution(t2, draw);
+    });
   } catch (err) {
     console.error(err);
     $('load-label').textContent = 'Could not build the map: ' + (err && err.message ? err.message : err);
   }
 })();
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); plan.invalidate(); });
 </script>

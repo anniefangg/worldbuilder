@@ -66,9 +66,23 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   heights are 3–5 floors for now. `window.amparacan` exposes `highlight(ids)`,
   `flyTo(x,z)`, `setMode()`, `buildings`, `stats()` for later search/wiki/editor work.
 - Build: `python3 scripts/build_map.py [--reparse] [--preview /tmp/amparacan-map-preview]`
-  then publish `map.html` via the Artifact tool. Local preview: `.claude/launch.json`
-  "map" serves `/tmp/amparacan-map-preview` (the repo lives under ~/Documents,
-  which the sandboxed server can't read).
+  then publish `map.html` via the Artifact tool, keeping its capabilities
+  (`db` root rule read view / write owner, `user`, `sample`, `downloads`).
+  Local preview: `.claude/launch.json` "map" serves `/tmp/amparacan-map-preview`
+  (the repo lives under ~/Documents, which the sandboxed server can't read);
+  locally edits go to localStorage instead of the db.
+- **Edits live in the artifact db, never in the geometry**: `buildings/{bId}`
+  `{name, address, tags[], history, details, attrs{}, style{wall, shutters, roof,
+  roofType, floors, groundFloor, windows}}` and `prompts/{pId}` `{bId, text, status:
+  draft|queued|applying|applied|done|failed, result}`. "Apply now" restyles via the
+  page's `sample` call; "Send to Claude Code" marks prompts `queued`.
+- **Processing the batch** ("process the map batch"): `ArtifactData list prompts`,
+  implement each `queued` prompt (style fields via `buildings/{bId}.style`, anything
+  bigger in `map_template.html`), then set `status: "done"` + a short `result`.
+- **Re-importing from Illustrator**: `python3 scripts/build_map.py --source ~/path/new.ai`.
+  The parser matches ids to the previous `map_data.json` (hash → overlap IoU ≥ 0.5 →
+  centroid < 3m) and prints kept/remapped/new/removed; removed ids with edits show as
+  "Edits without a building" in the page's Edits tray.
 
 ## Workflow conventions (standing — follow on every change)
 
