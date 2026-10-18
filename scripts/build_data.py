@@ -9,7 +9,8 @@ a single object of entities + typed relationships that the artifact renders.
 import os, json, re, unicodedata
 from collections import OrderedDict
 
-STREETS = json.load(open("/home/user/worldbuilder/data/streets.json"))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STREETS = json.load(open(os.path.join(ROOT, "data/streets.json")))
 
 def slugify(s):
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
@@ -297,6 +298,45 @@ for st in STREETS:
     elif find(st["name"],"person"):
         rel(slug, find(st["name"],"person"), "named after", f"Street honouring {st['name']}")
 
+# ── BUILDINGS (exported from the 3D map's `buildings` collection) ──────────
+# data/map/building_attrs.json: {bId: {name, address, tags[], history, details,
+# attrs:{k:v}, ...}} — written by scripts/sync_map_buildings.py. Every NAMED
+# building becomes a wiki page; map_id deep-links back to the map (#bId).
+BLD_PATH = os.path.join(ROOT, "data/map/building_attrs.json")
+def _fold(s):
+    return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode().lower()
+def _first_sentence(s):
+    m = re.match(r"\s*(.+?[.!?])(\s|$)", s or "", re.S)
+    return (m.group(1) if m else (s or "")).strip()
+if os.path.exists(BLD_PATH):
+    bld = json.load(open(BLD_PATH))
+    # street names, longest first, so "Calle Abadía del Sacromonte" beats "Abadía"
+    street_names = sorted(((_fold(e["name"]), e["slug"]) for e in entities.values()
+                           if e["type"] == "street"), key=lambda x: -len(x[0]))
+    nb = nlinked = 0
+    for bid, rec in sorted(bld.items()):
+        nm = (rec.get("name") or "").strip()
+        if not nm: continue
+        details = (rec.get("details") or "").strip()
+        history = (rec.get("history") or "").strip()
+        address = (rec.get("address") or "").strip()
+        slug = slugify(nm); base = slug; i = 2   # de-dupe: two buildings may share a name
+        while slug in entities:
+            slug = f"{base}-{i}"; i += 1
+        entities[slug] = {"slug": slug, "name": nm, "type": "building",
+                          "description": _first_sentence(details),
+                          "bio": "\n\n".join(x for x in (history, details) if x),
+                          "address": address, "tags": [t for t in (rec.get("tags") or []) if t],
+                          "attrs": rec.get("attrs") or {}, "map_id": bid}
+        nb += 1
+        if address:
+            fa = _fold(address)
+            for snm, ssl in street_names:
+                if re.search(r"(?<![a-z0-9])" + re.escape(snm) + r"(?![a-z0-9])", fa):
+                    rel(slug, ssl, "located on", address); nlinked += 1
+                    break
+    print(f"buildings: {nb} named, {nlinked} linked to a street")
+
 # ── PORTRAITS (from exported Characters xlsx tabs) ─────────────────────────
 def _norm(s):
     return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode().lower().strip()
@@ -323,7 +363,7 @@ ERA = {
  "Early republic":   ("A figure of Amparacán's early republic.", [7]),
  "Sheet9":           ("A figure of Amparacán's history.", []),
 }
-PORT_PATH = "/home/user/worldbuilder/data/portraits.json"
+PORT_PATH = os.path.join(ROOT, "data/portraits.json")
 if os.path.exists(PORT_PATH):
     portraits = json.load(open(PORT_PATH))
     people_norms = {_norm(e["name"]): e["slug"] for e in entities.values() if e["type"] == "person"}
@@ -345,7 +385,7 @@ if os.path.exists(PORT_PATH):
 
 # ── TIMELINE / CHRONOLOGY ──────────────────────────────────────────────────
 chronology = []
-TL_PATH = "/home/user/worldbuilder/data/timeline_raw.json"
+TL_PATH = os.path.join(ROOT, "data/timeline_raw.json")
 if os.path.exists(TL_PATH):
     tl = json.load(open(TL_PATH))
     # candidate entity names to auto-link inside event text (people + places);
@@ -401,7 +441,7 @@ for e in entities.values():
         e["wikipedia"] = WIKIPEDIA[e["name"]]
 
 # use real Wikipedia lead images as portraits where we fetched them
-WIMG_PATH = "/home/user/worldbuilder/data/wiki_images.json"
+WIMG_PATH = os.path.join(ROOT, "data/wiki_images.json")
 if os.path.exists(WIMG_PATH):
     wimg = json.load(open(WIMG_PATH))
     n = 0
@@ -418,7 +458,7 @@ data = {
     "heads_of_state": heads,
     "chronology": chronology,
 }
-json.dump(data, open("/home/user/worldbuilder/data/wiki_data.json","w"),
+json.dump(data, open(os.path.join(ROOT, "data/wiki_data.json"),"w"),
           ensure_ascii=False, separators=(",",":"))
 
 from collections import Counter

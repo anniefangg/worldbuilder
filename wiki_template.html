@@ -382,7 +382,7 @@ bootState();
 
 // indexes
 let BY={}, RELS_A={}, RELS_B={}, BY_NAME={};
-const NAME_PRIO={person:0,place:1,political_party:2,organisation:3,street:4};
+const NAME_PRIO={person:0,place:1,political_party:2,organisation:3,street:4,building:5};
 function reindex(){
   BY={}; RELS_A={}; RELS_B={}; BY_NAME={};
   DATA.entities.forEach(e=>BY[e.slug]=e);
@@ -399,8 +399,11 @@ reindex();
 DATA.revisions=DATA.revisions||[];
 DATA.chronology=DATA.chronology||[];
 
-const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation'};
-const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations'};
+const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation',building:'Building'};
+const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations',building:'Buildings'};
+// companion 3D map artifact; building pages deep-link to MAP_URL#<map_id>
+const MAP_URL='https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdecz';
+const mapHref=e=>MAP_URL+'#'+encodeURIComponent(e.map_id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // real-world topics → Wikipedia (auto-linked inside free text)
 const WIKI_EXT={
@@ -499,7 +502,7 @@ function route(){
 function goBack(){ if(NAV_DEPTH>0){_backing=true;history.back();} else go('#/'); }
 
 // ── nav / sidebar ──────────────────────────────────────────────────────
-function counts(){const c={person:0,place:0,street:0,political_party:0};DATA.entities.forEach(e=>c[e.type]=(c[e.type]||0)+1);return c;}
+function counts(){const c={person:0,place:0,street:0,political_party:0,building:0};DATA.entities.forEach(e=>c[e.type]=(c[e.type]||0)+1);return c;}
 function renderNav(){
   const c=counts(); const h=location.hash;
   const cur=(frag)=>h.startsWith(frag)?'active':'';
@@ -509,6 +512,7 @@ function renderNav(){
     ['#/streets','Streets',c.street],
     ['#/type/place','Places',c.place],
     ['#/type/political_party','Parties',c.political_party],
+    ...(c.building?[['#/type/building','Buildings',c.building]]:[]),
   ];
   const items2=[
     ['#/chronology','Chronology',(DATA.chronology||[]).length],
@@ -590,6 +594,7 @@ function pageOverview(){
     <a class="ecard" href="#/streets"><div class="en">Streets</div><div class="ed">${streets} named streets, cross-referenced to neighbourhoods and the people they honour.</div></a>
     <a class="ecard" href="#/type/place"><div class="en">Places</div><div class="ed">Provinces, city neighbourhoods and outer-island settlements.</div></a>
     <a class="ecard" href="#/type/political_party"><div class="en">Parties</div><div class="ed">${c.political_party} political parties, active and defunct, with vote and seat records.</div></a>
+    ${c.building?`<a class="ecard" href="#/type/building"><div class="en">Buildings</div><div class="ed">${c.building} named buildings from the 3D map, with their histories and addresses.</div></a>`:''}
     <a class="ecard" href="#/timeline"><div class="en">Heads of state</div><div class="ed">Every leader from 1658 to 2046, along a timeline coloured by era.</div></a>
     <a class="ecard" href="#/seasons"><div class="en">Seasons</div><div class="ed">The eleven narrative eras that structure the world, each with its cast.</div></a>
   </div>`;
@@ -623,6 +628,7 @@ function pageEntity(slug,params){
     <h1 class="title">${esc(e.name)}</h1>
     ${WRITER||LOCAL||CAP?`<button class="btn small editbtn" onclick="location.hash='#/edit/${e.slug}'">✎ Edit</button>`:''}
     <p class="lead"${e.description?` data-edit="desc:${e.slug}"`:''}>${wikitext(e.description)||'No description yet.'}</p>`;
+  if(e.type==='building'&&e.map_id)body+=`<p><a class="btn small" href="${esc(mapHref(e))}" target="_blank" rel="noopener noreferrer">⌖ View on 3D map ↗</a></p>`;
   if(e.bio){body+=`<h2 class="sec">${e.type==='person'?'Biography':'Overview'}</h2><div data-edit="bio:${e.slug}">`+
     e.bio.split(/\n\s*\n/).map(para=>`<p>${wikitext(para)}</p>`).join('')+`</div>`;}
   body+=typeSections(e,rels);
@@ -656,6 +662,7 @@ function subtitleFor(e){
   if(e.type==='street')return (e.street_type||'Street')+(e.category?' · '+e.category:'');
   if(e.type==='place')return (e.place_type?cap1(e.place_type):'Place');
   if(e.type==='political_party')return 'Political party'+(e.abbreviation?' · '+e.abbreviation:'');
+  if(e.type==='building')return 'Building'+(e.tags&&e.tags.length?' · '+e.tags.slice(0,3).join(', '):'');
   return TYPE_LABEL[e.type]||'Article';
 }
 function cap1(s){return s?s[0].toUpperCase()+s.slice(1):s;}
@@ -692,6 +699,13 @@ function infobox(e,rels){
     R('Alignment',esc(e.alignment));R('Ideology',esc(e.ideology));
     R('Seats',e.seats!=null?e.seats:'');R('Vote',e.vote_pct!=null?e.vote_pct+'%':'');
     R('Votes',e.constituency?fmt(e.constituency):'');R('Founded',e.year_est);R('Status',esc(e.status));
+  }else if(e.type==='building'){
+    const on=(RELS_A[e.slug]||[]).filter(r=>r.type==='located on'&&BY[r.b]).map(r=>r.b);
+    R('Address',e.address?esc(e.address):'');
+    if(on.length)R('Street',on.map(s=>link(s)).join(', '));
+    R('Tags',e.tags&&e.tags.length?`<div class="chips">${e.tags.map(t=>`<a class="chip" href="#/type/building?tag=${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>`:'');
+    Object.entries(e.attrs||{}).forEach(([k,v])=>R(cap1(k),v==null?'':esc(v)));
+    if(e.map_id)R('3D map',`<a class="extlink" href="${esc(mapHref(e))}" target="_blank" rel="noopener noreferrer">View on 3D map<span class="ext">↗</span></a>`);
   }
   if(e.wikipedia)R('Wikipedia',extLink(e.wikipedia,'View on Wikipedia'));
   return `<aside class="infobox">${photo}<div class="ib-head"><div class="ib-type">${esc(TYPE_LABEL[e.type]||e.type)}</div>
@@ -705,6 +719,10 @@ function typeSections(e,rels){
     if(kids.length){h+=`<h2 class="sec">Within ${esc(e.name)} <span class="count">${kids.length}</span></h2><div class="pill-row">`+kids.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
     const streets=(RELS_B[e.slug]||[]).filter(r=>r.type==='runs through').map(r=>r.a).filter(s=>BY[s]);
     if(streets.length){h+=`<h2 class="sec">Streets in ${esc(e.name)} <span class="count">${streets.length}</span></h2><div class="pill-row">`+streets.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
+  }
+  if(e.type==='street'){
+    const blds=(RELS_B[e.slug]||[]).filter(r=>r.type==='located on').map(r=>r.a).filter(s=>BY[s]);
+    if(blds.length){h+=`<h2 class="sec">Buildings on ${esc(e.name)} <span class="count">${blds.length}</span></h2><div class="pill-row">`+blds.map(s=>`<a class="pill" href="#/e/${s}">${esc(BY[s].name)}</a>`).join('')+`</div>`;}
   }
   if(e.type==='political_party'){
     const mem=(RELS_B[e.slug]||[]).filter(r=>r.type==='member of party').map(r=>({s:r.a,d:r.description})).filter(x=>BY[x.s]);
@@ -802,7 +820,23 @@ const INDEX_CFG={
    {key:'neighbourhoods',label:'Neighbourhoods',def:true,cell:e=>streetNeighNames(e.slug).map(n=>`<a href="#/e/${n.slug}">${esc(n.name)}</a>`).join(', ')},
   ], card:e=>`<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${esc((e.street_type||'')+(e.meaning?' · '+e.meaning:''))}</div></a>`,
   sort:(a,b)=>a.name.localeCompare(b.name) },
+ building:{ title:'Buildings',
+  filters:[
+   {key:'q',kind:'text',label:'name or address…',test:(e,v)=>!v||(e.name+' '+(e.address||'')+' '+(e.description||'')).toLowerCase().includes(v.toLowerCase())},
+   {key:'tag',kind:'select',label:'Tag',opts:()=>[...new Set(DATA.entities.filter(e=>e.type==='building').flatMap(e=>e.tags||[]))].sort((a,b)=>a.localeCompare(b)).map(x=>[x,x]),test:(e,v)=>!v||(e.tags||[]).includes(v)},
+   {key:'street',kind:'select',label:'Street',opts:()=>[...new Set(DATA.relationships.filter(r=>r.type==='located on'&&BY[r.b]).map(r=>BY[r.b].name))].sort().map(x=>[x,x]),test:(e,v)=>!v||buildingStreets(e.slug).some(s=>BY[s].name===v)},
+  ],
+  columns:[
+   {key:'name',label:'Name',pinned:true,cell:e=>`<a href="#/e/${e.slug}">${esc(e.name)}</a>`},
+   {key:'address',label:'Address',def:true,field:'address',ekind:'text',cell:e=>esc(e.address||'')},
+   {key:'street',label:'Street',def:true,cell:e=>buildingStreets(e.slug).map(s=>link(s)).join(', ')},
+   {key:'tags',label:'Tags',def:true,cell:e=>(e.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join(' ')},
+   {key:'description',label:'Description',def:false,field:'description',ekind:'text',cell:e=>esc(e.description||'')},
+   {key:'map',label:'Map',def:true,cell:e=>e.map_id?`<a href="${esc(mapHref(e))}" target="_blank" rel="noopener noreferrer">3D ↗</a>`:''},
+  ], card:e=>`<a class="ecard" href="#/e/${e.slug}"><div class="en">${esc(e.name)}</div><div class="ed">${esc(e.description||e.address||subtitleFor(e))}</div></a>`,
+  sort:(a,b)=>a.name.localeCompare(b.name) },
 };
+function buildingStreets(slug){return (RELS_A[slug]||[]).filter(r=>r.type==='located on'&&BY[r.b]).map(r=>r.b);}
 
 function loadIdxPref(type){
   const cfg=INDEX_CFG[type]; let p={};
@@ -904,6 +938,9 @@ function wireIndex(){
   const body=document.getElementById('idxbody'); if(!body)return;
   const type=body.dataset.type; const cfg=INDEX_CFG[type]; if(!cfg)return;
   BULK_MODE=false; BULK={};   // fresh each navigation
+  const {params}=parseHash();
+  cfg.filters.forEach(f=>{const el=document.getElementById('flt_'+f.key);const v=params.get(f.key);
+    if(el&&v!=null){if(f.kind==='bool')el.checked=v!=='0';else el.value=v;}});
   cfg.filters.forEach(f=>{const el=document.getElementById('flt_'+f.key);if(el)el.addEventListener(f.kind==='text'?'input':'change',()=>renderIndexBody(type));});
   document.querySelectorAll('#viewtoggle button').forEach(b=>b.onclick=()=>{
     if(BULK_MODE)return; const pref=loadIdxPref(type); pref.view=b.dataset.v; saveIdxPref(type,pref);
@@ -1132,6 +1169,7 @@ const EDIT_FIELDS={
   person:[['name','Name','text'],['description','Short description','textarea'],['bio','Biography','textarea'],['birth_year','Born (year)','number'],['death_year','Died (year)','number'],['origin_city','Birthplace','text'],['education','Education','text'],['party','Political party','party'],['political_role','Political role','text'],['notable_for','Notable for','text'],['occupation','Occupation','text'],['seasons','Seasons (comma-separated numbers)','seasons']],
   street:[['name','Name','text'],['description','Description','textarea'],['street_type','Street type','text'],['category','Category','text'],['meaning','Meaning / etymology','text'],['note','Note','textarea']],
   place:[['name','Name','text'],['description','Short description','textarea'],['bio','Overview','textarea'],['place_type','Kind','text'],['population','Population','number'],['founded_decade','Founded (decade)','text'],['peak_decade','Grew fastest (decade)','text'],['typology','Typology','text']],
+  building:[['name','Name','text'],['description','Short description','textarea'],['bio','History & details','textarea'],['address','Address','text'],['tags','Tags (comma-separated)','tags']],
   political_party:[['name','Name','text'],['description','Short description','textarea'],['bio','Overview','textarea'],['abbreviation','Abbreviation','text'],['alignment','Alignment','text'],['ideology','Ideology','text'],['seats','Seats','number'],['vote_pct','Vote %','number'],['year_est','Founded (year)','number'],['status','Status','text']],
 };
 function pageEdit(slug){
@@ -1141,6 +1179,7 @@ function pageEdit(slug){
   const partyNames=DATA.entities.filter(x=>x.type==='political_party').map(x=>x.name);
   const inp=([k,label,kind])=>{
     let val=e[k]; if(kind==='seasons')val=(e.seasons||[]).join(', ');
+    if(kind==='tags')val=(e[k]||[]).join(', ');
     if(kind==='party')val=e.party&&BY[e.party]?BY[e.party].name:(e.party||'');
     val=val==null?'':val;
     let ctl;
@@ -1234,6 +1273,8 @@ function doSave(slug){
     let ov=e[k];
     if(kind==='seasons'){nv=nv.split(',').map(x=>parseInt(x.trim(),10)).filter(n=>!isNaN(n));
       if(JSON.stringify(nv)!==JSON.stringify(ov||[])){changes.push([k,(ov||[]).join(', '),nv.join(', ')]);e.seasons=nv;}return;}
+    if(kind==='tags'){nv=nv.split(',').map(x=>x.trim()).filter(Boolean);
+      if(JSON.stringify(nv)!==JSON.stringify(ov||[])){changes.push([k,(ov||[]).join(', '),nv.join(', ')]);e[k]=nv;}return;}
     if(kind==='party'){ // resolve typed party name to an entity slug
       const nm=nv.trim();
       const match=DATA.entities.find(x=>x.type==='political_party'&&x.name.toLowerCase()===nm.toLowerCase());
