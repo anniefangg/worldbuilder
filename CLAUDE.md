@@ -66,6 +66,7 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   heights are 3–5 floors for now. `window.amparacan` exposes `highlight(ids)`,
   `flyTo(x,z)`, `setMode()`, `buildings`, `stats()` for later search/wiki/editor work.
   `TOD` holds the dawn, day, dusk (default) and night presets (night adds the Milky Way); `T` cycles them.
+  `WEATHER` (sunny, cloudy, rain, storm, fog) layers over it; `R` cycles it.
 - Build: `python3 scripts/build_map.py [--reparse] [--preview /tmp/amparacan-map-preview]`
   then publish `map.html` via the Artifact tool, keeping its capabilities
   (`db` root rule read view / write owner, `user`, `sample`, `downloads`).

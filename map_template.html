@@ -205,6 +205,7 @@ body.tray-open #info { display: none; }
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
   <button id="tod" type="button" title="Switch between dusk and day (T)">Dusk</button>
+  <button id="wx" type="button" title="Weather (R)">Sunny</button>
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
@@ -228,6 +229,7 @@ body.tray-open #info { display: none; }
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
+    <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
@@ -401,17 +403,81 @@ function setTimeOfDay(name) {
   u.uHor.value.set(t.hor); u.uMid.value.set(t.mid); u.uTop.value.set(t.top); u.uGlow.value.set(t.glow); u.uNight.value = t.night; u.uMilky.value = t.milky || 0;
   scene.fog.color.set(t.fog); renderer.toneMappingExposure = t.exposure; NIGHT.value = t.night;
   applyTODExtras(t);
+  applyWeather();
   const b = $('tod'), next = TOD_ORDER[(TOD_ORDER.indexOf(name) + 1) % TOD_ORDER.length], cap = (x) => x[0].toUpperCase() + x.slice(1);
   if (b) { b.textContent = cap(name); b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${next}`); b.title = `Time of day: ${cap(name)}. Click (or T) for ${next}.`; }
+}
+
+// Weather, layered over the time of day
+const WEATHER = {
+  sunny: { label: 'Sunny', sunK: 1, hemiK: 1, clouds: 26, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
+  cloudy: { label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 72, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
+  rain: { label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 96, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
+  storm: { label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 96, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
+  fog: { label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 18, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
+};
+const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'fog'];
+const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
+function applyWeather() {
+  const t = TOD[todState.name], w = WEATHER[wx.name], u = camera.userData.sky && camera.userData.sky.material.uniforms;
+  if (!t || !u) return;
+  sun.intensity = t.sunI * w.sunK; hemi.intensity = wx.baseHemi = t.hemiI * w.hemiK;
+  const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
+  scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
+  u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color);
+  if (world.cloudMat) {
+    world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
+    world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
+    world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds; });
+  }
+  if (world.water) world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast);
+  if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
+  const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
+  const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
+  if (b) { b.textContent = label; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
+}
+function setWeather(name) { wx.name = WEATHER[name] ? name : 'sunny'; wx.nextFlash = 0; applyWeather(); }
+function toggleWeather() { const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
+// Rain: streaks recycled in a box that travels with the camera
+function addRain() {
+  const N = world.rainN = 12000, pos = new Float32Array(N * 6), rnd = mulberry(99);
+  world.rainDrops = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { world.rainDrops[i * 3] = (rnd() - 0.5) * 100; world.rainDrops[i * 3 + 1] = rnd() * 60; world.rainDrops[i * 3 + 2] = (rnd() - 0.5) * 100; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#e4ecf5', transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+  m.frustumCulled = false; m.renderOrder = 13; m.visible = false; scene.add(m); world.rain = m;
+}
+function stepWeather(dt, t) {
+  const w = WEATHER[wx.name];
+  if (world.rain && w.rain > 0) {
+    const r = world.rain, P = r.geometry.attributes.position.array, D = world.rainDrops, c = camera.position, fall = 30 * dt * (w.storm ? 1.25 : 1), n = world.rainN;
+    r.visible = c.y - H(c.x, c.z) < 450;                          // from high above, rain is just haze
+    const B = 100, ox = Math.floor(c.x / B) * B, oz = Math.floor(c.z / B) * B, gy = H(c.x, c.z);
+    for (let i = 0; i < n; i++) {
+      let y = D[i * 3 + 1] - fall; if (y < 0) y += 60; D[i * 3 + 1] = y;
+      let x = ox + D[i * 3]; if (x < c.x - B / 2) x += B; else if (x > c.x + B / 2) x -= B;
+      let z = oz + D[i * 3 + 2]; if (z < c.z - B / 2) z += B; else if (z > c.z + B / 2) z -= B;
+      const yy = gy - 6 + y + Math.max(0, c.y - gy - 25);
+      const k = i * 6; P[k] = x; P[k + 1] = yy; P[k + 2] = z; P[k + 3] = x + 0.35; P[k + 4] = yy + 1.9; P[k + 5] = z + 0.12;
+    }
+    r.geometry.attributes.position.needsUpdate = true;
+  }
+  const u = camera.userData.sky.material.uniforms;
+  if (w.storm) {                                                  // lightning: a bright double flash every few seconds
+    if (t > wx.nextFlash) { wx.flash = 1; wx.flicker = t + 0.12; wx.nextFlash = t + 4 + Math.random() * 9; }
+    if (wx.flicker && t > wx.flicker) { wx.flash = Math.max(wx.flash, 0.8); wx.flicker = 0; }
+    wx.flash *= Math.exp(-dt * 10);
+  } else wx.flash = 0;
+  hemi.intensity = wx.baseHemi * (1 + wx.flash * 6); u.uFlash.value = wx.flash;
 }
 
 // Sky dome
 {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(80000, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 } },
+    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w * 0.9999; }`,
-    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow; uniform float uNight, uMilky; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver; uniform float uNight, uMilky, uOvercast, uFlash; varying vec3 vDir;
       float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
@@ -435,6 +501,8 @@ function setTimeOfDay(name) {
           vec3 mw = vec3(0.55, 0.62, 0.85) * glowMW * 0.55 + vec3(0.95, 0.85, 0.7) * core * cloud * 0.25 + vec3(0.9, 0.95, 1.0) * dense * band * 0.9;
           c += mw * uMilky * smoothstep(0.02, 0.3, h);
         }
+        // overcast: a low grey ceiling hides the sun, stars and Milky Way; lightning lights it up
+        c = mix(c, uOver * (0.9 + 0.25 * h) * (0.9 + 0.2 * fbm(d * 5.0 + 1.0)), uOvercast * 0.94) + vec3(0.75, 0.8, 0.95) * uFlash * (0.4 + 0.6 * h);
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -1686,13 +1754,14 @@ function addClouds() {
   const rnd = mulberry(77), group = new THREE.Group(), parts = [];
   for (let k = 0; k < 6; k++) parts.push(new THREE.IcosahedronGeometry(1, 1).scale(1.4 + k % 3 * 0.4, 0.8, 1.1).translate((k - 2.5) * 0.9, (k % 2) * 0.3, (k % 3 - 1) * 0.5));
   const geo = mergeGeometries(parts);
-  for (let i = 0; i < 26; i++) {
-    const c = new THREE.Mesh(geo, mat), s = 110 + rnd() * 160;
+  for (let i = 0; i < 96; i++) {      // the first 26 are fair-weather clouds; the rest fill in when it clouds over
+    const c = new THREE.Mesh(geo, mat), extra = i >= 26, s = (extra ? 220 : 110) + rnd() * (extra ? 260 : 160);
     c.scale.set(s, s * (0.45 + rnd() * 0.2), s * (0.7 + rnd() * 0.4));
-    c.position.set((rnd() - 0.5) * EXT * 1.8, 1500 + rnd() * 900, (rnd() - 0.5) * EXT * 1.8); c.rotation.y = rnd() * 6.28;
+    c.position.set((rnd() - 0.5) * EXT * 1.8, (extra ? 1000 : 1500) + rnd() * 900, (rnd() - 0.5) * EXT * 1.8); c.rotation.y = rnd() * 6.28;
     group.add(c);
   }
   scene.add(group); world.clouds = group;
+  addRain();
 }
 
 // ─────────────────────────── character ───────────────────────────
@@ -2586,6 +2655,7 @@ function initControls() {
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
     if (k === 'h') toggleHelp();
     if (k === 't') toggleTOD();
+    if (k === 'r') toggleWeather();
     if ((k === '+' || k === '=' || k === '-' || k === '_') && ui.selected && isBuildingId(ui.selected)) { e.preventDefault(); changeFloors(ui.selected, k === '-' || k === '_' ? -1 : 1); }
     if ((player.mode === 'walk' || player.mode === 'fly') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
     if (k === ' ' && player.mode === 'walk' && player.onGround) { player.vy = 6.2; player.onGround = false; }
@@ -2626,6 +2696,7 @@ function initControls() {
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
   $('help-toggle').addEventListener('click', toggleHelp);
   $('tod').addEventListener('click', toggleTOD);
+  $('wx').addEventListener('click', toggleWeather);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
   $('start-fly').addEventListener('click', () => startExploring('fly'));
   $('stay-map').addEventListener('click', () => { $('intro').hidden = true; });
@@ -2726,7 +2797,8 @@ function update(dt, t) {
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 4000);
   // fog thins with altitude so the whole island reads from above
   const alt = Math.max(0, camera.position.y);
-  scene.fog.near = 1800 + alt * 3; scene.fog.far = 24000 + alt * 6;
+  const W0 = WEATHER[wx.name]; scene.fog.near = (1800 + alt * 3) * W0.nearK; scene.fog.far = (24000 + alt * 6) * W0.fogK;
+  stepWeather(dt, t);
   world.water.uniforms.uTime.value = t;
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -2820,7 +2892,7 @@ window.amparacan = {
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { buildings: world.buildings.length, trees: world.trees, lights: world.lights, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { buildings: world.buildings.length, trees: world.trees, lights: world.lights, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
@@ -2868,6 +2940,7 @@ store.on((what, ids) => {
     for (const id of store.buildings.keys()) { const r = world.byId.get(id); if (r && JSON.stringify(styleOf(r)) !== JSON.stringify(r.style)) markDirty(id); }
     flushDirty();
     let tod = 'dusk'; try { tod = localStorage.getItem('amparacan-map-tod') || 'dusk'; } catch (e) {}
+    try { wx.name = WEATHER[localStorage.getItem('amparacan-map-weather')] ? localStorage.getItem('amparacan-map-weather') : 'sunny'; } catch (e) {}
     setTimeOfDay(TOD[tod] ? tod : 'dusk');
     character = makeCharacter(); scene.add(character);
     player.pos.copy(spawnPoint()); player.yaw = Math.PI;
