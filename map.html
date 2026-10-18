@@ -2359,26 +2359,60 @@ function addClouds() {
 }
 
 // ─────────────────────────── character ───────────────────────────
+// A lean, weathered man in a black wrap robe with wide sleeves and a dark sash; wavy black hair going grey at the temples,
+// a stern look. Everything hangs from `rig` (pivoting at the hips) so he can lean into a flight without a glider, wings or a pack.
 function makeCharacter() {
-  const g = new THREE.Group(), M = (c) => new THREE.MeshLambertMaterial({ color: c });
-  const skin = M('#b9825a'), shirt = M('#f2efe6'), trousers = M('#2f4f7a'), hat = M('#e7c77a'), band = M('#c4462f'), shoe = M('#4a3426');
-  const part = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
-  const legGeo = new THREE.BoxGeometry(0.17, 0.82, 0.2).translate(0, -0.41, 0), shoeGeo = new THREE.BoxGeometry(0.19, 0.08, 0.3).translate(0, -0.8, 0.05);
-  const legL = part(legGeo, trousers, -0.11, 0.86, 0), legR = part(legGeo, trousers, 0.11, 0.86, 0);
-  legL.add(new THREE.Mesh(shoeGeo, shoe)); legR.add(new THREE.Mesh(shoeGeo, shoe));
-  part(new THREE.CapsuleGeometry(0.22, 0.42, 4, 10), shirt, 0, 1.18, 0).scale.set(1, 1, 0.75);
-  const armGeo = new THREE.CapsuleGeometry(0.065, 0.5, 3, 6).translate(0, -0.3, 0);
-  const armL = part(armGeo, shirt, -0.3, 1.43, 0), armR = part(armGeo, shirt, 0.3, 1.43, 0);
-  armL.add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6).translate(0, -0.62, 0), skin)); armR.add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6).translate(0, -0.62, 0), skin));
-  part(new THREE.SphereGeometry(0.17, 16, 12), skin, 0, 1.66, 0);
-  part(new THREE.CylinderGeometry(0.36, 0.36, 0.025, 20), hat, 0, 1.77, 0);
-  part(new THREE.CylinderGeometry(0.15, 0.18, 0.16, 16), hat, 0, 1.85, 0);
-  part(new THREE.CylinderGeometry(0.182, 0.182, 0.04, 16), band, 0, 1.8, 0);
-  // backpack glider (shown when flying)
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.05, 0.9), new THREE.MeshLambertMaterial({ color: '#1f57a8' }));
-  wing.position.set(0, 2.32, -0.05); wing.castShadow = true; wing.visible = false; g.add(wing);
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.22, 0.06, 0.25), new THREE.MeshLambertMaterial({ color: '#e9b44c' })); stripe.position.set(0, 0, 0.12); wing.add(stripe);
-  g.userData = { legL, legR, armL, armR, wing };
+  const g = new THREE.Group(), M = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
+  const skin = M('#b4764a'), robe = M('#1a1511', { side: THREE.DoubleSide }), robeD = M('#0f0c0a', { side: THREE.DoubleSide }), hair = M('#15120f'), grey = M('#8d8983'), boot = M('#0c0a08'), inner = M('#5a3a2a', { side: THREE.DoubleSide }), dark = M('#0b0908');
+  const HIP = 0.95, rig = new THREE.Group(); rig.position.y = HIP; g.add(rig);
+  const add = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const lathe = (pts, seg = 18) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+  // legs (under the robe) and boots
+  const legGeo = new THREE.CylinderGeometry(0.075, 0.06, 0.8, 8).translate(0, -0.4, 0), bootGeo = new THREE.BoxGeometry(0.13, 0.1, 0.27).translate(0, -0.78, 0.05);
+  const mkLeg = (x) => { const l = new THREE.Group(); l.position.set(x, 0, 0); rig.add(l); add(l, legGeo, robeD, 0, 0, 0); add(l, bootGeo, boot, 0, 0, 0); return l; };
+  const legL = mkLeg(-0.1), legR = mkLeg(0.1);
+  // torso: shoulders to waist (y measured up from the hips)
+  const torso = add(rig, lathe([[0.001, 0.72], [0.12, 0.72], [0.235, 0.62], [0.235, 0.46], [0.205, 0.25], [0.2, 0.06], [0.001, 0.06]]), robe, 0, 0, 0); torso.scale.z = 0.72;
+  // open V of the wrap collar showing the chest, and a dark shirt behind it
+  const chest = add(rig, new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.1, 0.7, 0), new THREE.Vector3(0.1, 0.7, 0), new THREE.Vector3(0, 0.36, 0)]), inner, 0, 0, 0.166); chest.geometry.computeVertexNormals();
+  const v = add(rig, new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.05, 0.7, 0), new THREE.Vector3(0.05, 0.7, 0), new THREE.Vector3(0, 0.5, 0)]), skin, 0, 0, 0.17); v.geometry.computeVertexNormals(); v.material = new THREE.MeshLambertMaterial({ color: '#b4764a', side: THREE.DoubleSide });
+  for (const s of [-1, 1]) { const lap = add(rig, new THREE.BoxGeometry(0.05, 0.4, 0.02), robeD, s * 0.075, 0.5, 0.176); lap.rotation.z = -s * 0.2; }
+  // skirt, hinged at the waist so it can trail behind in flight
+  const skirt = new THREE.Group(); skirt.position.y = 0.06; rig.add(skirt);
+  const sk = add(skirt, lathe([[0.2, 0], [0.235, -0.3], [0.3, -0.62], [0.34, -0.8]]), robe, 0, 0, 0); sk.scale.z = 0.8;
+  add(skirt, new THREE.TorusGeometry(0.3, 0.012, 4, 20).rotateX(Math.PI / 2), robeD, 0, -0.795, 0).scale.z = 0.8 / 1;
+  const sash = add(rig, new THREE.CylinderGeometry(0.215, 0.215, 0.13, 18, 1, true), robeD, 0, 0.1, 0); sash.scale.z = 0.8;
+  add(rig, new THREE.BoxGeometry(0.15, 0.1, 0.03), robeD, -0.07, 0.1, 0.17);                                   // sash knot
+  // neck, standing collar at the back, head
+  add(rig, new THREE.CylinderGeometry(0.06, 0.07, 0.14, 10), skin, 0, 0.78, 0);
+  add(rig, new THREE.CylinderGeometry(0.135, 0.17, 0.12, 14, 1, true, Math.PI * 0.45, Math.PI * 1.1), robe, 0, 0.77, -0.005);
+  const head = new THREE.Group(); head.position.set(0, 0.97, 0.01); rig.add(head);
+  add(head, new THREE.SphereGeometry(0.17, 18, 14), skin, 0, 0, 0).scale.set(0.86, 1.13, 0.98);
+  add(head, new THREE.BoxGeometry(0.07, 0.05, 0.05), skin, 0, -0.1, 0.13);                                     // jaw / chin
+  add(head, new THREE.ConeGeometry(0.03, 0.08, 4).rotateX(Math.PI / 2 - 0.25), skin, 0, -0.015, 0.17);         // nose
+  for (const s of [-1, 1]) {
+    add(head, new THREE.BoxGeometry(0.03, 0.01, 0.02), dark, s * 0.058, 0.03, 0.158);                         // eyes, a little hooded
+    const brow = add(head, new THREE.BoxGeometry(0.058, 0.012, 0.02), hair, s * 0.06, 0.052, 0.158); brow.rotation.z = -s * 0.1;   // heavy brows
+    add(head, new THREE.SphereGeometry(0.03, 6, 5), grey, s * 0.14, 0.06, 0.04);                                // grey at the temples
+    add(head, new THREE.SphereGeometry(0.028, 6, 5), grey, s * 0.155, 0.1, -0.02);
+  }
+  add(head, new THREE.BoxGeometry(0.06, 0.012, 0.02), dark, 0, -0.075, 0.153);                                  // set mouth
+  add(head, new THREE.SphereGeometry(0.175, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, 0, 0.025, -0.03).scale.set(0.92, 1.08, 1.0);
+  for (let k = 0; k < 14; k++) {   // loose waves swept back, thicker at the back and sides
+    const a = (k / 14) * Math.PI * 2; if (Math.cos(a) > 0.3) continue;   // none across the forehead
+    add(head, new THREE.SphereGeometry(0.036 + (k % 3) * 0.006, 6, 5), hair, Math.sin(a) * 0.15, 0.03 + (k % 2) * 0.05, -Math.cos(a) * 0.15 - 0.03);
+  }
+  for (const s of [-1, 1]) add(head, new THREE.SphereGeometry(0.04, 6, 5), hair, s * 0.075, 0.16, -0.01);
+  // arms: wide bell sleeves with a cuff and a hand; they hang from the shoulders
+  const mkArm = (s) => {
+    const a = new THREE.Group(); a.position.set(s * 0.255, 0.68, 0); rig.add(a);
+    add(a, new THREE.CylinderGeometry(0.06, 0.15, 0.62, 12, 1, true).translate(0, -0.31, 0), robe, 0, 0, 0);
+    add(a, new THREE.CylinderGeometry(0.15, 0.155, 0.05, 12, 1, true).translate(0, -0.62, 0), robeD, 0, 0, 0);
+    add(a, new THREE.SphereGeometry(0.055, 8, 6).scale(1, 1.15, 0.9), skin, 0, -0.6, 0.03);
+    return a;
+  };
+  const armL = mkArm(-1), armR = mkArm(1);
+  g.userData = { rig, legL, legR, armL, armR, skirt, head, HIP, pose: { lean: 0, clasp: 1 } };
   return g;
 }
 
@@ -3437,7 +3471,6 @@ function setMode(mode) {
   const prev = player.mode; if (prev === mode) return;
   player.mode = mode;
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).setAttribute('aria-pressed', String(m === mode));
-  character.userData.wing.visible = mode === 'fly';
   controls.enabled = mode === 'map';
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
@@ -3623,15 +3656,31 @@ function update(dt, t) {
     // animate the character
     const u = character.userData;
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
+    const P = u.pose, rig = u.rig, kf = 1 - Math.exp(-dt * 6);
     if (player.mode === 'walk') {
-      player.walkPhase += dt * hv * 2.1; const s = Math.sin(player.walkPhase) * Math.min(1, hv / 3) * 0.75;
-      u.legL.rotation.x = s; u.legR.rotation.x = -s; u.armL.rotation.set(-s * 0.8, 0, 0); u.armR.rotation.set(s * 0.8, 0, 0);
-      character.position.y += Math.abs(Math.cos(player.walkPhase)) * Math.min(1, hv / 3) * 0.05;
+      const run = Math.min(1, hv / 3);
+      player.walkPhase += dt * hv * 2.1; const sw = Math.sin(player.walkPhase) * run * 0.7;
+      P.lean += (0 - P.lean) * kf; P.clasp += ((run < 0.05 ? 1 : 0) - P.clasp) * kf;
+      rig.rotation.set(0.06 * run, 0, 0); rig.position.y = u.HIP + Math.abs(Math.cos(player.walkPhase)) * run * 0.04;
+      u.legL.rotation.x = sw; u.legR.rotation.x = -sw; u.skirt.rotation.x = Math.abs(sw) * 0.12;
+      u.armL.rotation.set(THREE.MathUtils.lerp(-sw * 0.5, -0.9, P.clasp), 0, THREE.MathUtils.lerp(0.06, 0.45, P.clasp));
+      u.armR.rotation.set(THREE.MathUtils.lerp(sw * 0.5, -0.9, P.clasp), 0, THREE.MathUtils.lerp(-0.06, -0.45, P.clasp));
+      character.rotation.z = 0;
     } else {
-      const lean = clamp(hv / 60, 0, 1);
-      character.rotation.x = lean * 0.45; character.rotation.z = Math.sin(t * 1.3) * 0.05;
-      u.legL.rotation.x = u.legR.rotation.x = 0.25 * lean; u.armL.rotation.set(0, 0, -2.75); u.armR.rotation.set(0, 0, 2.75);
+      // unassisted flight: he simply rises and glides. Hovering he stands upright, hands clasped, robe stirring; at speed he
+      // leans into the air with his legs trailing, the skirt streaming behind and the sleeves swept back.
+      const want = clamp(hv / 55, 0, 1), flutter = Math.sin(t * 3.1) * 0.5 + Math.sin(t * 5.3) * 0.3;
+      P.lean += (want - P.lean) * kf; P.clasp += ((want < 0.12 ? 1 : 0) - P.clasp) * kf;
+      rig.rotation.set(P.lean * 1.15, 0, Math.sin(t * 0.9) * 0.03); rig.position.y = u.HIP + 0.1 + Math.sin(t * 1.7) * 0.05;
+      u.legL.rotation.set(0.12 + P.lean * 0.55 + flutter * 0.03, 0, -0.03); u.legR.rotation.set(0.2 + P.lean * 0.5 - flutter * 0.03, 0, 0.03);
+      u.skirt.rotation.set(0.1 + P.lean * 0.7 + flutter * (0.04 + 0.1 * P.lean), 0, Math.sin(t * 2.3) * 0.04);
+      const sweep = 0.35 + P.lean * 0.9;
+      u.armL.rotation.set(THREE.MathUtils.lerp(sweep + flutter * 0.08, -0.9, P.clasp), 0, THREE.MathUtils.lerp(0.3 + P.lean * 0.2, 0.45, P.clasp));
+      u.armR.rotation.set(THREE.MathUtils.lerp(sweep - flutter * 0.08, -0.9, P.clasp), 0, THREE.MathUtils.lerp(-0.3 - P.lean * 0.2, -0.45, P.clasp));
+      u.head.rotation.x = -P.lean * 0.9;      // he keeps looking where he is going
+      character.rotation.z = 0;
     }
+    if (player.mode === 'walk') u.head.rotation.x = 0;
     // chase camera behind the character, swinging round as it turns
     let dy = player.yaw - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); cam.yaw += dy * (1 - Math.exp(-dt * 8));
     const head = _look.copy(player.pos); head.y += 1.5;
@@ -3759,6 +3808,7 @@ function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; mark
 window.amparacan = {
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
+  me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
