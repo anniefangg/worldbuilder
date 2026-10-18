@@ -1621,6 +1621,116 @@ function buildingDepthMaterial() {
   return m;
 }
 
+// ─────────────────────────── wind: swaying grass, shrubs and trees ───────────────────────────
+const WIND = { value: 0 };
+// Adds a wind sway to a lit, instanced material. `hh` is a GLSL expression (0 at the roots → 1 at the tips); `amp` scales the push; `fade` shrinks far blades into the ground.
+function windPatch(mat, { hh, amp = 1, fade = null }) {
+  mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${fade}`;   // each patch compiles its own program
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uWind = WIND;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;')
+      .replace('#include <project_vertex>', `
+        vec4 mvPosition = vec4(transformed, 1.0);
+        float isc = 1.0;
+        vec4 rootW = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition; isc = length(instanceMatrix[1].xyz);
+          rootW = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        #endif
+        vec4 wpos = modelMatrix * mvPosition;
+        float hh = ${hh};
+        vec2 W = vec2(0.82, 0.57);
+        float gust = 0.5 + 0.5 * sin(dot(wpos.xz, W) * 0.05 - uWind * 0.9);
+        float gust2 = sin(dot(wpos.xz, vec2(-0.5, 0.86)) * 0.13 - uWind * 1.7);
+        float flut = sin(uWind * 3.4 + wpos.x * 1.1 + wpos.z * 0.9);
+        vec2 push = W * (0.12 + 0.5 * gust + 0.15 * gust2) + vec2(-W.y, W.x) * flut * 0.07;
+        float bend = hh * hh * ${amp.toFixed(3)} * isc;
+        wpos.xz += push * bend; wpos.y -= length(push) * bend * 0.25;
+        ${fade ? `float fd = 1.0 - smoothstep(${fade[0].toFixed(1)}, ${fade[1].toFixed(1)}, distance(cameraPosition, rootW.xyz)); wpos.y = rootW.y + (wpos.y - rootW.y) * fd;` : ''}
+        mvPosition = viewMatrix * wpos;
+        gl_Position = projectionMatrix * mvPosition;`);
+  };
+  return mat;
+}
+// one grass blade: a tapering strip with a built-in lean, dark at the root and bright at the tip
+function bladeGeometry() {
+  const g = new THREE.BufferGeometry(), P = [-0.05, 0, 0, 0.05, 0, 0, -0.04, 0.5, 0.03, 0.04, 0.5, 0.03, 0, 1, 0.13];
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  const cs = [0.55, 0.55, 0.9, 0.9, 1.25], col = []; for (const c of cs) col.push(c, c, c);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
+  return g;
+}
+const GRASS_CH = 32, GRASS_R = 72;
+function parksIn(x0, z0, x1, z1) {
+  const out = new Set();
+  for (let ix = Math.floor(x0 / FGRID); ix <= Math.floor(x1 / FGRID); ix++) for (let iz = Math.floor(z0 / FGRID); iz <= Math.floor(z1 / FGRID); iz++)
+    for (const idx of world.fGrid.get(gkey(ix + 2000, iz + 2000)) || []) { const f = world.features[idx]; if (f.kind === 'park') out.add(f); }
+  return [...out];
+}
+function buildGrassChunk(ix, iz) {
+  const x0 = ix * GRASS_CH, z0 = iz * GRASS_CH, parks = parksIn(x0, z0, x0 + GRASS_CH, z0 + GRASS_CH);
+  if (!parks.length) return null;
+  const rnd = mulberry((ix * 73856093) ^ (iz * 19349663)), spacing = 0.5, pos = [], col = new THREE.Color();
+  const info = parks.map((f) => ({ f, c: new THREE.Color(featureStyle(f).grass) }));
+  for (let a = 0; a < GRASS_CH; a += spacing) for (let b = 0; b < GRASS_CH; b += spacing) {
+    const x = x0 + a + rnd() * spacing, z = z0 + b + rnd() * spacing;
+    let hit = null; for (const p of info) { const bb = p.f.bbox; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pointInRings(x, z, p.f.rings)) { hit = p; break; } }
+    if (!hit || occParkAt(x, z) > 0.55 || H(x, z) < 0.5) continue;
+    // tufts: two or three blades leaning different ways
+    const nb = 2 + (rnd() < 0.5 ? 1 : 0), tall = 0.38 + rnd() * 0.5 + (vnoise(x / 9, z / 9) > 0.62 ? 0.3 : 0);
+    for (let k = 0; k < nb; k++) pos.push(x + (rnd() - 0.5) * 0.25, z + (rnd() - 0.5) * 0.25, tall * (0.7 + rnd() * 0.5), rnd() * 6.283, hit.c);
+  }
+  const n = pos.length / 5; if (!n) return null;
+  const mesh = new THREE.InstancedMesh(world.bladeGeo, world.grassMat, n), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), V = new THREE.Vector3(), S = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    const x = pos[i * 5], z = pos[i * 5 + 1], h = pos[i * 5 + 2];
+    M4.compose(V.set(x, H(x, z) + LIFT - 0.02, z), Q.setFromAxisAngle(up, pos[i * 5 + 3]), S.set(1 + rnd() * 0.5, h, 1)); mesh.setMatrixAt(i, M4);
+    col.copy(pos[i * 5 + 4]).offsetHSL((rnd() - 0.5) * 0.03, 0.04 + rnd() * 0.08, (rnd() - 0.35) * 0.1); mesh.setColorAt(i, col);
+  }
+  mesh.frustumCulled = true; mesh.castShadow = false; mesh.receiveShadow = true; mesh.renderOrder = 6; mesh.computeBoundingSphere();
+  return mesh;
+}
+// Keep a field of grass around the camera; chunks come and go as it moves (a few per frame, so nothing hitches)
+let grassTimer = 0;
+function updateGrass(dt) {
+  if (!world.features) return;
+  world.grass = world.grass || new Map();
+  if (!world.bladeGeo) {
+    world.bladeGeo = bladeGeometry();
+    world.grassMat = windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'clamp(position.y, 0.0, 1.0)', amp: 1.0, fade: [GRASS_R * 0.55, GRASS_R] });
+  }
+  grassTimer -= dt; if (grassTimer > 0) return; grassTimer = 0.25;
+  const p = camera.position, high = p.y - H(p.x, p.z) > 120 || player.mode === 'plan';
+  const want = new Set();
+  if (!high) {
+    const cx = Math.floor(p.x / GRASS_CH), cz = Math.floor(p.z / GRASS_CH), r = Math.ceil(GRASS_R / GRASS_CH) + 1;
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) { const ix = cx + a, iz = cz + b, mx = (ix + 0.5) * GRASS_CH - p.x, mz = (iz + 0.5) * GRASS_CH - p.z; if (Math.hypot(mx, mz) < GRASS_R + GRASS_CH * 0.7) want.add(ix * 8192 + iz); }
+  }
+  for (const [k, m] of world.grass) if (!want.has(k)) { if (m) { scene.remove(m); m.dispose(); } world.grass.delete(k); }
+  let built = 0;
+  const order = [...want].filter((k) => !world.grass.has(k)).sort((a, b) => { const f = (k) => { const iz = ((k % 8192) + 8192 + 4096) % 8192 - 4096, ix = (k - iz) / 8192; return Math.hypot((ix + 0.5) * GRASS_CH - p.x, (iz + 0.5) * GRASS_CH - p.z); }; return f(a) - f(b); });
+  for (const k of order) {
+    if (built >= 2) break;
+    const iz = ((k % 8192) + 8192 + 4096) % 8192 - 4096, ix = (k - iz) / 8192, m = buildGrassChunk(ix, iz);
+    if (m) scene.add(m); world.grass.set(k, m); built++;
+  }
+}
+function clearGrass() { for (const [, m] of world.grass || []) if (m) { scene.remove(m); m.dispose(); } if (world.grass) world.grass.clear(); }
+// shrubs: clumped, squashed leaf-blobs; a flowering kind with pink, yellow and white blooms
+function bushGeometry(flowers) {
+  const greens = ['#3d7f35', '#4a8f3a', '#356f2f', '#5a9c40'].map(linear), parts = [];
+  [[0, 0.55, 0, 0.75], [0.6, 0.42, 0.25, 0.55], [-0.55, 0.45, -0.2, 0.6], [0.1, 0.4, -0.6, 0.5], [-0.15, 0.38, 0.6, 0.5]].forEach(([x, y, z, r], i) => {
+    parts.push(colorize(new THREE.IcosahedronGeometry(r, 1).scale(1, 0.78, 1).translate(x, y, z), greens[i % 4]));
+  });
+  if (flowers) {
+    const cols = ['#e0609f', '#f2c230', '#fafafa', '#d94aa0', '#f08a2c'].map(linear), rr = mulberry(31);
+    for (let k = 0; k < 16; k++) { const a = rr() * 6.283, el = rr() * 1.1 + 0.15, r = 0.8; parts.push(colorize(new THREE.OctahedronGeometry(0.1 + rr() * 0.05, 0).translate(Math.cos(a) * Math.cos(el) * r, 0.2 + Math.sin(el) * r * 0.75, Math.sin(a) * Math.cos(el) * r), cols[k % 5])); }
+  }
+  return mergeGeometries(parts.map(stripUV));
+}
+
 // ─────────────────────────── trees ───────────────────────────
 function palmGeometry() {
   const parts = [], trunkC = linear('#8a6a47'), ringC = linear('#6d5236'), leafA = linear('#2f7a2c'), leafB = linear('#5fae3c'), leafT = linear('#8cc34a');
@@ -2000,20 +2110,22 @@ function buildChinampas(list) {
 
 // ---- trees
 const occAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j = ((z / EXT + 0.5) * N) | 0; return i < 0 || j < 0 || i >= N || j >= N ? 1 : world.occ[j * N + i] / 255; };
+const occParkAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j = ((z / EXT + 0.5) * N) | 0; return i < 0 || j < 0 || i >= N || j >= N ? 1 : world.occP[j * N + i] / 255; };
 const TREE_TILE = 1750, TREE_TN = Math.ceil(EXT / TREE_TILE);
 const treeTile = (x, z) => Math.floor(x / TREE_TILE + TREE_TN / 2) * 1000 + Math.floor(z / TREE_TILE + TREE_TN / 2);
 function treeMeshes(buckets) {
-  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry() };
-  world.treeMats = world.treeMats || { palm: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), broad: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
+  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry(), bush: bushGeometry(false), flowerBush: bushGeometry(true) };
+  world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16 }) };
+  world.treeMats.flowerBush = world.treeMats.bush;
   world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad; world.treeMats.cypress = world.treeMats.cypress || world.treeMats.broad;
   const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  for (const kind of ['palm', 'broad', 'canopy', 'cypress']) for (const [, l] of buckets[kind] || []) {
+  for (const kind of ['palm', 'broad', 'canopy', 'cypress', 'bush', 'flowerBush']) for (const [, l] of buckets[kind] || []) {
     const n = l.length / 6; if (!n) continue;
     const mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n);
     for (let i = 0; i < n; i++) {
       const [x, y, z, s, rot, hue] = l.slice(i * 6, i * 6 + 6);
       M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(s, s * (0.9 + hue * 0.25), s)); mesh.setMatrixAt(i, M4);
-      if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
+      if (kind === 'bush' || kind === 'flowerBush') tint.setHSL(0.27 + (hue - 0.5) * 0.06, 0.35, 0.52 + hue * 0.12).lerp(white, kind === 'bush' ? 0.45 : 0.78); else if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
       mesh.setColorAt(i, tint);
     }
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.renderOrder = 10; mesh.computeBoundingSphere();
@@ -2035,7 +2147,7 @@ function rebuildParkTrees(onlyTiles) {
     const buckets = { palm: new Map(), broad: new Map() };
     for (const f of world.features) {
       if (f.kind !== 'park' || treeTile(f.cx, f.cz) !== tk || f.rings[0].length < 6) continue;
-      const s = featureStyle(f), per = { none: 0, sparse: 0.35, normal: 1, dense: 2.2 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5 }[s.treeType];
+      const s = featureStyle(f), per = { none: 0, sparse: 0.5, normal: 1.5, dense: 3 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5 }[s.treeType];
       if (!per) continue;
       const rnd = mulberry(f.seed ^ 0x9e3779b9), { pts, tris } = triangulate(f.rings);
       for (const t of tris) {
@@ -2044,8 +2156,17 @@ function rebuildParkTrees(onlyTiles) {
         for (let k = 0; k < n; k++) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
-          if (occAt(x, z) > 0.5) continue;
-          const sp = rnd() < palmShare ? 'palm' : rnd() < 0.3 ? 'cypress' : 'broad'; bucketAdd(buckets, sp, x, z, sp === 'cypress' ? 0.9 + rnd() * 0.5 : 0.8 + rnd() * 0.5, rnd); count++;
+          if (occParkAt(x, z) > 0.5) continue;
+          const sp = rnd() < palmShare ? 'palm' : rnd() < 0.3 ? 'cypress' : rnd() < 0.3 ? 'canopy' : 'broad'; bucketAdd(buckets, sp, x, z, sp === 'cypress' ? 0.9 + rnd() * 0.5 : sp === 'canopy' ? 0.7 + rnd() * 0.4 : 0.8 + rnd() * 0.5, rnd); count++;
+        }
+        // shrubs and flowering bushes, in loose drifts
+        let nb = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 55 * per; nb = Math.floor(nb) + (rnd() < nb % 1 ? 1 : 0);
+        for (let k = 0; k < nb; k++) {
+          let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
+          const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
+          if (occParkAt(x, z) > 0.5) continue;
+          const drift = 2 + ((rnd() * 3) | 0), flower = rnd() < 0.3;
+          for (let d = 0; d < drift; d++) { const bx = x + (rnd() - 0.5) * 3.2, bz = z + (rnd() - 0.5) * 3.2; if (occParkAt(bx, bz) > 0.5 || H(bx, bz) < 0.5) continue; bucketAdd(buckets, flower && d < 2 ? 'flowerBush' : 'bush', bx, bz, 0.7 + rnd() * 0.7, rnd); count++; }
         }
       }
     }
@@ -2105,6 +2226,14 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
     for (const L of paths) { g.lineWidth = L.w + 1.5; g.stroke(line2d(L.pts)); }
   });
   world.occN = N; world.occ = new Uint8Array(occ.length); for (let i = 0; i < occ.length; i++) world.occ[i] = occ[i] * 255;
+  // parks sit on top of the pavement underlay, so inside a park only buildings, streets and paths block planting
+  const occP = raster(N, (g) => {
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+    for (const b of world.buildings) g.fill(path2d(b.rings), 'evenodd');
+    for (const L of streets) { g.lineWidth = L.w + 3; g.stroke(line2d(L.pts)); }
+    for (const L of paths) { g.lineWidth = L.w + 1.5; g.stroke(line2d(L.pts)); }
+  });
+  world.occP = new Uint8Array(occP.length); for (let i = 0; i < occP.length; i++) world.occP[i] = occP[i] * 255;
   const rnd = mulberry(2024), buckets = { palm: new Map(), broad: new Map() };
   const parks = rebuildParkTrees();
   // Countryside: forest clumps and scattered palms near the coast
@@ -2322,6 +2451,10 @@ function furnitureGeometries() {
   G.planter = merge([box(2.3, 0.55, 0.75, stone, 0, 0.275, 0), box(2.4, 0.08, 0.85, stoneD, 0, 0.58, 0), ...[-0.72, 0, 0.72].map((x, i) => blob(0.44, linear(['#4f9a3c', '#3f8a35', '#5c9e3a'][i]), x, 0.88, 0, 0.8))]);
   G.fountain = merge([cyl(3.0, 3.0, 0.65, stone, 0, 24), cyl(0.5, 0.42, 1.6, stoneD, 0.6, 10), cyl(0.3, 1.25, 0.32, stone, 2.1, 16), cyl(0.18, 0.12, 0.7, stoneD, 2.4, 8), cyl(0.15, 0.55, 0.2, stone, 3.0, 12)]);
   G.fountainWater = merge([cyl(2.75, 2.75, 0.04, linear('#5fc3d3'), 0.52, 24), cyl(1.1, 1.1, 0.03, linear('#7fd6e0'), 2.36, 16)]);
+  // a picnic table with a bench either side, and a drinking fountain
+  G.table = merge([box(1.8, 0.06, 0.85, wood, 0, 0.78, 0), ...[-0.7, 0.7].flatMap((x) => [box(0.07, 0.78, 0.07, iron, x, 0.39, 0.3), box(0.07, 0.78, 0.07, iron, x, 0.39, -0.3)]), box(1.8, 0.05, 0.28, woodD, 0, 0.46, 0.7), box(1.8, 0.05, 0.28, woodD, 0, 0.46, -0.7),
+    ...[-0.7, 0.7].flatMap((x) => [box(0.06, 0.46, 0.06, iron, x, 0.23, 0.7), box(0.06, 0.46, 0.06, iron, x, 0.23, -0.7)])]);
+  G.drinker = merge([cyl(0.2, 0.15, 0.95, stone, 0, 8), cyl(0.25, 0.25, 0.08, stoneD, 0.95, 8), cyl(0.03, 0.03, 0.12, iron, 1.03, 6)]);
   G.pool = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
   return G;
 }
@@ -2348,6 +2481,7 @@ function addStreetFurniture() {
   const near = (x, z) => { const i = Math.floor(x / 1.4), j = Math.floor(z / 1.4); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (taken.has((i + a) * 65536 + j + b)) return true; return false; };
   const M4 = new THREE.Matrix4(), V = new THREE.Vector3();
   for (const m of world.streetTrees || []) for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, M4); V.setFromMatrixPosition(M4); taken.add(cell(V.x, V.z)); }
+  for (const ms of world.parkTrees ? world.parkTrees.values() : []) for (const m of ms) for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, M4); V.setFromMatrixPosition(M4); taken.add(cell(V.x, V.z)); }
   const clear = (x, z, r) => H(x, z) > 0.6 && !near(x, z) && buildingAt(x, z) < 0 && buildingAt(x + r, z) < 0 && buildingAt(x - r, z) < 0 && buildingAt(x, z + r) < 0 && buildingAt(x, z - r) < 0 && bridgeAt(x, z) === -Infinity;
   const claim = (x, z) => taken.add(cell(x, z));
   const lamp = (x, z) => { if (!clear(x, z, 0.4)) return false; claim(x, z); put('lamp', x, z, 0); put('lampGlass', x, z, 0); const y = H(x, z); chunkOf(x, z).halos.push(x, y + LIFT + 4.33, z); put('pool', x, z, 0, 5.5, y + LIFT + 0.04); return true; };
@@ -2407,6 +2541,28 @@ function addStreetFurniture() {
         const fx = f.cx, fz = f.cz;
         if (pointInRings(fx, fz, f.rings) && clear(fx, fz, 3.5)) { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(fx + a * 1.4, fz + b * 1.4); put('fountain', fx, fz, 0); put('fountainWater', fx, fz, 0); }
       }
+    }
+  }
+  // parks: lamps and benches round the edge, and clusters of benches, bins and picnic tables out on the lawns
+  for (const f of world.features) {
+    if (f.kind !== 'park' || f.size < 450 || f.rings[0].length < 6) continue;
+    const rnd = mulberry(f.seed ^ 0x2545f491), r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], inP = (x, z) => pointInRings(x, z, f.rings) && occParkAt(x, z) < 0.35;
+    walk(ring, 30, 4 + rnd() * 10, (x, z, nx, nz) => { const lx = x + nx * sgn * 1.4, lz = z + nz * sgn * 1.4; if (inP(lx, lz)) lamp(lx, lz); });
+    let kb = 0;
+    walk(ring, 21, 8 + rnd() * 9, (x, z, nx, nz, dx, dz) => {
+      const bx = x + nx * sgn * 2.6, bz = z + nz * sgn * 2.6; if (!inP(bx, bz) || !clear(bx, bz, 1.1)) return;
+      claim(bx, bz); put('bench', bx, bz, facing(bx, bz, x + nx * sgn * 9, z + nz * sgn * 9));
+      if (kb++ % 2 === 0) { const ex = bx + dx * 1.7, ez = bz + dz * 1.7; if (inP(ex, ez) && clear(ex, ez, 0.4)) { claim(ex, ez); put('bin', ex, ez, rnd() * 6.28); } }
+    });
+    const [bx0, bz0, bx1, bz1] = f.bbox, want = Math.min(16, Math.round(f.size / 1500));
+    for (let k = 0, got = 0, tries = 0; got < want && tries < want * 14; tries++) {
+      const x = bx0 + rnd() * (bx1 - bx0), z = bz0 + rnd() * (bz1 - bz0);
+      if (!inP(x, z) || !clear(x, z, 2.2)) continue;
+      got++; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) claim(x + a * 1.4, z + b * 1.4);
+      const rot = rnd() * 6.28, pick = rnd();
+      if (pick < 0.4 && f.size > 1500) put('table', x, z, rot);
+      else { put('bench', x, z, rot); const ox = x - Math.sin(rot) * 1.5 + Math.cos(rot) * 1.3, oz = z - Math.cos(rot) * 1.5 - Math.sin(rot) * 1.3; if (inP(ox, oz) && clear(ox, oz, 0.4)) { claim(ox, oz); put('bin', ox, oz, rnd() * 6.28); } if (rnd() < 0.5) lamp(x + Math.cos(rot) * 2.2, z - Math.sin(rot) * 2.2); }
+      if (rnd() < 0.18) { const dx2 = x + 3 * Math.cos(rot + 1.6), dz2 = z + 3 * Math.sin(rot + 1.6); if (inP(dx2, dz2) && clear(dx2, dz2, 0.5)) { claim(dx2, dz2); put('drinker', dx2, dz2, 0); } }
     }
   }
   // potted plants by front doors (and a few along street walls), and a pool of lantern light on the pavement
@@ -3960,6 +4116,8 @@ function update(dt, t) {
   const alt = Math.max(0, camera.position.y);
   const W0 = WEATHER[wx.name]; scene.fog.near = (1800 + alt * 3) * W0.nearK; scene.fog.far = (24000 + alt * 6) * W0.fogK;
   stepWeather(dt, t);
+  WIND.value = t;
+  updateGrass(dt);
   updateFurniture();
   post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
@@ -4052,6 +4210,7 @@ function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; mark
 window.amparacan = {
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
+  eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
@@ -4090,6 +4249,7 @@ store.on((what, ids) => {
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
     for (const k of kinds) if (ORDER[k]) buildGround(k);
+    if (kinds.has('park')) clearGrass();
     if (treeTiles.size) rebuildParkTrees(treeTiles);
     if (lights) world.lights = addStreetLights();
     if (streetTrees) { rebuildStreetTrees(); world.furniture = addStreetFurniture(); }
