@@ -56,6 +56,8 @@ body {
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
 }
 #compass svg { width: 34px; height: 34px; transition: none; }
+#compass { cursor: pointer; padding: 0; border: 1px solid var(--edge); }
+#compass:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
 #help {
   position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   padding: 12px 14px; max-width: min(320px, calc(100vw - 32px)); display: grid; gap: 8px;
@@ -214,9 +216,9 @@ body.tray-open #info { display: none; }
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
-<div id="compass" class="plaque" title="North">
+<button id="compass" class="plaque" type="button" title="Face north" aria-label="Reset the view to face north">
   <svg viewBox="-20 -20 40 40" aria-hidden="true"><g id="needle"><path d="M0 -15 L5 0 L0 3 L-5 0 Z" fill="#c4462f"/><path d="M0 15 L5 0 L0 -3 L-5 0 Z" fill="#12323f" opacity=".55"/><text x="0" y="-16.5" text-anchor="middle" font-size="7" font-family="Figtree, sans-serif" font-weight="700" fill="#12323f">N</text></g></svg>
-</div>
+</button>
 
 <div id="help" class="plaque" data-collapsed="false">
   <button id="help-toggle" type="button" aria-expanded="true">Controls · H</button>
@@ -725,7 +727,8 @@ async function buildWorld() {
           vec2 e = vec2(1.5 / 1024.0, 0.0);
           vec2 grad = vec2(texture2D(uDepth, uv + e.xy).r - texture2D(uDepth, uv - e.xy).r, texture2D(uDepth, uv + e.yx).r - texture2D(uDepth, uv - e.yx).r);
           vec2 shore = -grad / (length(grad) + 1e-5);                     // direction of shallower water
-          float shallows = 1.0 - smoothstep(1.5, 10.0, d);                // the swell only shows as it feels the bottom
+          float slope = smoothstep(0.02, 0.08, length(grad));             // a shelving seabed: beaches, not flat lagoons
+          float shallows = (1.0 - smoothstep(1.5, 10.0, d)) * slope;      // the swell only shows as it feels the bottom
           float amp = mix(0.6, 1.25, uRough);
           float phase = d * 0.6 + tm * 0.22 + 0.45 * fbm2(p * 0.006) + 0.25 * sin(dot(p, vec2(-shore.y, shore.x)) * 0.015 + tm * 0.15);
           float w = fract(phase);                                          // 0 = crest; steep front, long back
@@ -746,11 +749,11 @@ async function buildWorld() {
           vec3 Hh = normalize(uSun + V); col += mix(vec3(1.0, 0.93, 0.8), vec3(1.0, 0.6, 0.45), uNight) * pow(max(dot(n, Hh), 0.0), mix(220.0, 90.0, uNight)) * 1.6;
           // ---- breaking: crests whiten in the last few metres of depth, then whitewater rushes up and drains back
           float lace = fbm2(p * 0.09 + vec2(tm * 0.05, -tm * 0.04));
-          float breaking = crest * (1.0 - smoothstep(2.0, 5.5, d)) * smoothstep(0.25, 0.55, lace + 0.3 * amp);
+          float breaking = crest * slope * (1.0 - smoothstep(2.0, 5.5, d)) * smoothstep(0.25, 0.55, lace + 0.3 * amp);
           float run = fract(tm * 0.22 + d * 0.6 + 0.45 * fbm2(p * 0.006));  // the same rhythm as the swell
           float coast = smoothstep(0.12, 0.4, t.g) * (1.0 - smoothstep(0.5, 0.62, t.g));
-          float swash = (1.0 - smoothstep(1.4, 2.2 + 0.5 * amp, d)) * smoothstep(0.25, 0.65, lace) * (0.5 + 0.5 * (1.0 - run));
-          float trail = shallows * (1.0 - smoothstep(0.0, 0.25, w)) * smoothstep(0.55, 0.8, lace) * (1.0 - smoothstep(2.0, 6.0, d)) * 0.6;   // foam left behind a broken wave
+          float swash = (1.0 - smoothstep(1.4, 2.2 + 0.5 * amp, d)) * smoothstep(0.25, 0.65, lace) * (0.5 + 0.5 * (1.0 - run)) * max(slope, smoothstep(0.35, 0.5, t.g));
+          float trail = shallows * (1.0 - smoothstep(0.0, 0.25, w)) * smoothstep(0.6, 0.85, lace) * (1.0 - smoothstep(2.0, 4.0, d)) * 0.5;   // foam left behind a broken wave
           float caps = uRough * smoothstep(0.8 - 0.15 * uRough, 0.95, fbm2(p * 0.02 + tm * vec2(0.03, 0.02))) * smoothstep(6.0, 14.0, d) * f2;   // whitecaps offshore
           float foam = clamp(max(max(breaking, swash), max(trail, caps)) + coast * 0.45, 0.0, 1.0);
           col = mix(col, uFoam * mix(1.0, 0.5, uNight) * uDark / max(uDark, 0.62), foam * 0.85);
@@ -858,6 +861,7 @@ async function buildWorld() {
   world.streets = streets;
   await progress('Stringing lights across the lanes', 94);
   world.lights = addStreetLights();
+  world.bridges = buildBridges();
   await progress('Rolling in the clouds', 96);
   addClouds();
   applyTODExtras = (t) => {
@@ -1357,7 +1361,7 @@ const PAVINGS = ['flagstones', 'cobbles', 'pavers'];
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
   plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex' },
-  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'] },
+  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'] },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
   beach: { look: ['copacabana', 'natural'] },
@@ -1366,7 +1370,8 @@ function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
   if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0] });
-  if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none' });
+  if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
+    trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
   if (f.kind === 'beach') s.look = 'copacabana';
   for (const [k, spec] of Object.entries(FSTYLE[f.kind] || {})) {
@@ -1611,10 +1616,11 @@ const occAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j
 const TREE_TILE = 1750, TREE_TN = Math.ceil(EXT / TREE_TILE);
 const treeTile = (x, z) => Math.floor(x / TREE_TILE + TREE_TN / 2) * 1000 + Math.floor(z / TREE_TILE + TREE_TN / 2);
 function treeMeshes(buckets) {
-  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry() };
+  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry() };
   world.treeMats = world.treeMats || { palm: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), broad: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
+  world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad;
   const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  for (const kind of ['palm', 'broad']) for (const [, l] of buckets[kind]) {
+  for (const kind of ['palm', 'broad', 'canopy']) for (const [, l] of buckets[kind] || []) {
     const n = l.length / 6; if (!n) continue;
     const mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n);
     for (let i = 0; i < n; i++) {
@@ -1646,7 +1652,7 @@ function rebuildParkTrees(onlyTiles) {
       const rnd = mulberry(f.seed ^ 0x9e3779b9), { pts, tris } = triangulate(f.rings);
       for (const t of tris) {
         const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]];
-        let n = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 110 * per; n = Math.floor(n) + (rnd() < n % 1 ? 1 : 0);
+        let n = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 80 * per; n = Math.floor(n) + (rnd() < n % 1 ? 1 : 0);
         for (let k = 0; k < n; k++) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
@@ -1658,6 +1664,45 @@ function rebuildParkTrees(onlyTiles) {
     world.parkTrees.set(tk, treeMeshes(buckets));
   }
   return count;
+}
+// Big shade trees for street canopies: tall trunk and a broad, flat-topped crown (laurel / flamboyant)
+function canopyGeometry() {
+  const trunkC = linear('#6e5238'), greens = ['#3f7f37', '#4a8c3c', '#356f31', '#56973f'].map(linear);
+  const parts = [colorize(new THREE.CylinderGeometry(0.28, 0.42, 4.6, 6).translate(0, 2.3, 0).toNonIndexed(), trunkC)];
+  [[0, 6.2, 0, 3.2, 0.62], [2.4, 5.8, 0.8, 2.4, 0.6], [-2.3, 5.9, -0.6, 2.5, 0.6], [0.6, 6.0, -2.3, 2.3, 0.6], [-0.7, 5.8, 2.3, 2.3, 0.6], [0.2, 7.1, 0.2, 2.2, 0.55]].forEach(([x, y, z, r, sy], i) => {
+    parts.push(colorize(new THREE.IcosahedronGeometry(r, 0).scale(1, sy, 1).translate(x, y, z), greens[i % 4]));
+  });
+  return mergeGeometries(parts.map(stripUV));
+}
+// Trees along streets follow each street's style; rebuilt as a whole when one changes
+function rebuildStreetTrees() {
+  for (const m of world.streetTrees || []) { scene.remove(m); m.dispose(); }
+  const buckets = { palm: new Map(), broad: new Map(), canopy: new Map() }; let n = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'street') continue;
+    const st = featureStyle(f).trees; if (st === 'none' || !st) continue;
+    const rnd = mulberry(f.seed ^ 0x51ee7), P = f.pts, canopy = st === 'canopy', off = f.w / 2 + (canopy ? 1.2 : 1.5), both = canopy || f.w >= 9, gap = canopy ? 8.5 : f.w >= 9 ? 10 : 12;
+    let next = 3 + rnd() * 5, run = 0, k = 0;
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+      const nx = -dz / len, nz = dx / len;
+      while (next <= run + len) {
+        const t = (next - run) / len, cx = ax + dx * t, cz = az + dz * t;
+        const sides = both ? [1, -1] : [k++ % 2 ? 1 : -1];
+        if (canopy && f.w >= 14) sides.push(0);                          // a central row down wide boulevards
+        for (const side of sides) {
+          const x = cx + nx * off * side + (rnd() - 0.5) * 0.8, z = cz + nz * off * side + (rnd() - 0.5) * 0.8;
+          if (buildingAt(x, z) >= 0 || H(x, z) < 0.6 || bridgeAt(x, z) > -Infinity) continue;
+          const scale = canopy ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) : 0.85 + rnd() * 0.3;
+          bucketAdd(buckets, canopy ? 'canopy' : 'palm', x, z, scale, rnd); n++;
+        }
+        next += gap * (0.9 + rnd() * 0.2);
+      }
+      run += len;
+    }
+  }
+  world.streetTrees = treeMeshes(buckets);
+  return n;
 }
 function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   // Occupancy raster: built-up ground where trees may not grow (kept for replanting parks later)
@@ -1675,37 +1720,17 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   const parks = rebuildParkTrees();
   // Countryside: forest clumps and scattered palms near the coast
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
-  for (let z = minZ; z < maxZ && wild < 48000; z += S) for (let x = minX; x < maxX && wild < 48000; x += S) {
+  for (let z = minZ; z < maxZ && wild < 60000; z += S) for (let x = minX; x < maxX && wild < 60000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
     if (m < 0.75 || occAt(px, pz) > 0.2) continue;
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
-    const p = coast ? 0.22 : smooth(0.5, 0.78, forest) * 0.75 + 0.015;
+    const p = coast ? 0.26 : smooth(0.45, 0.75, forest) * 0.85 + 0.03;
     if (rnd() > p) continue;
     bucketAdd(buckets, coast || rnd() < 0.25 ? 'palm' : 'broad', px, pz, coast ? 0.9 + rnd() * 0.5 : 1.0 + rnd() * 0.9, rnd); wild++;
   }
-  // Palms lining the wider streets: both sides of avenues, alternating sides on mid-size streets
-  let lining = 0;
-  for (const L of streets) {
-    if (L.kind || L.w < 6 || lining >= 16000) continue;
-    const both = L.w >= 9, off = L.w / 2 + 1.5, P = L.pts; let next = 6 + rnd() * 6, run = 0, k = 0;
-    for (let i = 0; i < P.length - 2 && lining < 16000; i += 2) {
-      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
-      const nx = -dz / len, nz = dx / len;
-      while (next <= run + len) {
-        const t = (next - run) / len, cx = ax + dx * t, cz = az + dz * t;
-        for (const side of both ? [1, -1] : [k++ % 2 ? 1 : -1]) {
-          const x = cx + nx * off * side, z = cz + nz * off * side;
-          if (buildingAt(x, z) >= 0 || H(x, z) < 0.6) continue;
-          bucketAdd(buckets, 'palm', x, z, 0.85 + rnd() * 0.3, rnd); lining++;
-        }
-        next += both ? 13 : 15;
-      }
-      run += len;
-    }
-  }
   treeMeshes(buckets);
-  return { parks, countryside: wild, streets: lining };
+  return { parks, countryside: wild, streets: rebuildStreetTrees() };
 }
 
 // ---- string lights and papel picado (per-street style: auto, bulbs, papel, none)
@@ -1758,6 +1783,89 @@ function addStreetLights() {
   world.lightObjs = [pts, wl]; world.flagMesh = fm;
   world.bulbs = pts; pts.visible = NIGHT.value > 0.5;
   return { strands, bulbs: bulbs.length / 3, flags: n };
+}
+
+// ---- bridges: wherever a street or path from the Illustrator map crosses the sea or a canal,
+// raise it on an arched stone deck with parapets and piers (and let people walk across)
+function buildBridges() {
+  for (const o of world.bridgeObjs || []) { scene.remove(o); o.geometry.dispose(); }
+  world.bridgeObjs = []; world.bridgeSegs = []; world.bGridBr = new Map();
+  const geo = new Geo(), stone = linear('#e9e2d4'), side = linear('#cfc4b0'), pier = linear('#bdb3a0');
+  const quad = (P, n, col, uvs) => { const s0 = geo.count; P.forEach((q, k) => geo.v(q[0], q[1], q[2], n[0], n[1], n[2], col, uvs ? uvs[k][0] : q[0] / 4, uvs ? uvs[k][1] : q[2] / 4));
+    const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
+    const cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cx * n[0] + cy * n[1] + cz * n[2] >= 0) geo.i.push(s0, s0 + 1, s0 + 2, s0, s0 + 2, s0 + 3); else geo.i.push(s0, s0 + 2, s0 + 1, s0, s0 + 3, s0 + 2); };
+  let spans = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'street' && f.kind !== 'path') continue;
+    if (f.kind === 'path' && f.sub) continue;                      // dirt trails don't get bridges
+    // resample the line every 4 m with the ground height under it
+    const P = f.pts, S = [];
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(L / 4));
+      for (let k = 0; k < n; k++) { const x = lerp(ax, bx, k / n), z = lerp(az, bz, k / n); S.push([x, z, H(x, z)]); }
+    }
+    S.push([P[P.length - 2], P[P.length - 1], H(P[P.length - 2], P[P.length - 1])]);
+    for (let i = 0; i < S.length; i++) {
+      if (S[i][2] >= 0.35) continue;
+      let j = i; while (j < S.length && S[j][2] < 0.35) j++;
+      const a = Math.max(0, i - 1), b = Math.min(S.length - 1, j);   // land anchors either side
+      i = j;
+      const pts = S.slice(a, b + 1); let len = 0; const acc = [0];
+      for (let k = 1; k < pts.length; k++) { len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); acc.push(len); }
+      if (len < 6) continue;
+      spans++;
+      const ya = Math.max(pts[0][2], 0.6) + LIFT, yb = Math.max(pts[pts.length - 1][2], 0.6) + LIFT, rise = clamp(len * 0.07, 1.6, 7), hw = f.w / 2 + 0.6;
+      const Y = pts.map((q, k) => { const t = acc[k] / len; return lerp(ya, yb, t) + rise * Math.sin(Math.PI * t); });
+      const N = pts.map((q, k) => { const p0 = pts[Math.max(0, k - 1)], p1 = pts[Math.min(pts.length - 1, k + 1)], dx = p1[0] - p0[0], dz = p1[1] - p0[1], l = Math.hypot(dx, dz) || 1; return [-dz / l, dx / l]; });
+      for (let k = 0; k < pts.length - 1; k++) {
+        const [x0, z0] = pts[k], [x1, z1] = pts[k + 1], y0 = Y[k], y1 = Y[k + 1], n0 = N[k], n1 = N[k + 1];
+        const L0 = [x0 + n0[0] * hw, z0 + n0[1] * hw], R0 = [x0 - n0[0] * hw, z0 - n0[1] * hw], L1 = [x1 + n1[0] * hw, z1 + n1[1] * hw], R1 = [x1 - n1[0] * hw, z1 - n1[1] * hw];
+        const v0 = acc[k] / 4, v1 = acc[k + 1] / 4;
+        quad([[L0[0], y0, L0[1]], [R0[0], y0, R0[1]], [R1[0], y1, R1[1]], [L1[0], y1, L1[1]]], [0, 1, 0], stone, [[hw / 4, v0], [-hw / 4, v0], [-hw / 4, v1], [hw / 4, v1]]);   // deck
+        for (const [E0, E1, sgn] of [[L0, L1, 1], [R0, R1, -1]]) {
+          const nn = [n0[0] * sgn, 0, n0[1] * sgn];
+          quad([[E0[0], y0 - 1.0, E0[1]], [E1[0], y1 - 1.0, E1[1]], [E1[0], y1 + 1.0, E1[1]], [E0[0], y0 + 1.0, E0[1]]], nn, side);              // fascia + parapet, outside
+          const I0 = [E0[0] - n0[0] * sgn * 0.4, E0[1] - n0[1] * sgn * 0.4], I1 = [E1[0] - n1[0] * sgn * 0.4, E1[1] - n1[1] * sgn * 0.4];
+          quad([[I0[0], y0, I0[1]], [I1[0], y1, I1[1]], [I1[0], y1 + 1.0, I1[1]], [I0[0], y0 + 1.0, I0[1]]], [-nn[0], 0, -nn[2]], side);          // parapet, inside
+          quad([[E0[0], y0 + 1.0, E0[1]], [E1[0], y1 + 1.0, E1[1]], [I1[0], y1 + 1.0, I1[1]], [I0[0], y0 + 1.0, I0[1]]], [0, 1, 0], stone);      // coping
+        }
+        quad([[L0[0], y0 - 1.0, L0[1]], [L1[0], y1 - 1.0, L1[1]], [R1[0], y1 - 1.0, R1[1]], [R0[0], y0 - 1.0, R0[1]]], [0, -1, 0], pier);        // soffit
+        world.bridgeSegs.push({ ax: x0, az: z0, bx: x1, bz: z1, ya: y0, yb: y1, hw: hw - 0.4 });
+      }
+      // piers down to the seabed every ~24 m
+      for (let k = 1; k < pts.length - 1; k++) {
+        if (Math.floor(acc[k] / 24) === Math.floor(acc[k - 1] / 24) || pts[k][2] > -0.5) continue;
+        const [x, z] = pts[k], n = N[k], tx = n[1], tz = -n[0], y = Y[k] - 1.0, bot = pts[k][2] - 1;
+        const P4 = (u, v, yy) => [x + n[0] * u + tx * v, yy, z + n[1] * u + tz * v], u = hw * 0.85, v = 1.1;
+        for (const [a0, b0, a1, b1, nn] of [[-u, -v, u, -v, [-tx, 0, -tz]], [u, v, -u, v, [tx, 0, tz]], [-u, v, -u, -v, [-n[0], 0, -n[1]]], [u, -v, u, v, [n[0], 0, n[1]]]])
+          quad([P4(a0, b0, bot), P4(a1, b1, bot), P4(a1, b1, y), P4(a0, b0, y)], nn, pier);
+      }
+    }
+  }
+  const G = 40;
+  world.bridgeSegs.forEach((sg, i) => {
+    for (let ix = Math.floor((Math.min(sg.ax, sg.bx) - sg.hw) / G); ix <= Math.floor((Math.max(sg.ax, sg.bx) + sg.hw) / G); ix++)
+      for (let iz = Math.floor((Math.min(sg.az, sg.bz) - sg.hw) / G); iz <= Math.floor((Math.max(sg.az, sg.bz) + sg.hw) / G); iz++) {
+        const k = gkey(ix + 2000, iz + 2000); let l = world.bGridBr.get(k); if (!l) world.bGridBr.set(k, l = []); l.push(i);
+      }
+  });
+  if (geo.count) {
+    const m = new THREE.Mesh(geo.build(), new THREE.MeshLambertMaterial({ vertexColors: true, map: world.tex.flags.map }));
+    m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.bridgeObjs.push(m);
+  }
+  return spans;
+}
+// Height of a bridge deck under (x, z), or -Infinity
+function bridgeAt(x, z) {
+  const l = world.bGridBr && world.bGridBr.get(gkey(Math.floor(x / 40) + 2000, Math.floor(z / 40) + 2000)); if (!l) return -Infinity;
+  let best = -Infinity;
+  for (const i of l) {
+    const sg = world.bridgeSegs[i], dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L2 = dx * dx + dz * dz || 1;
+    const t = clamp(((x - sg.ax) * dx + (z - sg.az) * dz) / L2, 0, 1), d = Math.hypot(x - sg.ax - dx * t, z - sg.az - dz * t);
+    if (d <= sg.hw) best = Math.max(best, lerp(sg.ya, sg.yb, t));
+  }
+  return best;
 }
 
 // ---- highlight shapes for hovered / selected ground features
@@ -1841,6 +1949,7 @@ function buildingAt(x, z, test) {
 const _near = new Set();
 function groundAt(x, z, feet) {
   let g = H(x, z);
+  const br = bridgeAt(x, z); if (br > g && br <= feet + 1.2) g = br;   // walk up onto a bridge from its approach
   nearbyBuildings(x, z, _near);
   for (const k of _near) { const b = world.buildings[k]; if (!isSunk(k) && b.top <= feet + 0.7 && b.top > g && pointInRings(x, z, b.rings)) g = b.top; }
   return g;
@@ -2046,7 +2155,8 @@ const STYLE_DOCS = {
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
-- lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"`,
+- lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
+- trees: "canopy" (large shade trees on both sides whose crowns meet over the street), "palms" (a line of palms) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
 - tint: colour multiplied over the surface, "#rrggbb"`,
   beach: `- look: "copacabana" (wide golden sand, black-and-white wave-pattern calçadão promenade, palms, kiosks, lifeguard posts, umbrellas) or "natural" (plain sand)`,
@@ -2726,6 +2836,7 @@ function initControls() {
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
   $('help-toggle').addEventListener('click', toggleHelp);
   $('tod').addEventListener('click', toggleTOD);
+  $('compass').addEventListener('click', faceNorth);
   $('wx').addEventListener('click', toggleWeather);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
   $('start-fly').addEventListener('click', () => startExploring('fly'));
@@ -2734,6 +2845,14 @@ function initControls() {
   initMinimap();
 }
 function toggleHelp() { const h = $('help'), c = h.dataset.collapsed !== 'true'; h.dataset.collapsed = String(c); $('help-toggle').setAttribute('aria-expanded', String(!c)); try { localStorage.setItem('amparacan-map-help', c ? '1' : '0'); } catch (e) {} }
+// Compass: turn the view back to north, keeping the distance and tilt
+function faceNorth() {
+  if (player.mode === 'walk' || player.mode === 'fly') { player.yaw = Math.PI; return; }   // yaw π faces −z, i.e. north
+  if (player.mode === 'map') {
+    const tg = controls.target, off = camera.position.clone().sub(tg), horiz = Math.hypot(off.x, off.z);
+    tweenCamera(new THREE.Vector3(tg.x, camera.position.y, tg.z + horiz), tg.clone(), 0.8);
+  }
+}
 function toggleTOD() { const n = TOD_ORDER[(TOD_ORDER.indexOf(todState.name) + 1) % TOD_ORDER.length]; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
 function startExploring(mode) { $('intro').hidden = true; setMode(mode); canvas.focus(); }
 
@@ -2760,7 +2879,7 @@ function update(dt, t) {
     _move.set(Math.sin(player.yaw) * fwd, 0, Math.cos(player.yaw) * fwd);
     const mag = 1;
     if (player.mode === 'walk') {
-      const swim = H(player.pos.x, player.pos.z) < -0.4;
+      const swim = groundAt(player.pos.x, player.pos.z, player.pos.y) < -0.4;
       const speed = (fast ? 9 : 4.2) * (swim ? 0.55 : 1);
       player.vel.x = lerp(player.vel.x, _move.x * speed * mag, 1 - Math.exp(-dt * 10));
       player.vel.z = lerp(player.vel.z, _move.z * speed * mag, 1 - Math.exp(-dt * 10));
@@ -2923,7 +3042,7 @@ window.amparacan = {
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { buildings: world.buildings.length, trees: world.trees, lights: world.lights, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
@@ -2944,7 +3063,7 @@ store.on((what, ids) => {
     flushDirty(); plan.invalidate(true);
   }
   if (what === 'features') {
-    const kinds = new Set(), treeTiles = new Set(); let lights = false;
+    const kinds = new Set(), treeTiles = new Set(); let lights = false, streetTrees = false;
     for (const id of ids || []) {
       const f = world.featById.get(id); if (!f) continue;
       const st = featureStyle(f), js = JSON.stringify(st);
@@ -2952,10 +3071,12 @@ store.on((what, ids) => {
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
+      if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).trees !== st.trees)) streetTrees = true;
     }
     for (const k of kinds) if (ORDER[k]) buildGround(k);
     if (treeTiles.size) rebuildParkTrees(treeTiles);
     if (lights) world.lights = addStreetLights();
+    if (streetTrees) rebuildStreetTrees();
     plan.invalidate(true);
   }
   if ((what === 'buildings' || what === 'features' || what === 'changes') && sel && !ui.editing && (touched || what === 'changes')) renderInfo();
