@@ -49,6 +49,27 @@ auto-woven into event text.
 
 ---
 
+## 3D map (`map.html`)
+A navigable 3D city (Three.js 0.160 from jsDelivr) raised from the author's
+Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdecz
+- `data/map/reorganise15.ai` — source map (PDF-compatible .ai). Artboard 3500pt,
+  **1pt = 5m**. Layers used: Seas, Island, Elevation, Beaches, Canals, Streets,
+  Pavement, Parks, Paths, Built. Ignored: `Scratch - island`, `Scratch - buildings`,
+  Labels, Street names.
+- `scripts/parse_ai_map.py` — dependency-free PDF content-stream interpreter →
+  `data/map/map_data.json` (world metres, 0.1m-quantised, base64-packed). Fills are
+  classified by colour (pink = building, beige = pavement, green = park, aqua = water).
+  Building ids are stable hashes of footprint position (for future wiki links).
+  `--stats` prints a per-layer colour/width census.
+- `map_template.html` — the viewer (edit this). `__MAP_DATA__` placeholder.
+  `STYLES` table drives façade/roof palettes (per-neighbourhood styles go here);
+  heights are 3–5 floors for now. `window.amparacan` exposes `highlight(ids)`,
+  `flyTo(x,z)`, `setMode()`, `buildings`, `stats()` for later search/wiki/editor work.
+- Build: `python3 scripts/build_map.py [--reparse] [--preview /tmp/amparacan-map-preview]`
+  then publish `map.html` via the Artifact tool. Local preview: `.claude/launch.json`
+  "map" serves `/tmp/amparacan-map-preview` (the repo lives under ~/Documents,
+  which the sandboxed server can't read).
+
 ## Workflow conventions (standing — follow on every change)
 
 ### Pull requests — always write a detailed description
