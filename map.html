@@ -224,7 +224,7 @@ body.tray-open #info { display: none; }
 <div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
-<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: scroll to zoom, double-click to jump there"></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span></div>
+<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: scroll to zoom, click to teleport there" title="Click anywhere to teleport there. Scroll to zoom."></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -4146,8 +4146,8 @@ function adaptResolution(now, drew) {
   if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); post.composer.setPixelRatio(next); post.composer.setSize(innerWidth, innerHeight); }
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
-// North-up, centred on the character; zooms out with altitude. Scroll to zoom, double-click to jump there.
-const mm = { zoom: 1, last: 0, scale: 0.4 };
+// North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
+const mm = { zoom: 1, last: 0, scale: 0.4, ping: 0 };
 function drawMinimap(now) {
   if (now - mm.last < 66) return; mm.last = now;          // ~15 fps is plenty
   const c = $('mm'), dpr = Math.min(devicePixelRatio, 2), W = c.clientWidth, Hh = c.clientHeight; if (!W) return;
@@ -4175,6 +4175,10 @@ function drawMinimap(now) {
   g.setTransform(dpr, 0, 0, dpr, dpr * W / 2, dpr * Hh / 2); g.rotate(-player.yaw + Math.PI);
   g.beginPath(); g.moveTo(0, -8); g.lineTo(5.5, 6); g.lineTo(0, 3); g.lineTo(-5.5, 6); g.closePath();
   g.fillStyle = '#1f57a8'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.fill(); g.stroke();
+  if (mm.ping) {   // a ring that spreads out from where you arrived
+    const k = (now - mm.ping) / 700;
+    if (k < 1) { g.setTransform(dpr, 0, 0, dpr, dpr * W / 2, dpr * Hh / 2); g.beginPath(); g.arc(0, 0, 6 + k * 34, 0, 6.283); g.strokeStyle = `rgba(31,87,168,${(1 - k) * 0.9})`; g.lineWidth = 2.5 * (1 - k) + 0.5; g.stroke(); } else mm.ping = 0;
+  }
   // a scale bar label: the map's width in metres
   const span = W * px; $('mm-scale').textContent = span >= 1000 ? `${(span / 1000).toFixed(1)} km` : `${Math.round(span / 10) * 10} m`;
 }
@@ -4183,9 +4187,13 @@ function initMinimap() {
   addEventListener('resize', placeMinimap);
   const c = $('mm');
   c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); mm.zoom = clamp(mm.zoom * Math.exp(-e.deltaY * 0.002), 0.15, 6); mm.last = 0; }, { passive: false });
-  c.addEventListener('dblclick', (e) => {
+  // one click teleports you there (in fly mode you keep your height)
+  c.addEventListener('click', (e) => {
     const r = c.getBoundingClientRect(), x = player.pos.x + (e.clientX - r.left - r.width / 2) / mm.scale, z = player.pos.z + (e.clientY - r.top - r.height / 2) / mm.scale;
-    if (player.mode === 'fly') { player.pos.x = x; player.pos.z = z; } else dropIn(x, z);
+    const half = EXT / 2; if (Math.abs(x) > half || Math.abs(z) > half) return;
+    if (player.mode === 'fly') { player.pos.x = x; player.pos.z = z; player.vel.set(0, 0, 0); player.pos.y = Math.max(player.pos.y, Math.max(groundAt(x, z, 999), 0) + 8); }
+    else { dropIn(x, z); player.vel.set(0, 0, 0); }
+    mm.ping = performance.now(); mm.last = 0;
   });
 }
 
