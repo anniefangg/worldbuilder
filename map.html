@@ -156,7 +156,7 @@ body.tray-open #info { display: none; }
 #h-q { font: 400 13px/1.3 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border: 1px solid var(--edge); border-radius: 8px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
 .pill.cat { background: rgba(31, 87, 168, 0.12); color: var(--azulejo); }
 #minimap {
-  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(118px + env(safe-area-inset-top, 0px));
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px));
   width: 184px; height: 184px; padding: 5px; box-sizing: border-box; border-radius: 14px; overflow: hidden;
 }
 #minimap canvas { display: block; width: 100%; height: 100%; border-radius: 10px; cursor: crosshair; }
@@ -173,13 +173,13 @@ body.tray-open #info { display: none; }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
-  #minimap { width: 128px; height: 128px; top: calc(146px + env(safe-area-inset-top, 0px)); }
+  #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
   #tray { top: calc(110px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
-  #modes { top: auto; right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(96px + env(safe-area-inset-top, 0px)); }
+  #modes { right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); }
   #compass { top: calc(14px + env(safe-area-inset-top, 0px)); }
 }
 @media (prefers-reduced-motion: reduce) { #loader, #load-bar { transition: none; } }
@@ -189,7 +189,7 @@ body.tray-open #info { display: none; }
 <canvas id="plan" tabindex="0" aria-label="2D plan of Amparacán" hidden></canvas>
 <button id="edit-pill" type="button" hidden>Edit</button>
 
-<div id="brand" class="plaque">
+<div id="brand" class="plaque" hidden>
   <h1>Amparacán</h1>
   <div class="sub">Island city · 3D survey</div>
   <div id="readout">—</div>
@@ -1787,7 +1787,8 @@ const isBuildingId = (id) => world.byId && world.byId.has(id);
 const colFor = (id) => (isBuildingId(id) || /^b[0-9a-f]{8}$/.test(id) ? 'buildings' : 'features');
 async function initStore() {
   if (!(window.claude && window.claude.use)) { // local preview: keep edits in this browser so the tools can be tried
-    store.kind = 'local'; store.canEdit = true; $('preview-banner').hidden = false; document.body.classList.add('local-preview');
+    store.kind = 'local'; store.canEdit = true; document.body.classList.add('local-preview');
+    setTimeout(() => toast('Local preview: edits stay in this browser and “Apply now” can’t run Claude here. Open the published map to edit instantly.'), 1500);
     try { const j = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}'); for (const c of COLLECTIONS) for (const [k, v] of Object.entries(j[c] || {})) store[c].set(k, v); } catch (e) {}
     store.emit('buildings', [...store.buildings.keys()]); store.emit('features', [...store.features.keys()]); store.emit('prompts'); store.emit('changes'); store.emit('ready');
     return;
@@ -2729,7 +2730,7 @@ function drawMinimap(now) {
   // a scale bar label: the map's width in metres
   const span = W * px; $('mm-scale').textContent = span >= 1000 ? `${(span / 1000).toFixed(1)} km` : `${Math.round(span / 10) * 10} m`;
 }
-function placeMinimap() { const r = $('brand').getBoundingClientRect(); $('minimap').style.top = Math.round(r.bottom + 10) + 'px'; }
+function placeMinimap() { const b = $('brand'); $('minimap').style.top = b.hidden ? '' : Math.round(b.getBoundingClientRect().bottom + 10) + 'px'; }
 function initMinimap() {
   addEventListener('resize', placeMinimap);
   const c = $('mm');
