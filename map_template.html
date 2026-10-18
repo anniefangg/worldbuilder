@@ -161,7 +161,13 @@ body.tray-open #info { display: none; }
   position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px));
   width: 184px; height: 184px; padding: 5px; box-sizing: border-box; border-radius: 14px; overflow: hidden;
 }
-#minimap canvas { display: block; width: 100%; height: 100%; border-radius: 10px; cursor: crosshair; }
+#minimap canvas { display: block; width: 100%; height: 100%; border-radius: 10px; cursor: crosshair; touch-action: none; }
+#minimap.big { width: min(320px, 44vw, 62vh); height: min(320px, 44vw, 62vh); }
+#minimap.panned canvas { cursor: grab; }
+#minimap .mm-btns { position: absolute; left: 9px; bottom: 9px; display: flex; gap: 3px; }
+#minimap .mm-btns button { width: 24px; height: 24px; padding: 0; border: 1px solid var(--edge); border-radius: 6px; background: rgba(251,248,240,.92); color: var(--ink); font: 600 14px/1 var(--font-ui); cursor: pointer; display: grid; place-items: center; }
+#minimap .mm-btns button:hover { background: #fff; }
+#minimap .mm-btns button[hidden] { display: none; }
 #minimap .mm-n { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); font: 700 10px/1 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border-radius: 999px; padding: 3px 5px; pointer-events: none; }
 #minimap .mm-scale { position: absolute; right: 10px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #preview-banner { margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff1c9; color: #6b4a10; font-size: 11.5px; line-height: 1.35; max-width: 220px; }
@@ -224,7 +230,7 @@ body.tray-open #info { display: none; }
 <div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
-<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: scroll to zoom, click to teleport there" title="Click anywhere to teleport there. Scroll to zoom."></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span></div>
+<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -4183,15 +4189,16 @@ function adaptResolution(now, drew) {
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
-const mm = { zoom: 1, last: 0, scale: 0.4, ping: 0 };
+const mm = { zoom: 1, zoomT: 1, last: 0, scale: 0.4, ping: 0, px: 0, pz: 0 };
 function drawMinimap(now) {
   if (now - mm.last < 66) return; mm.last = now;          // ~15 fps is plenty
+  if (Math.abs(mm.zoomT - mm.zoom) > 0.002) { mm.zoom += (mm.zoomT - mm.zoom) * 0.45; if (Math.abs(mm.zoomT - mm.zoom) < 0.004) mm.zoom = mm.zoomT; }   // zoom eases in
   const c = $('mm'), dpr = Math.min(devicePixelRatio, 2), W = c.clientWidth, Hh = c.clientHeight; if (!W) return;
   if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr); }
   if (plan.bldDirty) planBuildings();
   const alt = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z));
   const s = mm.scale = clamp(0.42 * mm.zoom * (player.mode === 'fly' ? 40 / Math.max(40, alt) : 1), 0.02, 3), px = 1 / s;
-  const g = c.getContext('2d'), P = plan.paths, cx = player.pos.x, cz = player.pos.z;
+  const g = c.getContext('2d'), P = plan.paths, cx = player.pos.x + mm.px, cz = player.pos.z + mm.pz;
   g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#7fc6d6'; g.fillRect(0, 0, W, Hh);
   g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - cx * s), dpr * (Hh / 2 - cz * s));
   g.lineCap = 'round'; g.lineJoin = 'round';
@@ -4208,7 +4215,7 @@ function drawMinimap(now) {
   for (const idx of plan.custom) { const b = world.buildings[idx]; if (vis(b.bbox)) { g.fillStyle = (b.style || styleOf(b)).wall; g.fill(ringPath(b.rings), 'evenodd'); } }
   if (ui.selected) drawTargetOutline(g, ui.selected, '#1f57a8', 2.5, 'rgba(31,87,168,.25)', px);
   // the character: a heading arrow (yaw 0 faces south, +z)
-  g.setTransform(dpr, 0, 0, dpr, dpr * W / 2, dpr * Hh / 2); g.rotate(-player.yaw + Math.PI);
+  g.setTransform(dpr, 0, 0, dpr, dpr * (W / 2 - mm.px * s), dpr * (Hh / 2 - mm.pz * s)); g.rotate(-player.yaw + Math.PI);
   g.beginPath(); g.moveTo(0, -8); g.lineTo(5.5, 6); g.lineTo(0, 3); g.lineTo(-5.5, 6); g.closePath();
   g.fillStyle = '#1f57a8'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.fill(); g.stroke();
   if (mm.ping) {   // a ring that spreads out from where you arrived
@@ -4221,16 +4228,38 @@ function drawMinimap(now) {
 function placeMinimap() { const b = $('brand'); $('minimap').style.top = b.hidden ? '' : Math.round(b.getBoundingClientRect().bottom + 10) + 'px'; }
 function initMinimap() {
   addEventListener('resize', placeMinimap);
-  const c = $('mm');
-  c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); mm.zoom = clamp(mm.zoom * Math.exp(-e.deltaY * 0.002), 0.15, 6); mm.last = 0; }, { passive: false });
-  // one click teleports you there (in fly mode you keep your height)
-  c.addEventListener('click', (e) => {
-    const r = c.getBoundingClientRect(), x = player.pos.x + (e.clientX - r.left - r.width / 2) / mm.scale, z = player.pos.z + (e.clientY - r.top - r.height / 2) / mm.scale;
+  const c = $('mm'), box = $('minimap'), home = $('mm-home');
+  const setZoom = (z) => { mm.zoomT = clamp(z, 0.06, 10); mm.last = 0; };
+  const panned = () => { const on = Math.abs(mm.px) + Math.abs(mm.pz) > 1; home.hidden = !on; box.classList.toggle('panned', on); };
+  const recentre = () => { mm.px = mm.pz = 0; panned(); mm.last = 0; };
+  c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); setZoom(mm.zoomT * Math.exp(-e.deltaY * 0.0045)); }, { passive: false });
+  $('mm-in').addEventListener('click', () => setZoom(mm.zoomT * 1.6));
+  $('mm-out').addEventListener('click', () => setZoom(mm.zoomT / 1.6));
+  home.addEventListener('click', recentre);
+  $('mm-big').addEventListener('click', () => { const big = box.classList.toggle('big'); $('mm-big').setAttribute('aria-label', big ? 'Shrink the minimap' : 'Enlarge the minimap'); mm.last = 0; });
+  // drag to look around the island; a click (no drag) teleports to that spot.  The ⌖ button brings the map back to you.
+  let drag = null;
+  c.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: false }; c.setPointerCapture(e.pointerId); });
+  c.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true; mm.px -= dx / mm.scale; mm.pz -= dy / mm.scale; drag.x = e.clientX; drag.y = e.clientY;
+    mm.px = clamp(mm.px, -EXT, EXT); mm.pz = clamp(mm.pz, -EXT, EXT); panned(); mm.last = 0; c.style.cursor = 'grabbing';
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null; c.style.cursor = '';
+    if (d.moved || e.type === 'pointercancel') return;
+    const r = c.getBoundingClientRect(), x = player.pos.x + mm.px + (e.clientX - r.left - r.width / 2) / mm.scale, z = player.pos.z + mm.pz + (e.clientY - r.top - r.height / 2) / mm.scale;
     const half = EXT / 2; if (Math.abs(x) > half || Math.abs(z) > half) return;
+    // one click teleports you there (in fly mode you keep your height)
     if (player.mode === 'fly') { player.pos.x = x; player.pos.z = z; player.vel.set(0, 0, 0); player.pos.y = Math.max(player.pos.y, Math.max(groundAt(x, z, 999), 0) + 8); }
     else { dropIn(x, z); player.vel.set(0, 0, 0); }
-    mm.ping = performance.now(); mm.last = 0;
-  });
+    recentre(); mm.ping = performance.now();
+  };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+  c.addEventListener('dblclick', (e) => { e.preventDefault(); });
 }
 
 // The floating Edit pill sits above the hovered building
