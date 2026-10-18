@@ -359,13 +359,14 @@ function readLines(set) {
 const STYLES = {
   default: {
     walls: [ // [colour, weight] — lime-washed whites and creams, soft colonial pastels, a few saturated accents
-      ['#f3eee4', 7], ['#ece3d0', 4], ['#e6d6bb', 3], ['#f2d9c2', 2], ['#eec0ae', 2], ['#e59a8c', 2],
-      ['#d8746c', 1], ['#9cc7d6', 3], ['#6fa9c4', 2], ['#3f78a8', 1], ['#a9d1c4', 2], ['#5f9f98', 1],
-      ['#ecc96f', 2], ['#e2a45a', 1], ['#c97a52', 1], ['#d7b8d8', 1], ['#f4c9d4', 1]
+      ['#f3eee4', 5], ['#ece3d0', 3], ['#e6d6bb', 3], ['#f2d9c2', 2], ['#eec0ae', 2], ['#e59a8c', 3],
+      ['#d8746c', 2], ['#9cc7d6', 3], ['#6fa9c4', 3], ['#3f78a8', 2], ['#a9d1c4', 2], ['#5f9f98', 2],
+      ['#ecc96f', 3], ['#e2a45a', 2], ['#c97a52', 2], ['#d7b8d8', 1], ['#f4c9d4', 2],
+      ['#c8504a', 2], ['#4d93a6', 2], ['#e8896a', 2], ['#a8433f', 1], ['#6bb3a2', 2], ['#d98aa0', 1], ['#e9b04a', 1]
     ],
     shutters: ['#2f5d50', '#2d4f80', '#6b4a33', '#7a3b2e', '#1d6f74', '#3d6b3a', '#8c5a2b'],
     flatRoofs: ['#e8e2d6', '#ddd5c6', '#c98a68', '#d6cab5', '#d19a7a', '#e9ddd0'],   // lime-wash and terracotta pavers
-    tileRoofs: ['#b4472f', '#c25639', '#a83f2b', '#c9643f', '#9c3a28', '#bb5034', '#cf7048'],
+    tileRoofs: ['#b4472f', '#c25639', '#a83f2b', '#c9643f', '#9c3a28', '#bb5034', '#cf7048', '#a05a40', '#8a4a38', '#b8693f', '#7f3f30', '#c98258', '#94503c'],
     pitchedShare: 0.76,     // most roofs are terracotta; the rest are roof terraces
     balconyShare: 0.45,
   },
@@ -456,6 +457,7 @@ function setTimeOfDay(name) {
   hemi.color.set(t.hemiSky); hemi.groundColor.set(t.hemiGround); hemi.intensity = t.hemiI;
   const u = camera.userData.sky.material.uniforms;
   u.uHor.value.set(t.hor); u.uMid.value.set(t.mid); u.uTop.value.set(t.top); u.uGlow.value.set(t.glow); u.uNight.value = t.night; u.uMilky.value = t.milky || 0;
+  u.uClLit.value.set(t.cloud).lerp(new THREE.Color(t.glow), 0.12); u.uClShade.value.set(t.cloudEm).multiplyScalar(0.8).lerp(new THREE.Color(t.mid), 0.45);
   scene.fog.color.set(t.fog); renderer.toneMappingExposure = t.exposure; NIGHT.value = t.night;
   applyTODExtras(t);
   applyPost(t.post);
@@ -466,11 +468,11 @@ function setTimeOfDay(name) {
 
 // Weather, layered over the time of day
 const WEATHER = {
-  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 26, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
-  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 72, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
-  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 96, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
-  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 96, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
-  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 18, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
+  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
+  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 8, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
+  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
+  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
+  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
 };
 const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'fog'];
 const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
@@ -480,7 +482,7 @@ function applyWeather() {
   sun.intensity = t.sunI * w.sunK; hemi.intensity = wx.baseHemi = t.hemiI * w.hemiK;
   const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
-  u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color);
+  u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, fog: 0.55 }[wx.name];
   if (world.cloudMat) {
     world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
@@ -531,9 +533,9 @@ function stepWeather(dt, t) {
 {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(80000, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 } },
+    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 }, uTime: { value: 0 }, uCover: { value: 0.5 }, uClLit: { value: new THREE.Color('#fff') }, uClShade: { value: new THREE.Color('#889') } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w * 0.9999; }`,
-    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver; uniform float uNight, uMilky, uOvercast, uFlash; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver, uClLit, uClShade; uniform float uNight, uMilky, uOvercast, uFlash, uTime, uCover; varying vec3 vDir;
       float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
@@ -556,6 +558,19 @@ function stepWeather(dt, t) {
           vec3 g2 = floor(d * 900.0); float dense = step(1.0 - 0.06 * band, hash(g2)) * (0.4 + 0.6 * hash(g2 + 1.7));
           vec3 mw = vec3(0.55, 0.62, 0.85) * glowMW * 0.55 + vec3(0.95, 0.85, 0.7) * core * cloud * 0.25 + vec3(0.9, 0.95, 1.0) * dense * band * 0.9;
           c += mw * uMilky * smoothstep(0.02, 0.3, h);
+        }
+        // towering painterly cumulus: a layer of fbm-sculpted clouds, lit from the sun's side with a bright silver edge and cool underbellies
+        if (h > 0.012) {
+          vec2 q = d.xz / (h + 0.28) * 1.15 + vec2(uTime * 0.006, uTime * 0.002);
+          vec2 sd = normalize(uSun.xz + 1e-4) * 0.12;
+          float lo = 1.0 - uCover;
+          float n0 = fbm(vec3(q, uTime * 0.01)) * 0.8 + 0.2 * fbm(vec3(q * 3.1, 4.0 + uTime * 0.02));
+          float n1 = fbm(vec3(q + sd, uTime * 0.01)) * 0.8 + 0.2 * fbm(vec3((q + sd) * 3.1, 4.0 + uTime * 0.02));
+          float dens = smoothstep(lo, lo + 0.15, n0), dens1 = smoothstep(lo, lo + 0.15, n1);
+          float lit = clamp(0.55 + (dens - dens1) * 3.2 + (1.0 - dens) * 0.4, 0.0, 1.0);
+          vec3 cc = mix(uClShade, uClLit, lit) + uGlow * 0.18 * pow(s, 4.0) * (1.0 - dens * 0.6) * (0.3 + uNight);
+          float fade = smoothstep(0.012, 0.2, h) * (1.0 - smoothstep(0.75, 1.0, h) * 0.45);
+          c = mix(c, cc, dens * fade * (1.0 - uOvercast * 0.6));
         }
         // overcast: a low grey ceiling hides the sun, stars and Milky Way; lightning lights it up
         c = mix(c, uOver * (0.9 + 0.25 * h) * (0.9 + 0.2 * fbm(d * 5.0 + 1.0)), uOvercast * 0.94) + vec3(0.75, 0.8, 0.95) * uFlash * (0.4 + 0.6 * h);
@@ -692,6 +707,14 @@ function groundTexture(kind) {
   } else {                          // grass speckle
     g.fillStyle = '#fff'; g.fillRect(0, 0, N, N); bg.fillStyle = '#888'; bg.fillRect(0, 0, N, N);
     for (let k = 0; k < 2600; k++) { const v = 190 + rnd() * 65 | 0; g.fillStyle = `rgb(${v - 10},${v},${v - 20})`; g.fillRect(rnd() * N, rnd() * N, 2, 3); }
+  }
+  if (kind === 'setts' || kind === 'flags' || kind === 'slabs') {   // age: stains, scuffs, hairline cracks and moss in the joints, all wrapping seamlessly
+    const each = (fn) => { for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) { g.save(); g.translate(dx, dy); fn(); g.restore(); } };
+    for (let k = 0; k < 46; k++) { const x = rnd() * N, y = rnd() * N, r = 12 + rnd() * 40, dark = rnd() < 0.7; each(() => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, dark ? 'rgba(40,36,34,0.13)' : 'rgba(255,248,230,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }); }
+    g.lineCap = 'round';
+    for (let k = 0; k < 26; k++) { let x = rnd() * N, y = rnd() * N, a = rnd() * 6.28; const pts = [[x, y]]; for (let m = 0; m < 5; m++) { a += (rnd() - 0.5) * 1.2; x += Math.cos(a) * (4 + rnd() * 9); y += Math.sin(a) * (4 + rnd() * 9); pts.push([x, y]); } each(() => { g.strokeStyle = 'rgba(30,28,30,0.35)'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(...pts[0]); for (const q of pts.slice(1)) g.lineTo(...q); g.stroke(); }); }
+    for (let k = 0; k < 150; k++) { const x = rnd() * N, y = rnd() * N, r = 1.2 + rnd() * 3; each(() => { g.fillStyle = `rgba(${60 + rnd() * 30 | 0},${100 + rnd() * 40 | 0},${40 + rnd() * 20 | 0},${0.28 + rnd() * 0.3})`; g.beginPath(); g.ellipse(x, y, r * 1.5, r, rnd() * 3, 0, 6.28); g.fill(); }); }
+    for (let k = 0; k < 420; k++) { const x = rnd() * N, y = rnd() * N, w = 1 + rnd() * 3; each(() => { g.fillStyle = `rgba(${rnd() < 0.5 ? '25,22,22' : '255,250,240'},${0.08 + rnd() * 0.12})`; g.fillRect(x, y, w, w * (0.5 + rnd())); }); }
   }
   const t = new THREE.CanvasTexture(c), bt = new THREE.CanvasTexture(bc);
   for (const x of [t, bt]) { x.wrapS = x.wrapT = THREE.RepeatWrapping; x.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
@@ -915,6 +938,7 @@ async function buildWorld() {
   world.streets = streets;
   await progress('Stringing lights across the lanes', 94);
   world.lights = addStreetLights();
+  world.wires = addWires();
   world.bridges = buildBridges();
   await progress('Setting out benches, lamps and flowerpots', 95);
   world.furniture = addStreetFurniture();
@@ -986,17 +1010,30 @@ function balcony(geo, f, y, t0, t1, col) {
     quadN(geo, Pq, n, IRON, aw); quadN(geo, Pq, n.map((x) => -x), IRON, aw);
   };
   rail(Q0, Q1, len, fw); rail(P0, Q0, d, [-dx, 0, -dz]); rail(P1, Q1, d, [dx, 0, dz]);
+  // planters on the slab and trailing greenery over the rail
+  const rr = mulberry((Math.floor((f.ax + f.az) * 37) ^ Math.floor(y * 11) ^ 0x9e37) >>> 0), n = Math.max(2, Math.round(len / 1.6));
+  for (let k = 0; k < n; k++) {
+    const t = t0 + (t1 - t0) * (k + 0.5) / n + (rr() - 0.5) * 0.3, px = f.ax + dx * t + f.nx * (d - 0.2), pz = f.az + dz * t + f.nz * (d - 0.2);
+    const bloom = rr() < 0.45;
+    blossom(geo, px, y + 0.34, pz, 0.22 + rr() * 0.1, bloom ? BLOOMS[(rr() * BLOOMS.length) | 0] : GREENS[(rr() * GREENS.length) | 0]);
+    if (rr() < 0.6) blossom(geo, px + f.nx * 0.12, y + 0.82 - rr() * 0.3, pz + f.nz * 0.12, 0.2 + rr() * 0.08, rr() < 0.3 ? BLOOMS[(rr() * BLOOMS.length) | 0] : LEAF);
+  }
 }
-// Bougainvillea: a few blossom clumps spilling down a street wall
+// Bougainvillea and leaf clumps: three overlapping, randomly turned octahedra read as one irregular bush; the shader dapples them
 function blossom(geo, x, y, z, r, col) {
-  const V = [[r, 0, 0], [-r, 0, 0], [0, r * 0.8, 0], [0, -r * 0.8, 0], [0, 0, r], [0, 0, -r]];
+  const V0 = [[1, 0, 0], [-1, 0, 0], [0, 0.8, 0], [0, -0.8, 0], [0, 0, 1], [0, 0, -1]];
   const F = [[0, 2, 4], [4, 2, 1], [1, 2, 5], [5, 2, 0], [4, 3, 0], [1, 3, 4], [5, 3, 1], [0, 3, 5]];
-  for (const [a, b, c] of F) {
-    const A = V[a], B = V[b], C = V[c], e1 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-    let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const l = Math.hypot(...n); n = n.map((q) => q / l);
-    const s0 = geo.count;
-    for (const P of [A, B, C]) { geo.v(x + P[0], y + P[1], z + P[2], n[0], n[1], n[2], col); geo.extra.aWall.push(0, 0, 0, 0); geo.extra.aShut.push(0, 0, 0); }
-    geo.i.push(s0, s0 + 1, s0 + 2);
+  const k = Math.abs(Math.floor(x * 31 + z * 17 + y * 13)) % 7;
+  for (let c = 0; c < 3; c++) {
+    const rr = r * (c ? 0.62 : 0.85), ang = (k + c * 2.1) * 0.9, ca = Math.cos(ang), sa = Math.sin(ang), ox = c ? Math.cos(c * 2.4 + k) * r * 0.55 : 0, oz = c ? Math.sin(c * 2.4 + k) * r * 0.55 : 0, oy = c ? (c - 1.5) * r * 0.3 : 0;
+    const V = V0.map(([px, py, pz]) => [px * ca * rr - pz * sa * rr * 1.1 + ox, py * rr * (1 + 0.15 * c) + oy, px * sa * rr + pz * ca * rr * 1.1 + oz]);
+    for (const [a, b, d] of F) {
+      const A = V[a], B = V[b], C = V[d], e1 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+      let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const l = Math.hypot(...n) || 1; n = n.map((q) => q / l);
+      const s0 = geo.count;
+      for (const P of [A, B, C]) { geo.v(x + P[0], y + P[1], z + P[2], n[0], n[1], n[2], col); geo.extra.aWall.push(0, 0, -7, 0); geo.extra.aShut.push(0, 0, 0); }
+      geo.i.push(s0, s0 + 1, s0 + 2);
+    }
   }
 }
 // The façade that faces a street or plaza (preferring long ones): where a portico or main entrance goes
@@ -1184,6 +1221,33 @@ function roofClutter(geo, rec, s, top, pitched, ridge) {
     blossom(geo, p[0], top + 0.55 + r * 0.6, p[1], r + 0.15, rnd() < 0.3 ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
   }
 }
+const PIPE = linear('#6f7476'), AC_BODY = linear('#d9dbd8'), AC_GRILL = linear('#4f565f'), CREAM = linear('#efe6d2');
+// the small things that make a wall look lived in: striped awnings over some doors, drainpipes, air-conditioning units and trailing vines
+function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
+  const rnd = mulberry(rec.seed ^ 0x6a09e667), fs = facadesOf(rec), f = fs[0];
+  for (const d of doors) if (((rec.seed >>> 11) & 3) === 0) {            // a canvas awning over the door
+    const F = d.f, dx = (F.bx - F.ax) / F.L, dz = (F.bz - F.az) / F.L, w = 2.5, n = 6, P = (t, dd, y) => [F.ax + dx * t + F.nx * dd, y, F.az + dz * t + F.nz * dd];
+    for (let k = 0; k < n; k++) {
+      const t0 = d.u - w / 2 + w * k / n, t1 = d.u - w / 2 + w * (k + 1) / n, col = k % 2 ? CREAM : cShut;
+      quadN(geo, [P(t0, 0, 3.2 + base), P(t1, 0, 3.2 + base), P(t1, 1.15, 2.7 + base), P(t0, 1.15, 2.7 + base)], [F.nx * 0.4, 0.92, F.nz * 0.4], col, Z4);
+      quadN(geo, [P(t0, 0, 3.2 + base), P(t0, 1.15, 2.7 + base), P(t1, 1.15, 2.7 + base), P(t1, 0, 3.2 + base)], [-F.nx * 0.4, -0.92, -F.nz * 0.4], col, Z4);
+      quadN(geo, [P(t0, 1.15, 2.7 + base), P(t1, 1.15, 2.7 + base), P(t1, 1.17, 2.5 + base), P(t0, 1.17, 2.5 + base)], [F.nx, 0, F.nz], col, Z4);   // valance
+    }
+  }
+  if (!f || f.L < 5) return;
+  if (rnd() < 0.5) boxW(geo, f, 0.35, 0.47, 0, 0.1, base, top - 0.35, PIPE);                                    // a drainpipe near the corner
+  if (s.floors >= 2 && rnd() < 0.4) for (let k = 0; k < 1 + (rnd() < 0.4 ? 1 : 0); k++) {     // split air-conditioners
+    const t = 1 + rnd() * (f.L - 2), fl = 1 + ((rnd() * (s.floors - 1)) | 0), y = base + gf + (fl - 1) * fh + 0.75 + rnd() * 0.5;
+    boxW(geo, f, t - 0.38, t + 0.38, 0, 0.3, y, y + 0.36, AC_BODY); boxW(geo, f, t - 0.3, t + 0.3, 0.3, 0.32, y + 0.05, y + 0.27, AC_GRILL);
+  }
+  if (rnd() < 0.3) for (let v = 0; v < 1 + (rnd() < 0.5 ? 1 : 0); v++) {                       // vines trailing from the roof edge
+    const t = 0.8 + rnd() * (f.L - 1.6), len = 2 + rnd() * 5, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, flower = rnd() < 0.45;
+    for (let y = top - 0.3, m = 0; y > Math.max(base + 3, top - len) && m < 8; y -= 0.62 + rnd() * 0.3, m++) {
+      const x = f.ax + dx * (t + (rnd() - 0.5) * 0.5) + f.nx * 0.2, z = f.az + dz * (t + (rnd() - 0.5) * 0.5) + f.nz * 0.2;
+      blossom(geo, x, y, z, 0.26 + rnd() * 0.16, flower && rnd() < 0.7 ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
+    }
+  }
+}
 function emitBuilding(geo, rec) {
   const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0], RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
@@ -1267,6 +1331,7 @@ function emitBuilding(geo, rec) {
       for (let y = top - 0.6, m = 0; y > base + 2.5 && m < 4; y -= 1.3 + rnd(), m++) for (let b = 0; b < 3; b++) blossom(geo, x + (rnd() - 0.5) * 1.2, y + (rnd() - 0.5) * 0.6, z + (rnd() - 0.5) * 0.3, 0.32 + rnd() * 0.3, m === 3 && b === 0 ? LEAF : BLOOMS[(rnd() * BLOOMS.length) | 0]);
     }
   }
+  if (!neo) buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors);
   const g = neo ? 3 : GROUND[s.groundFloor], w = neo ? 3 : WINDOWS[s.windows];
   for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
 }
@@ -1438,6 +1503,10 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         c = mix(c, c * vec3(1.04, 0.98, 0.9), smoothstep(0.55, 0.8, wash) * 0.5);                  // sun-bleached, warmer patches
         float streak = smoothstep(0.55, 0.95, vn2(vec2(u * 1.7, v * 0.09 + mod(vBid, 31.0)))) * smoothstep(top - 5.0, top - 0.6, v);
         c *= 1.0 - 0.14 * streak * near;
+        c *= 1.0 + 0.07 * (vn2(vec2(u * 0.9 + vBid, v * 5.0)) - 0.5) * (0.4 + 0.6 * near);                // hand-painted brush strokes
+        c = mix(c * vec3(1.06, 0.97, 0.88), c * vec3(0.93, 0.99, 1.06), smoothstep(1.0, max(top, 6.0), v));  // warm below, cooler above
+        float quoin = (1.0 - step(0.38, min(u, L - u))) * step(0.5, fract(v / 0.62)) * step(2.4, L) * step(0.4, v);   // dressed stone corners
+        c = mix(c, mix(wall, vec3(1.0, 0.97, 0.9), 0.55) * 0.97, quoin * 0.75 * near);
         c *= mix(0.7, 1.0, smoothstep(-0.5, 2.4, v));                                               // grime at the base
         // exposed stone or brick where the plaster has come away (older buildings)
         float peel = near * step(0.45, bidR) * smoothstep(0.69, 0.72, fb2(fp * vec2(0.42, 0.55)) + 0.12 * (1.0 - smoothstep(0.0, 3.5, v)));
@@ -1496,6 +1565,11 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         lantern = (1.0 - smoothstep(0.0, 9.0, v)) * step(0.0, v);                // warm wash from street lamps and doorways
         float dl = step(-0.5, doorBay) * step(abs(col - doorBay), 0.5);           // the door lantern's pool of light on the wall
         lantern += dl * 1.1 * exp(-(xm * xm * 0.6 + (v - 3.1) * (v - 3.1) * 0.5)) * ground;
+      } else if (vWall.z < -6.5) {                     // leaves and blossoms: dappled light and dark, with bright flecks
+        float sp = h31(floor(vWP * 8.0)), sp2 = h31(floor(vWP * 17.0) + 3.0);
+        diffuseColor.rgb *= 0.62 + 0.62 * sp;
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.5 + 0.04, step(0.9, sp2) * 0.7);
+        glow += 0.0;
       } else if (vWall.z < -5.5) {                     // lantern glass
         diffuseColor.rgb = vec3(1.0, 0.86, 0.6); lamp = 1.0;
       } else if (vWall.z < -4.5) {                     // roof terrace: square tiles with grout lines
@@ -1506,15 +1580,23 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         float bar = step(0.78, fract(vWall.x * 7.0)), rails = step(0.9, vWall.y) + step(vWall.y, 0.06) + step(0.48, vWall.y) * step(vWall.y, 0.53);
         if (bar + rails < 0.5) discard;
         diffuseColor.rgb = vec3(0.07, 0.075, 0.08);
-      } else if (vWall.z < -0.5) {                     // terracotta: barrel tiles laid in overlapping courses
+      } else if (vWall.z < -0.5) {                     // terracotta: barrel tiles laid in overlapping courses, patched and weathered
         vec3 Nw = normalize(vWN); float sinA = length(Nw.xz);
         vec2 tdir = sinA > 0.25 ? normalize(vec2(-Nw.z, Nw.x)) : vec2(1.0, 0.0);
         float across = dot(vWP.xz, tdir) / 0.26, down = sinA > 0.25 ? vWY / sinA / 0.34 : vWP.z / 0.34;
         float row = floor(down), sx = fract(across + 0.5 * mod(row, 2.0));
-        float barrel = 0.7 + 0.36 * sin(sx * 3.14159), lap = 0.74 + 0.26 * smoothstep(0.0, 0.4, fract(down));
-        float tv = h21(vec2(floor(across + 0.5 * mod(row, 2.0)), row));
-        vec3 rc = diffuseColor.rgb * mix(1.0, barrel * lap, 0.35 + 0.65 * near) * (0.86 + 0.26 * tv);
-        rc = mix(rc, rc * vec3(0.8, 0.84, 0.7), smoothstep(0.55, 0.8, fb2(vWP.xz * 0.3)) * 0.55);   // lichen and age
+        float barrel = 0.66 + 0.4 * sin(sx * 3.14159), lap = 0.7 + 0.3 * smoothstep(0.0, 0.4, fract(down));
+        vec2 cellId = vec2(floor(across + 0.5 * mod(row, 2.0)), row);
+        float tv = h21(cellId);
+        vec3 rc = diffuseColor.rgb * mix(1.0, barrel * lap, 0.4 + 0.6 * near) * (0.8 + 0.34 * tv);
+        float lum = dot(rc, vec3(0.33));
+        rc = mix(vec3(lum), rc, 0.9 - 0.22 * h31(vec3(vBid, 5.5, 1.1)));                                // some roofs fade, some stay vivid
+        float repl = step(0.93, h21(floor(vec2(across, down) * 0.35) + 11.0));                          // a few replacement tiles, a different batch
+        rc = mix(rc, rc * vec3(1.2, 0.95, 0.8) + 0.03, repl * 0.8);
+        float age = fb2(vWP.xz * 0.22 + vBid);
+        rc = mix(rc, rc * vec3(0.62, 0.7, 0.5), smoothstep(0.58, 0.8, age) * 0.65 * (0.4 + 0.6 * near));  // moss and lichen
+        rc *= 0.9 + 0.14 * fb2(vWP.xz * 0.9);                                                           // dirt and sun-bleached streaks
+        rc *= 0.84 + 0.2 * smoothstep(0.0, 0.5, fract(down)) * near + 0.16 * (1.0 - near);               // each course shadows the next
         diffuseColor.rgb = rc;
       }
       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.15 + vec3(0.16, 0.11, 0.02), vState.x);
@@ -1541,18 +1623,34 @@ function buildingDepthMaterial() {
 
 // ─────────────────────────── trees ───────────────────────────
 function palmGeometry() {
-  const parts = [], trunkC = linear('#8a6a47'), leafA = linear('#3f8f34'), leafB = linear('#5fae3c');
-  const trunk = new THREE.CylinderGeometry(0.16, 0.26, 1, 5, 4, true).translate(0, 0.5, 0);
-  const tp = trunk.attributes.position; for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); tp.setX(i, tp.getX(i) + 0.9 * y * y); tp.setY(i, y * 7); }
-  parts.push(colorize(trunk.toNonIndexed(), trunkC));
-  for (let k = 0; k < 8; k++) {
-    const g = new THREE.BufferGeometry(), a = k / 8 * Math.PI * 2 + (k % 2) * 0.2;
-    const v = [0, 0, 0, 1.6, 0.45, 0.42, 1.6, 0.45, -0.42, 3.3, -0.7, 0.0];
-    g.setAttribute('position', new THREE.Float32BufferAttribute([...v.slice(0, 3), ...v.slice(3, 6), ...v.slice(6, 9), ...v.slice(3, 6), ...v.slice(9, 12), ...v.slice(6, 9)], 3));
-    g.rotateY(a).translate(0.9, 7, 0); g.computeVertexNormals();
-    parts.push(colorize(g, k % 2 ? leafA : leafB));
+  const parts = [], trunkC = linear('#8a6a47'), ringC = linear('#6d5236'), leafA = linear('#2f7a2c'), leafB = linear('#5fae3c'), leafT = linear('#8cc34a');
+  const trunk = new THREE.CylinderGeometry(0.15, 0.26, 1, 7, 8, true).translate(0, 0.5, 0);
+  const tp = trunk.attributes.position, tc = []; for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); tp.setX(i, tp.getX(i) + 0.9 * y * y); tp.setY(i, y * 7); const ring = Math.floor(y * 8 + 0.0001) % 2 ? 1 : 0; const c = ring ? ringC : trunkC; tc.push(c.r, c.g, c.b); }
+  const tg = trunk.toNonIndexed(); const tcol = new Float32Array(tg.attributes.position.count * 3); for (let i = 0; i < tg.attributes.position.count; i++) { const y = tg.attributes.position.getY(i), ring = Math.floor(y / 0.42) % 2 ? 0.78 : 1; tcol[i * 3] = trunkC.r * ring; tcol[i * 3 + 1] = trunkC.g * ring; tcol[i * 3 + 2] = trunkC.b * ring; }
+  tg.setAttribute('color', new THREE.BufferAttribute(tcol, 3)); tg.computeVertexNormals(); parts.push(tg);
+  // fronds: arched, drooping strips with a feathery (alternately notched) edge, dark at the stem and bright at the tip
+  const NF = 11, SEG = 7, L = 3.6;
+  for (let k = 0; k < NF; k++) {
+    const pos = [], col = [], a = k / NF * Math.PI * 2 + (k % 2) * 0.25, ca = Math.cos(a), sa = Math.sin(a), len = L * (0.85 + (k % 3) * 0.1), rise = 0.7 + (k % 4) * 0.18;
+    const P = (t) => [ca * t * len * 0.92, rise * Math.sin(t * 1.9) * 1.4 - 1.7 * t * t * (0.7 + (k % 3) * 0.15), sa * t * len * 0.92];
+    for (let i = 0; i < SEG; i++) {
+      const t0 = i / SEG, t1 = (i + 1) / SEG, p0 = P(t0), p1 = P(t1), w0 = 0.42 * Math.sin(Math.PI * Math.min(1, t0 * 1.15 + 0.12)) * (i % 2 ? 0.62 : 1), w1 = 0.42 * Math.sin(Math.PI * Math.min(1, t1 * 1.15 + 0.12)) * ((i + 1) % 2 ? 0.62 : 1);
+      const px0 = -sa * w0, pz0 = ca * w0, px1 = -sa * w1, pz1 = ca * w1, tint = (t) => { const c = new THREE.Color().copy(leafA).lerp(k % 2 ? leafB : leafT, t); return c; };
+      const c0 = tint(t0), c1 = tint(t1);
+      const quad = [[p0[0] - px0, p0[1] - 0.18 * w0, p0[2] - pz0, c0], [p0[0] + px0, p0[1] - 0.18 * w0, p0[2] + pz0, c0], [p1[0] + px1, p1[1] - 0.18 * w1, p1[2] + pz1, c1], [p1[0] - px1, p1[1] - 0.18 * w1, p1[2] - pz1, c1]];
+      for (const q of [[0, 1, 2], [0, 2, 3]]) for (const vi of q) { pos.push(quad[vi][0], quad[vi][1], quad[vi][2]); col.push(quad[vi][3].r, quad[vi][3].g, quad[vi][3].b); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.translate(0.9, 7, 0); g.computeVertexNormals(); parts.push(g);
   }
   const m = mergeGeometries(parts.map(stripUV)); m.computeVertexNormals(); return m;
+}
+// a tall, dark Mediterranean cypress
+function cypressGeometry() {
+  const greens = ['#2a5a35', '#24502f', '#2f6a3a', '#1f4a2c'].map(linear), parts = [colorize(new THREE.CylinderGeometry(0.12, 0.2, 1.2, 5).translate(0, 0.6, 0).toNonIndexed(), linear('#5a4632'))];
+  [[0, 2.3, 0, 0.95, 2.0], [0.12, 4.2, 0.05, 0.85, 2.2], [-0.08, 6.1, -0.05, 0.68, 2.0], [0.02, 7.7, 0, 0.42, 1.5], [0, 8.8, 0, 0.2, 0.8]].forEach(([x, y, z, r, sy], i) => {
+    parts.push(colorize(new THREE.IcosahedronGeometry(r, 1).scale(1, sy, 1).translate(x, y, z), greens[i % 4]));
+  });
+  return mergeGeometries(parts.map(stripUV));
 }
 function broadleafGeometry() {
   const trunkC = linear('#7a5a3c'), greens = ['#4f9a3c', '#3f8a35', '#64ad45'].map(linear);
@@ -1905,17 +2003,18 @@ const occAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j
 const TREE_TILE = 1750, TREE_TN = Math.ceil(EXT / TREE_TILE);
 const treeTile = (x, z) => Math.floor(x / TREE_TILE + TREE_TN / 2) * 1000 + Math.floor(z / TREE_TILE + TREE_TN / 2);
 function treeMeshes(buckets) {
-  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry() };
+  world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry() };
   world.treeMats = world.treeMats || { palm: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), broad: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
-  world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad;
+  world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad; world.treeMats.cypress = world.treeMats.cypress || world.treeMats.broad;
   const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  for (const kind of ['palm', 'broad', 'canopy']) for (const [, l] of buckets[kind] || []) {
+  for (const kind of ['palm', 'broad', 'canopy', 'cypress']) for (const [, l] of buckets[kind] || []) {
     const n = l.length / 6; if (!n) continue;
     const mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n);
     for (let i = 0; i < n; i++) {
       const [x, y, z, s, rot, hue] = l.slice(i * 6, i * 6 + 6);
       M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(s, s * (0.9 + hue * 0.25), s)); mesh.setMatrixAt(i, M4);
-      tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55); mesh.setColorAt(i, tint);
+      if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
+      mesh.setColorAt(i, tint);
     }
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.renderOrder = 10; mesh.computeBoundingSphere();
     scene.add(mesh); out.push(mesh);
@@ -1923,7 +2022,7 @@ function treeMeshes(buckets) {
   return out;
 }
 function bucketAdd(buckets, kind, x, z, s, rnd) {
-  const tk = treeTile(x, z); let l = buckets[kind].get(tk); if (!l) buckets[kind].set(tk, l = []);
+  const tk = treeTile(x, z); buckets[kind] = buckets[kind] || new Map(); let l = buckets[kind].get(tk); if (!l) buckets[kind].set(tk, l = []);
   l.push(x, H(x, z) - 0.1, z, s, rnd() * Math.PI * 2, rnd());
 }
 // Park trees follow each park's style (density and species), so they live in their own meshes per tile.
@@ -1946,7 +2045,7 @@ function rebuildParkTrees(onlyTiles) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
           if (occAt(x, z) > 0.5) continue;
-          bucketAdd(buckets, rnd() < palmShare ? 'palm' : 'broad', x, z, 0.8 + rnd() * 0.5, rnd); count++;
+          const sp = rnd() < palmShare ? 'palm' : rnd() < 0.3 ? 'cypress' : 'broad'; bucketAdd(buckets, sp, x, z, sp === 'cypress' ? 0.9 + rnd() * 0.5 : 0.8 + rnd() * 0.5, rnd); count++;
         }
       }
     }
@@ -2021,6 +2120,43 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   }
   treeMeshes(buckets);
   return { parks, countryside: wild, streets: rebuildStreetTrees() };
+}
+
+// ---- overhead wires strung between facing buildings across the narrow lanes, and washing lines with laundry
+function addWires() {
+  for (const o of world.wireObjs || []) { scene.remove(o); o.geometry.dispose(); }
+  world.wireObjs = [];
+  const lines = [], cloth = [], COL = ['#f3efe4', '#e9b44c', '#d7503c', '#3f78a8', '#f4c9d4', '#6bb3a2', '#ffffff', '#c8504a'];
+  let count = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'street' || f.sub || f.w < 2.5 || f.w > 14 || count > 6000) continue;
+    const rnd = mulberry(f.seed ^ 0x3c6ef372), P = f.pts; let next = 6 + rnd() * 10, run = 0;
+    for (let i = 0; i < P.length - 2 && count <= 6000; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+      const nx = -dz / len, nz = dx / len;
+      while (next <= run + len) {
+        const t = (next - run) / len, cx = ax + dx * t, cz = az + dz * t; next += 15 + rnd() * 20;
+        const hit = (sd) => { for (let d = f.w / 2 + 0.2; d < f.w / 2 + 6; d += 0.4) { const x = cx + nx * d * sd, z = cz + nz * d * sd, b = buildingAt(x, z); if (b >= 0) return { x: cx + nx * (d - 0.1) * sd, z: cz + nz * (d - 0.1) * sd, b: world.buildings[b] }; } return null; };
+        const A = hit(1), B = hit(-1); if (!A || !B) continue;
+        const ya = Math.min(A.b.top, B.b.top) - 2.6 - rnd() * 2.2, y0 = Math.max(A.b.base, B.b.base) + 5.2; if (ya < y0) continue;
+        const y = ya, sag = 0.5 + rnd() * 0.7, segs = 12, ln = Math.hypot(B.x - A.x, B.z - A.z), pt = (u) => [A.x + (B.x - A.x) * u, y - sag * 4 * u * (1 - u) - 0.5 * (A.b.top - B.b.top > 0 ? 0 : 0), A.z + (B.z - A.z) * u];
+        for (let k = 0; k < segs; k++) lines.push(...pt(k / segs), ...pt((k + 1) / segs));
+        count++;
+        if (rnd() < 0.4) {                                                           // laundry on the line
+          const ang = Math.atan2(B.x - A.x, B.z - A.z), n = 3 + ((rnd() * 7) | 0), u0 = 0.18 + rnd() * 0.2, col = COL[(rnd() * COL.length) | 0];
+          for (let k = 0; k < n; k++) { const u = u0 + k * (0.6 / n) + rnd() * 0.02; cloth.push(pt(u), ang, rnd() < 0.7 ? col : COL[(rnd() * COL.length) | 0], 0.35 + rnd() * 0.4, 0.4 + rnd() * 0.55); }
+        }
+      }
+      run += len;
+    }
+  }
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+  const ls = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#1d2126', transparent: true, opacity: 0.75 })); ls.renderOrder = 11; scene.add(ls);
+  const n = cloth.length / 5, cm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).translate(0, -0.5, 0), new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, emissive: '#2a2622', emissiveIntensity: 0.3 }), Math.max(1, n));
+  const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), V = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color();
+  for (let i = 0; i < n; i++) { const [p, ang, col, w, h] = cloth.slice(i * 5, i * 5 + 5); M4.compose(V.set(...p), Q.setFromAxisAngle(up, ang + Math.PI / 2 + (Math.sin(i * 3.7) * 0.2)), S.set(w, h, 1)); cm.setMatrixAt(i, M4); cm.setColorAt(i, C.set(col)); }
+  cm.count = n; cm.computeBoundingSphere(); cm.castShadow = false; scene.add(cm);
+  world.wireObjs = [ls, cm]; return { spans: count, laundry: n };
 }
 
 // ---- string lights and papel picado (per-street style: auto, bulbs, papel, none)
@@ -3744,7 +3880,7 @@ function update(dt, t) {
   stepWeather(dt, t);
   updateFurniture();
   post.grade.uniforms.uTime.value = t;
-  world.water.uniforms.uTime.value = t;
+  world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
