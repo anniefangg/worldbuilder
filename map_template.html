@@ -410,11 +410,11 @@ function setTimeOfDay(name) {
 
 // Weather, layered over the time of day
 const WEATHER = {
-  sunny: { label: 'Sunny', sunK: 1, hemiK: 1, clouds: 26, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
-  cloudy: { label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 72, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
-  rain: { label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 96, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
-  storm: { label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 96, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
-  fog: { label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 18, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
+  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 26, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
+  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 72, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
+  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 96, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
+  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 96, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
+  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 18, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
 };
 const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'fog'];
 const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
@@ -430,7 +430,7 @@ function applyWeather() {
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
     world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds; });
   }
-  if (world.water) world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast);
+  if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; }
   if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
   const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
   const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
@@ -677,7 +677,8 @@ async function buildWorld() {
   const sS = sampler(maskS, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sElev = sampler(elevR, 1024), sBeach = sampler(beachR, N);
   sMask = sS;
   const hillM = (x, z) => sElev(x, z) * (255 / 100) * 9;        // level 1 ≈ 9 m, level 2 ≈ 18 m
-  const seaDepth = (x, z) => 0.6 + 17 * Math.pow(1 - sL(x, z), 1.3) + 14 * sDeep(x, z);
+  // the seabed shelves up to ~1.5 m at the waterline, so waves feel the bottom and break on the beach
+  const seaDepth = (x, z) => 3 * (1 - sS(x, z)) + 17 * Math.pow(Math.max(0, (0.5 - sL(x, z)) * 2), 1.3) + 14 * sDeep(x, z);
   H = (x, z) => { const l = smooth(0.32, 0.6, sS(x, z)), d = seaDepth(x, z); return -d + (d + LAND_Y + hillM(x, z)) * l; };
 
   // ---- water
@@ -693,7 +694,7 @@ async function buildWorld() {
       fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
         uTime: { value: 0 }, uDepth: { value: null }, uExt: { value: EXT }, uSun: { value: SUN_DIR },
-        uShallow: { value: linear('#1fb2a6') }, uMid: { value: linear('#0e8a96') }, uDeep: { value: linear('#0a5373') },
+        uShallow: { value: linear('#1f93ab') }, uMid: { value: linear('#0d5b8c') }, uDeep: { value: linear('#062a55') }, uRough: { value: 0.15 },
         uSky: { value: linear('#bfe6f4') }, uFoam: { value: linear('#f4fffb') },
       }]),
       vertexShader: `
@@ -709,26 +710,50 @@ async function buildWorld() {
         #include <common>
         #include <fog_pars_fragment>
         #include <logdepthbuf_pars_fragment>
-        uniform float uTime, uExt, uNight, uDark; uniform sampler2D uDepth; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam; varying vec3 vW;
+        uniform float uTime, uExt, uNight, uDark, uRough; uniform sampler2D uDepth; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam; varying vec3 vW;
+        float hsh(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+        float vno(vec2 q) { vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hsh(i), hsh(i + vec2(1, 0)), f.x), mix(hsh(i + vec2(0, 1)), hsh(i + vec2(1, 1)), f.x), f.y); }
+        float fbm2(vec2 q) { float a = 0.5, s = 0.0; for (int k = 0; k < 4; k++) { s += a * vno(q); q = q * 2.07 + 13.1; a *= 0.5; } return s; }
         void main(){
           #include <logdepthbuf_fragment>
           vec2 uv = clamp(vW.xz / uExt + 0.5, 0.002, 0.998);
           vec4 t = texture2D(uDepth, uv);
           float d = t.r * 30.0; vec2 p = vW.xz; float tm = uTime;
           float dist = distance(cameraPosition, vW), f1 = 1.0 - smoothstep(300.0, 2500.0, dist), f2 = 1.0 - smoothstep(1500.0, 9000.0, dist);
+          // ---- swell rolling in toward the coast: crests follow lines of equal depth and move shoreward
+          vec2 e = vec2(1.5 / 1024.0, 0.0);
+          vec2 grad = vec2(texture2D(uDepth, uv + e.xy).r - texture2D(uDepth, uv - e.xy).r, texture2D(uDepth, uv + e.yx).r - texture2D(uDepth, uv - e.yx).r);
+          vec2 shore = -grad / (length(grad) + 1e-5);                     // direction of shallower water
+          float shallows = 1.0 - smoothstep(1.5, 10.0, d);                // the swell only shows as it feels the bottom
+          float amp = mix(0.6, 1.25, uRough);
+          float phase = d * 0.6 + tm * 0.22 + 0.45 * fbm2(p * 0.006) + 0.25 * sin(dot(p, vec2(-shore.y, shore.x)) * 0.015 + tm * 0.15);
+          float w = fract(phase);                                          // 0 = crest; steep front, long back
+          float crest = smoothstep(0.0, 0.05, w) * (1.0 - smoothstep(0.05, 0.4, w));
+          float trough = smoothstep(0.55, 0.85, w) * (1.0 - smoothstep(0.85, 1.0, w));
+          // ---- surface normal: the swell's faces plus small wind ripples
           vec3 n = normalize(vec3(
             sin(p.x*0.045 + tm*0.8)*0.07*f2 + sin(p.x*0.23 + p.y*0.17 + tm*1.9)*0.05*f1 + sin(p.x*0.9 - p.y*0.6 + tm*3.1)*0.025*f1, 1.0,
             cos(p.y*0.05 + tm*0.7)*0.07*f2 + sin(p.y*0.21 - p.x*0.13 + tm*1.6)*0.05*f1 + cos(p.y*0.85 + p.x*0.7 + tm*2.7)*0.025*f1));
+          n = normalize(n + vec3(shore.x, 0.0, shore.y) * (crest - trough) * 0.35 * shallows * amp * f2);
           vec3 V = normalize(cameraPosition - vW);
           float fres = pow(1.0 - max(dot(n, V), 0.0), 4.0);
           vec3 col = mix(uShallow, uMid, smoothstep(0.5, 6.0, d));
           col = mix(col, uDeep, smoothstep(6.0, 24.0, d));
+          col *= 1.0 + (crest * 0.18 - trough * 0.12) * shallows * amp;    // light through the wave face, darker troughs
           col *= uDark;                                        // the sea darkens toward night
           col = mix(col, uSky, fres * 0.55);
           vec3 Hh = normalize(uSun + V); col += mix(vec3(1.0, 0.93, 0.8), vec3(1.0, 0.6, 0.45), uNight) * pow(max(dot(n, Hh), 0.0), mix(220.0, 90.0, uNight)) * 1.6;
+          // ---- breaking: crests whiten in the last few metres of depth, then whitewater rushes up and drains back
+          float lace = fbm2(p * 0.09 + vec2(tm * 0.05, -tm * 0.04));
+          float breaking = crest * (1.0 - smoothstep(2.0, 5.5, d)) * smoothstep(0.25, 0.55, lace + 0.3 * amp);
+          float run = fract(tm * 0.22 + d * 0.6 + 0.45 * fbm2(p * 0.006));  // the same rhythm as the swell
           float coast = smoothstep(0.12, 0.4, t.g) * (1.0 - smoothstep(0.5, 0.62, t.g));
-          float foam = coast * (0.6 + 0.25 * sin(tm*0.9 + p.x*0.035 + p.y*0.028) + 0.15 * sin(tm*1.7 - p.y*0.06));
-          col = mix(col, uFoam * mix(1.0, 0.55, uNight), clamp(foam, 0.0, 1.0) * 0.75);
+          float swash = (1.0 - smoothstep(1.4, 2.2 + 0.5 * amp, d)) * smoothstep(0.25, 0.65, lace) * (0.5 + 0.5 * (1.0 - run));
+          float trail = shallows * (1.0 - smoothstep(0.0, 0.25, w)) * smoothstep(0.55, 0.8, lace) * (1.0 - smoothstep(2.0, 6.0, d)) * 0.6;   // foam left behind a broken wave
+          float caps = uRough * smoothstep(0.8 - 0.15 * uRough, 0.95, fbm2(p * 0.02 + tm * vec2(0.03, 0.02))) * smoothstep(6.0, 14.0, d) * f2;   // whitecaps offshore
+          float foam = clamp(max(max(breaking, swash), max(trail, caps)) + coast * 0.45, 0.0, 1.0);
+          col = mix(col, uFoam * mix(1.0, 0.5, uNight) * uDark / max(uDark, 0.62), foam * 0.85);
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -737,7 +762,7 @@ async function buildWorld() {
     });
     mat.uniforms.uDepth.value = tex; mat.uniforms.uNight = NIGHT; mat.uniforms.uDark = { value: 0.62 };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(160000, 160000).rotateX(-Math.PI / 2), mat);
-    sea.receiveShadow = false; scene.add(sea);
+    sea.receiveShadow = false; scene.add(sea); world.sea = sea;
     world.water = mat;
   }
 
@@ -2805,6 +2830,7 @@ function update(dt, t) {
   const W0 = WEATHER[wx.name]; scene.fog.near = (1800 + alt * 3) * W0.nearK; scene.fog.far = (24000 + alt * 6) * W0.fogK;
   stepWeather(dt, t);
   world.water.uniforms.uTime.value = t;
+  if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
   placePill();
