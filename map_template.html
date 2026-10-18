@@ -155,8 +155,16 @@ body.tray-open #info { display: none; }
 .hsel:focus-visible, #h-q:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 0; }
 #h-q { font: 400 13px/1.3 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border: 1px solid var(--edge); border-radius: 8px; padding: 7px 9px; width: 100%; box-sizing: border-box; }
 .pill.cat { background: rgba(31, 87, 168, 0.12); color: var(--azulejo); }
+#minimap {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(118px + env(safe-area-inset-top, 0px));
+  width: 184px; height: 184px; padding: 5px; box-sizing: border-box; border-radius: 14px; overflow: hidden;
+}
+#minimap canvas { display: block; width: 100%; height: 100%; border-radius: 10px; cursor: crosshair; }
+#minimap .mm-n { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); font: 700 10px/1 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border-radius: 999px; padding: 3px 5px; pointer-events: none; }
+#minimap .mm-scale { position: absolute; right: 10px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
+  #minimap { width: 128px; height: 128px; top: calc(146px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
   #tray { top: calc(110px + env(safe-area-inset-top, 0px)); }
@@ -188,6 +196,7 @@ body.tray-open #info { display: none; }
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
+<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: scroll to zoom, double-click to jump there"></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 <div id="compass" class="plaque" title="North">
@@ -2125,6 +2134,7 @@ function setMode(mode) {
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
   plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); mm.last = 0;
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -2231,6 +2241,7 @@ function initControls() {
   $('start-fly').addEventListener('click', () => startExploring('fly'));
   $('stay-map').addEventListener('click', () => { $('intro').hidden = true; });
   initPlanInput();
+  initMinimap();
 }
 function toggleHelp() { const h = $('help'), c = h.dataset.collapsed !== 'true'; h.dataset.collapsed = String(c); $('help-toggle').setAttribute('aria-expanded', String(!c)); try { localStorage.setItem('amparacan-map-help', c ? '1' : '0'); } catch (e) {} }
 function toggleTOD() { const n = todState.name === 'dusk' ? 'day' : 'dusk'; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
@@ -2302,6 +2313,7 @@ function update(dt, t) {
       if (tween.t >= 1) tween = null;
     } else { camera.position.copy(want); camera.lookAt(head); }
     updateSinking(t);
+    drawMinimap(performance.now());
   } else {
     if (tween && tween.map) {
       tween.t += dt / tween.dur; const e = 1 - Math.pow(1 - Math.min(tween.t, 1), 3);
@@ -2347,6 +2359,48 @@ function adaptResolution(now, drew) {
   else if (avg < 13 && res.cur < res.max) next = Math.min(res.max, res.cur + 0.25);
   if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); }
 }
+// ─────────────────────────── minimap (walk and fly) ───────────────────────────
+// North-up, centred on the character; zooms out with altitude. Scroll to zoom, double-click to jump there.
+const mm = { zoom: 1, last: 0, scale: 0.4 };
+function drawMinimap(now) {
+  if (now - mm.last < 66) return; mm.last = now;          // ~15 fps is plenty
+  const c = $('mm'), dpr = Math.min(devicePixelRatio, 2), W = c.clientWidth, Hh = c.clientHeight; if (!W) return;
+  if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr); }
+  if (plan.bldDirty) planBuildings();
+  const alt = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z));
+  const s = mm.scale = clamp(0.42 * mm.zoom * (player.mode === 'fly' ? 40 / Math.max(40, alt) : 1), 0.02, 3), px = 1 / s;
+  const g = c.getContext('2d'), P = plan.paths, cx = player.pos.x, cz = player.pos.z;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#7fc6d6'; g.fillRect(0, 0, W, Hh);
+  g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - cx * s), dpr * (Hh / 2 - cz * s));
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.fillStyle = '#dcebd2'; g.fill(P.land, 'evenodd');
+  g.fillStyle = '#7fc6d6'; g.fill(P.water, 'evenodd');
+  g.strokeStyle = '#7fc6d6'; for (const [lw, p] of P.canals) { g.lineWidth = Math.max(lw, 1.5 * px); g.stroke(p); }
+  g.fillStyle = '#ece3cf'; g.fill(P.pave, 'evenodd');
+  g.fillStyle = '#93cf7f'; g.fill(P.parks, 'evenodd');
+  g.strokeStyle = '#fbf8f0'; for (const [lw, p] of P.streets) { g.lineWidth = Math.max(lw, 1.2 * px); g.stroke(p); }
+  for (const [lw, p] of P.kerbs) { g.lineWidth = Math.max(lw, px); g.stroke(p); }
+  const half = Math.max(W, Hh) / 2 * px, vis = (bb) => bb[2] > cx - half && bb[0] < cx + half && bb[3] > cz - half && bb[1] < cz + half;
+  g.fillStyle = '#c96a6e';
+  for (const { p, bb } of plan.tiles.values()) if (vis(bb)) g.fill(p, 'evenodd');
+  for (const idx of plan.custom) { const b = world.buildings[idx]; if (vis(b.bbox)) { g.fillStyle = (b.style || styleOf(b)).wall; g.fill(ringPath(b.rings), 'evenodd'); } }
+  if (ui.selected) drawTargetOutline(g, ui.selected, '#1f57a8', 2.5, 'rgba(31,87,168,.25)', px);
+  // the character: a heading arrow (yaw 0 faces south, +z)
+  g.setTransform(dpr, 0, 0, dpr, dpr * W / 2, dpr * Hh / 2); g.rotate(-player.yaw + Math.PI);
+  g.beginPath(); g.moveTo(0, -8); g.lineTo(5.5, 6); g.lineTo(0, 3); g.lineTo(-5.5, 6); g.closePath();
+  g.fillStyle = '#1f57a8'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.fill(); g.stroke();
+  // a scale bar label: the map's width in metres
+  const span = W * px; $('mm-scale').textContent = span >= 1000 ? `${(span / 1000).toFixed(1)} km` : `${Math.round(span / 10) * 10} m`;
+}
+function initMinimap() {
+  const c = $('mm');
+  c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); mm.zoom = clamp(mm.zoom * Math.exp(-e.deltaY * 0.002), 0.15, 6); mm.last = 0; }, { passive: false });
+  c.addEventListener('dblclick', (e) => {
+    const r = c.getBoundingClientRect(), x = player.pos.x + (e.clientX - r.left - r.width / 2) / mm.scale, z = player.pos.z + (e.clientY - r.top - r.height / 2) / mm.scale;
+    if (player.mode === 'fly') { player.pos.x = x; player.pos.z = z; } else dropIn(x, z);
+  });
+}
+
 // The floating Edit pill sits above the hovered building
 function placePill() {
   const pill = $('edit-pill'), t = targetOf(ui.hover);
