@@ -217,8 +217,9 @@ body.tray-open #info { display: none; }
 <div id="help" class="plaque" data-collapsed="false">
   <button id="help-toggle" type="button" aria-expanded="true">Controls · H</button>
   <dl>
-    <dt>W A S D</dt><dd>Walk north, west, south, east (or arrow keys)</dd>
-    <dt>Drag</dt><dd>Tilt the camera · scroll to zoom</dd>
+    <dt>W · S</dt><dd>Forward · back (or ↑ ↓)</dd>
+    <dt>A · D</dt><dd>Turn left · right (or ← →)</dd>
+    <dt>Drag</dt><dd>Look around · scroll to zoom</dd>
     <dt>Shift</dt><dd>Run / fly faster</dd>
     <dt>Space</dt><dd>Jump · rise when flying</dd>
     <dt>Q</dt><dd>Descend when flying</dd>
@@ -2459,7 +2460,7 @@ function initPlanInput() {
 // ─────────────────────────── controls ───────────────────────────
 const keys = new Set();
 const player = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), vy: 0, yaw: 0, onGround: true, mode: 'map', walkPhase: 0 };
-const cam = { pitch: 0.42, dist: 11 };     // no yaw: the camera always looks north
+const cam = { pitch: 0.42, dist: 11, yaw: Math.PI };   // yaw eases toward the character's heading
 let character, controls, tween = null;
 const joy = { x: 0, y: 0, active: false }, pad = { up: false, down: false };
 
@@ -2487,7 +2488,7 @@ function setMode(mode) {
     controls.target.copy(player.pos); controls.update();
     tweenCamera(player.pos.clone().add(new THREE.Vector3(0, 1100, 900)), player.pos.clone(), 1.6);
   } else if (prev === 'map' || prev === 'plan') {
-    cam.dist = mode === 'fly' ? 28 : 11; cam.pitch = mode === 'fly' ? 0.4 : 0.42;
+    cam.dist = mode === 'fly' ? 28 : 11; cam.pitch = mode === 'fly' ? 0.4 : 0.42; cam.yaw = player.yaw;
     tween = prev === 'plan' ? null : { t: 0, dur: 2.2, fromPos: camera.position.clone(), fromTarget: controls.target.clone() };
   }
   if (mode === 'fly' && prev === 'walk') player.vy = 8;
@@ -2544,11 +2545,11 @@ function initControls() {
   addEventListener('blur', () => keys.clear());
   // drag tilts the camera (walk/fly); a click without dragging selects a building
   let drag = null, lastPick = 0, pickTimer = 0;
-  canvas.addEventListener('pointerdown', (e) => { drag = { y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, moved: false }; if (player.mode !== 'map') canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, moved: false }; if (player.mode !== 'map') canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', (e) => {
     if (drag && e.pointerId === drag.id) {
       if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) drag.moved = true;
-      if (player.mode !== 'map') { cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.2, 1.45); drag.y = e.clientY; }
+      if (player.mode !== 'map') { player.yaw -= (e.clientX - drag.x) * 0.005; cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.2, 1.45); drag.x = e.clientX; drag.y = e.clientY; }
       return;
     }
     const run = () => { lastPick = performance.now(); setHover(pick3D(e.clientX, e.clientY)); };
@@ -2599,12 +2600,14 @@ function update(dt, t) {
     return false;
   }
   if (player.mode !== 'map') {
-    // compass movement: W/↑ north, S/↓ south, A/← west, D/→ east
-    const ix = (k('d', 'arrowright') ? 1 : 0) - (k('a', 'arrowleft') ? 1 : 0) + joy.x;
-    const iz = (k('s', 'arrowdown') ? 1 : 0) - (k('w', 'arrowup') ? 1 : 0) + joy.y;
-    _move.set(ix, 0, iz);
-    const mag = Math.min(1, _move.length()); if (mag > 0.01) _move.normalize();
+    // character-relative controls: W/↑ forward, S/↓ back, A/← and D/→ turn (the camera turns with you)
     const fast = k('shift');
+    const turn = (k('a', 'arrowleft') ? 1 : 0) - (k('d', 'arrowright') ? 1 : 0) - joy.x;
+    player.yaw += turn * (fast ? 2.4 : 1.9) * dt;
+    let fwd = (k('w', 'arrowup') ? 1 : 0) - (k('s', 'arrowdown') ? 1 : 0) - joy.y; fwd = clamp(fwd, -1, 1);
+    if (fwd < 0) fwd *= 0.55;                                   // stepping backwards is slower
+    _move.set(Math.sin(player.yaw) * fwd, 0, Math.cos(player.yaw) * fwd);
+    const mag = 1;
     if (player.mode === 'walk') {
       const swim = H(player.pos.x, player.pos.z) < -0.4;
       const speed = (fast ? 9 : 4.2) * (swim ? 0.55 : 1);
@@ -2628,7 +2631,6 @@ function update(dt, t) {
       player.pos.y = Math.min(player.pos.y, 3500);
     }
     const hv = Math.hypot(player.vel.x, player.vel.z);
-    if (hv > 0.3) { const target = Math.atan2(player.vel.x, player.vel.z); let d = target - player.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); player.yaw += d * (1 - Math.exp(-dt * 10)); }
     // animate the character
     const u = character.userData;
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
@@ -2641,9 +2643,11 @@ function update(dt, t) {
       character.rotation.x = lean * 0.45; character.rotation.z = Math.sin(t * 1.3) * 0.05;
       u.legL.rotation.x = u.legR.rotation.x = 0.25 * lean; u.armL.rotation.set(0, 0, -2.75); u.armR.rotation.set(0, 0, 2.75);
     }
-    // chase camera, south of the character looking north
+    // chase camera behind the character, swinging round as it turns
+    let dy = player.yaw - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); cam.yaw += dy * (1 - Math.exp(-dt * 8));
     const head = _look.copy(player.pos); head.y += 1.5;
-    const want = _want.set(head.x, head.y + Math.sin(cam.pitch) * cam.dist, head.z + Math.cos(cam.pitch) * cam.dist);
+    const back = Math.cos(cam.pitch) * cam.dist;
+    const want = _want.set(head.x - Math.sin(cam.yaw) * back, head.y + Math.sin(cam.pitch) * cam.dist, head.z - Math.cos(cam.yaw) * back);
     const gy = H(want.x, want.z) + 0.6; if (want.y < gy) want.y = gy;
     if (tween) {
       tween.t += dt / tween.dur; const e = 1 - Math.pow(1 - Math.min(tween.t, 1), 3);
@@ -2678,7 +2682,7 @@ function update(dt, t) {
   camera.userData.sky.position.copy(camera.position);
   placePill();
   // HUD
-  const yaw = player.mode === 'map' ? Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) : 0;
+  const yawRef = player.mode === 'map' ? controls.target : player.pos, yaw = Math.atan2(camera.position.x - yawRef.x, camera.position.z - yawRef.z);
   hud.needle.setAttribute('transform', `rotate(${(yaw * 180 / Math.PI).toFixed(1)})`);
   const p = player.mode === 'map' ? controls.target : player.pos, ew = p.x / 1000, ns = -p.z / 1000;
   hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · ${player.mode === 'map' ? 'eye' : 'alt'} ${Math.round(player.mode === 'map' ? camera.position.y : player.pos.y)} m`;
