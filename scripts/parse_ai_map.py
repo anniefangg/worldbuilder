@@ -360,15 +360,35 @@ def b64(fmt, arr):
     return base64.b64encode(struct.pack("<%d%s" % (len(arr), fmt), *arr)).decode()
 
 
+def _feature_id(prefix, key, seen):
+    h = hashlib.sha1(("%s:%s" % (prefix, key)).encode()).hexdigest()
+    fid = prefix + h[:8]
+    while fid in seen:
+        h = hashlib.sha1(h.encode()).hexdigest()
+        fid = prefix + h[:8]
+    seen.add(fid)
+    return fid
+
+
 class PolySet:
-    def __init__(self):
+    """Polygons with holes. With a `prefix`, each polygon also gets a stable feature id
+    (hash of its rounded centroid) so the map can attach edits to it."""
+
+    def __init__(self, prefix=None):
         self.counts, self.lens, self.xy, self.extra = [], [], [], []
+        self.prefix, self.ids, self.cents, self.sizes, self._seen = prefix, [], [], [], set()
 
     def add(self, poly, tol, extra=None):
         rings = [clean_ring(r, tol) for r in poly]
         if not rings[0]:
             return False
         rings = [rings[0]] + [h for h in rings[1:] if h]
+        if self.prefix:
+            w = [world(q) for q in rings[0]]
+            cx, cz = sum(q[0] for q in w) / len(w) / Q, sum(q[1] for q in w) / len(w) / Q
+            self.ids.append(_feature_id(self.prefix, "%d,%d" % (round(cx / 2), round(cz / 2)), self._seen))
+            self.cents.append((cx, cz))
+            self.sizes.append(abs(area(rings[0])) * M_PER_PT * M_PER_PT)
         self.counts.append(len(rings))
         for r in rings:
             self.lens.append(len(r))
@@ -379,13 +399,17 @@ class PolySet:
         return True
 
     def enc(self):
-        return {"n": len(self.counts), "counts": b64("H", self.counts), "lens": b64("I", self.lens),
-                "xy": b64("i", self.xy)}
+        d = {"n": len(self.counts), "counts": b64("H", self.counts), "lens": b64("I", self.lens),
+             "xy": b64("i", self.xy)}
+        if self.prefix:
+            d["ids"] = ",".join(self.ids)
+        return d
 
 
 class LineSet:
-    def __init__(self):
+    def __init__(self, prefix=None):
         self.lens, self.xy, self.widths, self.kinds = [], [], [], []
+        self.prefix, self.ids, self.cents, self.sizes, self._seen = prefix, [], [], [], set()
 
     def add(self, pts, closed, width_m, kind=0, tol=0.08):
         pts = [p for i, p in enumerate(pts) if i == 0 or math.dist(p, pts[i - 1]) > 1e-3]
@@ -397,12 +421,24 @@ class LineSet:
         self.lens.append(len(pts))
         for p in pts:
             self.xy.extend(world(p))
+        if self.prefix:
+            w = [world(q) for q in pts]
+            cx, cz = sum(q[0] for q in w) / len(w) / Q, sum(q[1] for q in w) / len(w) / Q
+            length = sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1)) * M_PER_PT
+            a, b = world(pts[0]), world(pts[-1])
+            key = "%d,%d,%d,%d,%d" % (round(a[0] / 20), round(a[1] / 20), round(b[0] / 20), round(b[1] / 20), round(length / 5))
+            self.ids.append(_feature_id(self.prefix, key, self._seen))
+            self.cents.append((cx, cz))
+            self.sizes.append(length)
         self.widths.append(max(1, round(width_m * 10)))
         self.kinds.append(kind)
 
     def enc(self):
-        return {"n": len(self.lens), "lens": b64("I", self.lens), "xy": b64("i", self.xy),
-                "widths": b64("H", self.widths), "kinds": b64("B", self.kinds)}
+        d = {"n": len(self.lens), "lens": b64("I", self.lens), "xy": b64("i", self.xy),
+             "widths": b64("H", self.widths), "kinds": b64("B", self.kinds)}
+        if self.prefix:
+            d["ids"] = ",".join(self.ids)
+        return d
 
 
 def _unpack(fmt, b64s):
@@ -493,11 +529,65 @@ def match_ids(final, previous):
             "removed": len(old_free) - len(used_old)}
 
 
+def decode_features(path, key):
+    """{id: (centroid, size)} for one feature layer of a previous build, or None."""
+    try:
+        d = json.load(open(path))[key]
+    except (OSError, ValueError, KeyError):
+        return None
+    if "ids" not in d:
+        return None
+    ids, xy, out, vi = d["ids"].split(","), _unpack("i", d["xy"]), {}, 0
+    if "counts" in d:          # polygons: centroid and area of the outer ring
+        counts, lens, ri = _unpack("H", d["counts"]), _unpack("I", d["lens"]), 0
+        for k, n in enumerate(counts):
+            L = lens[ri]
+            ring = [(xy[(vi + j) * 2] / Q, xy[(vi + j) * 2 + 1] / Q) for j in range(L)]
+            out[ids[k]] = ((sum(p[0] for p in ring) / L, sum(p[1] for p in ring) / L), abs(area(ring)))
+            vi += sum(lens[ri:ri + n])
+            ri += n
+    else:                      # lines: centroid of points and length
+        for k, L in enumerate(_unpack("I", d["lens"])):
+            pts = [(xy[(vi + j) * 2] / Q, xy[(vi + j) * 2 + 1] / Q) for j in range(L)]
+            out[ids[k]] = ((sum(p[0] for p in pts) / L, sum(p[1] for p in pts) / L),
+                           sum(math.dist(pts[i], pts[i + 1]) for i in range(L - 1)))
+            vi += L
+    return out
+
+
+def match_feature_ids(fset, previous):
+    """Give moved or redrawn parks, streets, canals… the id of the nearby old feature of similar size."""
+    if not previous:
+        return None
+    cur = set(fset.ids)
+    free = {k: v for k, v in previous.items() if k not in cur}
+    kept = sum(1 for i in fset.ids if i in previous)
+    pairs = []
+    for i, fid in enumerate(fset.ids):
+        if fid in previous:
+            continue
+        (cx, cz), size = fset.cents[i], fset.sizes[i] or 1e-6
+        for k, ((ox, oz), osize) in free.items():
+            d = math.hypot(cx - ox, cz - oz)
+            if d < 12 and 0.6 < osize / size < 1.6:
+                pairs.append((d, i, k))
+    pairs.sort()
+    used_i, used_k = set(), set()
+    for d, i, k in pairs:
+        if i in used_i or k in used_k:
+            continue
+        used_i.add(i)
+        used_k.add(k)
+        fset.ids[i] = k
+    return kept, len(used_i), len(fset.ids) - kept - len(used_i), len(free) - len(used_k)
+
+
 def build(src, out):
     feats = parse(src)
-    land, elev, water, pave, parks, streets_poly = (PolySet() for _ in range(6))
+    land, elev, streets_poly = PolySet(), PolySet(), PolySet()
+    water, pave, parks = PolySet("wt"), PolySet("pz"), PolySet("pk")
     bld_polys = []
-    streets, paths, canals, beaches = LineSet(), LineSet(), LineSet(), LineSet()
+    streets, paths, canals, beaches = LineSet("st"), LineSet("pt"), LineSet("cn"), LineSet("bc")
     deep = PolySet()
     for f in feats:
         L, k = f["layer"], f["kind"]
@@ -583,7 +673,12 @@ def build(src, out):
         final.append([p, bid, 3 + int(h[8:12], 16) % 3, ring])    # 3–5 floors for now
     if previous:
         report = match_ids(final, previous)
-        print("re-import: %(kept)d kept, %(remapped)d remapped, %(new)d new, %(removed)d removed" % report)
+        print("re-import buildings: %(kept)d kept, %(remapped)d remapped, %(new)d new, %(removed)d removed" % report)
+        for key, fset in (("parks", parks), ("pavement", pave), ("water", water), ("streets", streets),
+                          ("paths", paths), ("canals", canals), ("beaches", beaches)):
+            rep = match_feature_ids(fset, decode_features(out, key))
+            if rep:
+                print("re-import %s: %d kept, %d remapped, %d new, %d removed" % ((key,) + rep))
     bld = PolySet()
     ids, floors = [], []
     for p, bid, fl, _ in final:
