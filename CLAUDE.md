@@ -86,6 +86,8 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   Prompts may carry reference `images: [{id, url, name}]` (artifact assets; read one with the
   Artifact tool, `action: read`, `path: <asset id>`). "Apply now" sends them to Claude
   (capabilities `sample: {images: true}`, `assets: {}`).
+- Group prompts (from a multi-selection) carry `bIds: [...]` and `group: true`; group history
+  entries have `kind: "group"`, `targets: [...]` and `before.styles: {id: style}`.
 - **Processing the batch** ("process the map batch"): `ArtifactData list prompts`,
   implement each `queued` prompt (style fields via the target's doc, anything bigger in
   `map_template.html`), set the prompt to `status: "done"` + a short `result`, and add a

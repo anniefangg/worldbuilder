@@ -138,7 +138,7 @@ body {
 .sep { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
 .status { font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-soft); min-height: 1em; }
 #tray {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
   width: min(380px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
   display: grid; gap: 12px; z-index: 5;
 }
@@ -176,12 +176,21 @@ body.tray-open #info { display: none; }
 #info .stepper { gap: 6px; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 #info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
+#select-btn {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
+  font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink);
+}
+#select-btn[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
+#select-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#selbox { position: fixed; z-index: 7; border: 1.5px dashed var(--azulejo); background: rgba(31, 87, 168, 0.1); pointer-events: none; border-radius: 3px; }
+#scene.boxing, #plan.boxing { cursor: crosshair; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
 @media (max-width: 640px) {
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
-  #tray { top: calc(110px + env(safe-area-inset-top, 0px)); }
+  #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #select-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
   #modes { right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); }
@@ -210,6 +219,8 @@ body.tray-open #info { display: none; }
   <button id="wx" type="button" title="Weather (R)">Sunny</button>
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
+<button id="select-btn" class="plaque" type="button" aria-pressed="false" title="Select an area (B), or hold Shift and drag">Select area</button>
+<div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
 <div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: scroll to zoom, double-click to jump there"></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span></div>
@@ -235,6 +246,7 @@ body.tray-open #info { display: none; }
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
+    <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area</dd>
   </dl>
 </div>
 
@@ -1290,6 +1302,7 @@ function colorize(g, c) { const n = g.attributes.position.count, a = new Float32
 // Every editable thing on the map that isn't a building. Ids come from the parser and survive re-imports.
 const KINDS = {
   building: { label: 'Building', plural: 'Buildings' },
+  group: { label: 'Selection', plural: 'Group edits' },
   park: { label: 'Park', plural: 'Parks', geom: 'poly', layer: 'parks', prio: 5 },
   plaza: { label: 'Plaza', plural: 'Plazas', geom: 'poly', layer: 'pave', prio: 4 },
   water: { label: 'Lake or pond', plural: 'Lakes & ponds', geom: 'poly', layer: 'water', prio: 6 },
@@ -2183,7 +2196,7 @@ Reply with only JSON in this shape:
 }
 async function applyPrompt(pid) {
   const p = store.prompts.get(pid), t = p && targetOf(p.bId);
-  if (!t) return false;
+  if (!t && !(p && p.bIds)) return false;
   if (SAMPLE === undefined) SAMPLE = window.claude && window.claude.use ? await claude.use('sample') : null;
   if (!SAMPLE) { toast(store.kind === 'local' ? 'This is the local preview, where Claude can’t run. Open the published map to apply edits instantly; this prompt is kept in your batch.' : 'Claude isn’t available in this view, so the prompt stays in your batch.'); return false; }
   patchPrompt(pid, { status: 'applying' });
@@ -2195,8 +2208,10 @@ async function applyPrompt(pid) {
     const canSee = !!(lim && lim.images);
     if (canSee) images = (await Promise.all(images.slice(0, lim.images.maxCount).map((b) => (b.size > lim.images.maxInputBytes || !lim.images.mediaTypes.includes(b.type) ? shrink(b) : b))));
     else if (images.length) toast('This view can’t send images to Claude, so the edit uses your words only.');
-    const before = docFor(t.id), opts = { modelTier: 'default' };
+    const opts = { modelTier: 'default' };
     if (canSee && images.length) opts.images = images;
+    if (p.bIds) return await applyGroupPrompt(pid, p, canSee ? images : [], opts);
+    const before = docFor(t.id);
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
     const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
@@ -2242,6 +2257,7 @@ function endEditing() {
   ui.editing = false; ui.editSnapshot = null;
 }
 function select(id, { edit = false, focusPrompt = false } = {}) {
+  if (multi.size) clearMulti(true);
   if (id !== ui.selected) { endEditing(); for (const x of attach.list) URL.revokeObjectURL(x.url); attach.list = []; }
   const prev = targetOf(ui.selected); if (prev && prev.b && ui.selected !== id) animOf(prev.b.idx).wantSel = 0;
   ui.selected = id || null;
@@ -2254,6 +2270,222 @@ function select(id, { edit = false, focusPrompt = false } = {}) {
   if (focusPrompt) setTimeout(() => { const x = $('prompt-text'); if (x) x.focus(); }, 0);
 }
 function startEditing() { ui.editing = true; ui.editSnapshot = docFor(ui.selected); }
+
+// ─────────────────────────── multi-selection: shift-click and box select ───────────────────────────
+const multi = new Set(), fxMulti = new Map(), MULTI_MAX = 3000;
+function multiMark(id, on) {
+  const t = targetOf(id); if (!t) return;
+  if (t.b) { animOf(t.b.idx).wantSel = on ? 1 : 0; return; }
+  const m = fxMulti.get(id);
+  if (on && !m) fxMulti.set(id, featureShape(t.f, '#3d7bd9', 0.4));
+  if (!on && m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); fxMulti.delete(id); }
+}
+function clearMulti(silent) { for (const id of multi) multiMark(id, false); multi.clear(); if (!silent) afterMulti(); }
+function setMulti(ids, { add = false } = {}) {
+  if (!add) clearMulti(true);
+  if (ui.selected && add) { const s0 = ui.selected; select(null); multi.add(s0); multiMark(s0, true); }
+  else if (ui.selected) select(null);
+  let capped = false;
+  for (const id of ids) { if (multi.size >= MULTI_MAX) { capped = true; break; } if (!multi.has(id) && targetOf(id)) { multi.add(id); multiMark(id, true); } }
+  if (capped) toast(`Selections are capped at ${MULTI_MAX.toLocaleString()}.`);
+  afterMulti();
+}
+function toggleMulti(id) {
+  if (!id) return;
+  if (!multi.size && ui.selected && ui.selected !== id) { const s0 = ui.selected; select(null); multi.add(s0); multiMark(s0, true); }
+  if (multi.has(id)) { multi.delete(id); multiMark(id, false); } else if (multi.size < MULTI_MAX) { multi.add(id); multiMark(id, true); }
+  afterMulti();
+}
+function afterMulti() {
+  if (multi.size === 1) { const only = [...multi][0]; multiMark(only, false); multi.clear(); select(only); return; }
+  setHover(null); renderInfo(); plan.invalidate(); if (ui.trayOpen) renderTray();
+}
+// Box select: everything whose centre falls inside the dragged rectangle (buildings, plus parks, plazas, streets… when nothing else)
+function boxSelect3D(x0, y0, x1, y1) {
+  const out = [], v = new THREE.Vector3(), inR = (sx, sy) => sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
+  const toS = (x, y, z) => { v.set(x, y, z).project(camera); return v.z < 1 && v.z > -1 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null; };
+  for (const b of world.buildings) { if (isSunk(b.idx)) continue; const p = toS(b.cx, (b.base + b.top) / 2, b.cz); if (p && inR(p[0], p[1])) out.push(b.id); }
+  if (!out.length) for (const f of world.features) { const p = toS(f.cx, H(f.cx, f.cz) + 0.5, f.cz); if (p && inR(p[0], p[1])) out.push(f.id); }
+  return out;
+}
+function boxSelect2D(x0, y0, x1, y1) {
+  const [wx0, wz0] = planWorld(x0, y0), [wx1, wz1] = planWorld(x1, y1), out = [];
+  for (const b of world.buildings) if (b.cx >= wx0 && b.cx <= wx1 && b.cz >= wz0 && b.cz <= wz1) out.push(b.id);
+  if (!out.length) for (const f of world.features) if (f.cx >= wx0 && f.cx <= wx1 && f.cz >= wz0 && f.cz <= wz1) out.push(f.id);
+  return out;
+}
+// Shared pointer handling: Shift-drag (or the Select tool) draws a box; Shift-click toggles one item
+function attachBoxSelect(el, pick, boxPick) {
+  let box = null;
+  const show = (x0, y0, x1, y1) => { const b = $('selbox'); b.hidden = false; Object.assign(b.style, { left: x0 + 'px', top: y0 + 'px', width: (x1 - x0) + 'px', height: (y1 - y0) + 'px' }); };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !(e.shiftKey || ui.boxTool)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    box = { sx: e.clientX, sy: e.clientY, id: e.pointerId, shift: e.shiftKey, moved: false }; el.setPointerCapture(e.pointerId);
+  }, true);
+  el.addEventListener('pointermove', (e) => {
+    if (!box || e.pointerId !== box.id) return;
+    e.stopImmediatePropagation();
+    if (Math.hypot(e.clientX - box.sx, e.clientY - box.sy) > 5) box.moved = true;
+    if (box.moved) show(Math.min(box.sx, e.clientX), Math.min(box.sy, e.clientY), Math.max(box.sx, e.clientX), Math.max(box.sy, e.clientY));
+  }, true);
+  el.addEventListener('pointerup', (e) => {
+    if (!box || e.pointerId !== box.id) return;
+    e.stopImmediatePropagation(); $('selbox').hidden = true;
+    const b = box; box = null;
+    if (b.moved) {
+      const ids = boxPick(Math.min(b.sx, e.clientX), Math.min(b.sy, e.clientY), Math.max(b.sx, e.clientX), Math.max(b.sy, e.clientY));
+      if (ids.length) setMulti(ids, { add: b.shift && (multi.size > 0 || !!ui.selected) }); else if (!b.shift) toast('Nothing in that area. Drag across some buildings.');
+    } else {
+      const id = pick(e.clientX, e.clientY);
+      if (b.shift) toggleMulti(id); else select(id);
+    }
+  }, true);
+}
+function toggleBoxTool(on = !ui.boxTool) {
+  ui.boxTool = on; $('select-btn').setAttribute('aria-pressed', String(on));
+  canvas.classList.toggle('boxing', on); plan.canvas.classList.toggle('boxing', on);
+  if (on) toast('Drag across the map to select an area. Shift adds to the selection.');
+}
+// ---- bulk edits over the selection
+function bulkUpdate(ids, mutate) {
+  const changed = [], before = {};
+  for (const id of ids) {
+    const d = docFor(id), snap = clone(d.style);
+    if (!mutate(d, id)) continue;
+    d.updatedAt = new Date().toISOString(); before[id] = snap;
+    saveDoc(colFor(id), id, d, 600); changed.push(id);
+  }
+  const bs = changed.filter(isBuildingId), fs = changed.filter((x) => !isBuildingId(x));
+  if (bs.length) store.emit('buildings', bs); if (fs.length) store.emit('features', fs);
+  return { changed, before };
+}
+function logGroupChange({ ids, before, source, prompt = '', summary, category, tags = [], fields = [], images }) {
+  if (!ids.length) return;
+  const kinds = {}; for (const id of ids) { const k = (targetOf(id) || {}).kind || 'unknown'; kinds[k] = (kinds[k] || 0) + 1; }
+  const name = Object.entries(kinds).map(([k, n]) => `${n} ${n === 1 ? labelOf(k).toLowerCase() : (KINDS[k] || { plural: k }).plural.toLowerCase()}`).join(', ');
+  const cid = newId('c'), entry = {
+    at: new Date().toISOString(), targetId: ids[0], targets: ids.slice(0, MULTI_MAX), kind: 'group', targetName: name, source, prompt,
+    category: CATEGORIES.includes(category) ? category : (fields.map((f) => STYLE_CATEGORY[f]).find(Boolean) || 'Other'),
+    summary: summary || 'Edited ' + name, tags: [...new Set(tags.map((x) => String(x).trim().toLowerCase()).filter(Boolean))].slice(0, 8), fields,
+    before: ids.length <= 800 ? { styles: before } : {}, after: {},
+  };
+  if (images && images.length) entry.images = images.filter((im) => !im.preview || im.url.length < 60000);
+  saveDoc('changes', cid, entry, 0); store.emit('changes');
+}
+const groupFloors = { timer: 0, before: null, ids: null };
+function bulkFloors(delta, absolute) {
+  const ids = [...multi].filter(isBuildingId); if (!ids.length) return;
+  const r = bulkUpdate(ids, (d, id) => { const t = targetOf(id), cur = styleFor(t).floors, next = clamp(absolute ? absolute : cur + delta, 1, 40); if (next === cur) return false; d.style = { ...d.style, floors: next }; return true; });
+  if (!groupFloors.before) { groupFloors.before = r.before; groupFloors.ids = new Set(); } else for (const [k, v] of Object.entries(r.before)) if (!(k in groupFloors.before)) groupFloors.before[k] = v;
+  r.changed.forEach((x) => groupFloors.ids.add(x));
+  clearTimeout(groupFloors.timer);
+  groupFloors.timer = setTimeout(() => {
+    const ids2 = [...groupFloors.ids], before = groupFloors.before; groupFloors.before = null; groupFloors.ids = null;
+    logGroupChange({ ids: ids2, before, source: 'manual', summary: absolute ? `Set ${ids2.length} buildings to ${absolute} floors` : `Changed the height of ${ids2.length} buildings`, category: 'Height', tags: ['floors'], fields: ['floors'] });
+  }, 1500);
+  renderInfo();
+}
+function bulkTags(text) {
+  const add = text.split(',').map((x) => x.trim()).filter(Boolean); if (!add.length) return;
+  const ids = [...multi], before = {};
+  const r = bulkUpdate(ids, (d) => { const cur = d.tags || [], next = [...new Set([...cur, ...add])]; if (next.length === cur.length) return false; d.tags = next.slice(0, 30); return true; });
+  logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Tagged ${r.changed.length} items “${add.join(', ')}”`, category: 'Details', tags: add, fields: ['tags'] });
+  toast(`Tagged ${r.changed.length} item${r.changed.length === 1 ? '' : 's'}.`); renderInfo();
+}
+function bulkReset() {
+  const r = bulkUpdate([...multi], (d) => { if (!Object.keys(d.style || {}).length) return false; d.style = {}; return true; });
+  logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Reset ${r.changed.length} items to their generated look`, category: 'Revert', fields: ['style'] });
+  toast(r.changed.length ? 'Back to the generated look.' : 'Nothing in the selection had been restyled.'); renderInfo();
+}
+function selectionCentre(ids) { let x = 0, z = 0, n = 0; for (const id of ids) { const t = targetOf(id); if (t) { x += t.cx; z += t.cz; n++; } } return n ? [x / n, z / n] : null; }
+function renderGroupInfo() {
+  const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId);
+  box.dataset.pinned = 'true'; box.hidden = false;
+  const kinds = {}; for (const id of ids) { const k = targetOf(id).kind; kinds[k] = (kinds[k] || 0) + 1; }
+  const title = Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
+  const fl = bIds.map((id) => styleFor(targetOf(id)).floors), fmin = Math.min(...fl), fmax = Math.max(...fl);
+  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, 'Selection'), el('h3', {}, title),
+      bIds.length ? el('div', { class: 'facts' }, `${fmin === fmax ? fmin : fmin + '–' + fmax} floors`) : null),
+    el('button', { class: 'close', type: 'button', 'aria-label': 'Clear selection', onclick: () => clearMulti() }, '×'))];
+  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', onclick: () => focusTarget(id) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
+  if (store.canEdit) {
+    if (bIds.length) {
+      const setIn = el('input', { type: 'number', id: 'g-floors', min: 1, max: 40, value: fmax, 'aria-label': 'Set every building to this many floors', style: 'width:64px' });
+      kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Floors'),
+        el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a floor from each', onclick: () => bulkFloors(-1) }, '−'),
+        el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor to each', onclick: () => bulkFloors(1) }, '+'),
+        el('span', { class: 'hint' }, 'or set all to'), setIn,
+        el('button', { class: 'btn small', type: 'button', style: 'width:auto;padding:6px 9px', onclick: () => bulkFloors(0, clamp(Math.round(+setIn.value || fmax), 1, 40)) }, 'Set')));
+    }
+    const tagIn = el('input', { type: 'text', id: 'g-tags', placeholder: 'e.g. Barrio Viejo, colonial' });
+    kids.push(el('div', { class: 'field' }, el('label', { for: 'g-tags' }, 'Add tags to all'), el('div', { class: 'row' }, tagIn, el('button', { class: 'btn small', type: 'button', onclick: () => bulkTags(tagIn.value) }, 'Add'))));
+    kids.push(el('hr', { class: 'sep' }), groupPromptBox(ids, bIds));
+    kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: bulkReset }, 'Reset look'), el('button', { class: 'btn small', type: 'button', onclick: () => clearMulti() }, 'Clear selection')));
+  }
+  const mine = [...store.changes].filter(([, c]) => c.kind === 'group' && c.targets && c.targets.length === ids.length && ids.every((x) => c.targets.includes(x))).sort((a, b) => b[1].at.localeCompare(a[1].at));
+  if (mine.length) kids.push(el('hr', { class: 'sep' }), el('h4', { class: 'eyebrow', style: 'margin:0' }, `History · ${mine.length}`), el('div', { class: 'plist' }, mine.slice(0, 3).map(([cid, c]) => changeItem(cid, c, false))));
+  box.replaceChildren(...kids);
+  setTimeout(renderAttachments, 0);
+}
+function groupPromptBox(ids, bIds) {
+  const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
+  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: bIds.length ? 'e.g. Make this neighbourhood feel like Cartagena: bright ochre, coral and blue façades with wooden balconies' : 'e.g. Give these streets modern pavers and palms' });
+  area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
+  return el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
+    el('label', { for: 'prompt-text' }, `Change all ${ids.length.toLocaleString()}`),
+    area,
+    el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }), el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, '+ Reference image'), file),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn primary small', type: 'button', onclick: () => submitGroupPrompt('now') }, 'Apply now'),
+      el('button', { class: 'btn small', type: 'button', onclick: () => submitGroupPrompt('batch') }, 'Add to batch')));
+}
+async function submitGroupPrompt(how) {
+  const x = $('prompt-text'), text = x.value.trim(), ids = [...multi];
+  if (!text && !attach.list.length) { x.focus(); return; }
+  const files = attach.list.splice(0); x.value = ''; renderAttachments();
+  const id = newPrompt(ids[0], text || 'Make them look like the attached image.', 'draft');
+  patchPrompt(id, { bIds: ids, group: true });
+  if (files.length) { sessionBlobs.set(id, files.map((f) => f.blob)); patchPrompt(id, { images: await storeImages(files) }); files.forEach((f) => URL.revokeObjectURL(f.url)); }
+  if (how === 'now') await applyPrompt(id); else toast(`Added to your batch (${ids.length.toLocaleString()} items).`);
+}
+// One Claude call for the whole group: a shared style plus a few variants spread across it
+async function applyGroupPrompt(pid, p, images, opts) {
+  const ids = p.bIds.filter((x) => targetOf(x)), byKind = {};
+  for (const id of ids) { const k = targetOf(id).kind; (byKind[k] = byKind[k] || []).push(id); }
+  const kinds = Object.keys(byKind);
+  const samples = ids.slice(0, 8).map((id) => { const t = targetOf(id), d = docFor(id); return { type: labelOf(t.kind), name: d.name || null, current_style: styleFor(t) }; });
+  const schema = kinds.map((k) => `For ${KINDS[k].plural.toLowerCase()} (${byKind[k].length}):
+${STYLE_DOCS[k] || '(no style fields)'}`).join('\n\n');
+  const input = `You restyle a group of features in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean (Latin American colonial and Mediterranean looks: Havana, Cartagena, Oaxaca, Guanajuato, Seville, Cádiz, Amalfi…).
+
+The group: ${ids.length} items (${kinds.map((k) => byKind[k].length + ' ' + KINDS[k].plural.toLowerCase()).join(', ')}). A few of them: ${JSON.stringify(samples)}
+
+The author's request: ${JSON.stringify(p.text)}
+${images && images.length ? `
+The author attached ${images.length} reference image${images.length > 1 ? 's' : ''}; match what you can see within the fields.
+` : ''}
+${schema}
+
+Return a shared style for each kind, and optionally up to 6 "variants" per kind (partial styles) that are spread across the group so it doesn't look uniform (e.g. a palette of façade colours). Only include fields that change.
+Also give "category" (one of ${CATEGORIES.filter((c) => c !== 'Revert').map((c) => `"${c}"`).join(', ')}) and 1-4 lowercase "changeTags".
+
+Reply with only JSON: {"styles": {"building": {...}, "park": {...}}, "variants": {"building": [{...}, ...]}, "summary": "one short sentence", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or what these fields cannot express"}`;
+  const r = await SAMPLE.json(input, opts);
+  const styles = (r && r.styles) || {}, variants = (r && r.variants) || {};
+  const hash = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h; };
+  const res = bulkUpdate(ids, (d, id) => {
+    const k = targetOf(id).kind, common = cleanStyleFor(k, styles[k]), vs = Array.isArray(variants[k]) ? variants[k].map((v) => cleanStyleFor(k, v)).filter((v) => Object.keys(v).length) : [];
+    const pick = vs.length ? vs[hash(id) % vs.length] : {}, next = { ...d.style, ...common, ...pick };
+    if (JSON.stringify(next) === JSON.stringify(d.style)) return false; d.style = next; return true;
+  });
+  const fields = [...new Set(Object.values(styles).flatMap((o) => Object.keys(o || {})).concat(Object.values(variants).flatMap((a) => (Array.isArray(a) ? a.flatMap((o) => Object.keys(o || {})) : []))))];
+  const summary = String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 300), needs = String((r && r.needsCode) || '').trim();
+  patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
+  logGroupChange({ ids: res.changed, before: res.before, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], fields, images: p.images });
+  if (needs) { const q = newPrompt(ids[0], `${p.text}\n\nStill needed: ${needs}`, 'queued'); patchPrompt(q, { bIds: ids, group: true }); if (p.images) patchPrompt(q, { images: p.images }); }
+  return true;
+}
 function facts(t) {
   if (t.kind === 'building') { const s = styleFor(t); return `${s.floors} floor${s.floors > 1 ? 's' : ''} · ${(t.b.top - t.b.base).toFixed(1)} m · ${Math.round(t.b.area).toLocaleString()} m²`; }
   return KINDS[t.kind].geom === 'poly' ? `${Math.round(t.f.size).toLocaleString()} m²` : `${Math.round(t.f.size).toLocaleString()} m long · ${t.f.w.toFixed(1)} m wide`;
@@ -2269,6 +2501,7 @@ const PLACEHOLDER = {
   beach: 'e.g. Make it a natural beach without the promenade',
 };
 function renderInfo() {
+  if (multi.size >= 2) return renderGroupInfo();
   const box = $('info'), id = ui.selected || ui.hover, t = targetOf(id);
   if (!t) { box.hidden = true; box.replaceChildren(); return; }
   const doc = docFor(id), pinned = !!ui.selected, label = labelOf(t.kind);
@@ -2437,7 +2670,8 @@ function promptItem(id, p, withWho) {
   const t = targetOf(p.bId);
   return el('div', { class: 'pitem' },
     el('div', { class: 'row', style: 'justify-content:space-between' },
-      withWho ? el('button', { class: 'btn link who', type: 'button', onclick: () => t && focusTarget(t.id) }, nameOf(p.bId)) : el('span'),
+      withWho ? (p.bIds ? el('button', { class: 'btn link who', type: 'button', onclick: () => { setMulti(p.bIds); const c = selectionCentre(p.bIds); if (c) { if (player.mode === 'plan') { plan.cx = c[0]; plan.cz = c[1]; plan.invalidate(); } else { setMode('map'); tweenCamera(new THREE.Vector3(c[0] + 150, 450, c[1] + 450), new THREE.Vector3(c[0], 0, c[1]), 1.4); } } } }, `${p.bIds.length.toLocaleString()} selected items`)
+        : el('button', { class: 'btn link who', type: 'button', onclick: () => t && focusTarget(t.id) }, nameOf(p.bId))) : el('span'),
       el('span', { class: 'pill ' + p.status }, STATUS_LABEL[p.status] || p.status)),
     el('div', { class: 'txt' }, p.text),
     p.images && p.images.length ? el('div', { class: 'thumbs-sm' }, p.images.map((im) => el('img', { src: im.url, alt: 'Reference image', title: im.name || '' }))) : null,
@@ -2470,13 +2704,14 @@ const rel = (iso) => { const d = new Date(iso), now = new Date(), day = 864e5, t
   return d.getTime() >= t0 ? 'Today' : d.getTime() >= t0 - day ? 'Yesterday' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }); };
 const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 const SOURCE_LABEL = { prompt: 'Prompt', manual: 'Edited by hand', 'claude-code': 'Claude Code' };
-function changesFor(id) { return [...store.changes].filter(([, c]) => c.targetId === id).sort((a, b) => b[1].at.localeCompare(a[1].at)); }
+function changesFor(id) { return [...store.changes].filter(([, c]) => c.targetId === id || (c.targets && c.targets.includes(id))).sort((a, b) => b[1].at.localeCompare(a[1].at)); }
 function changeItem(cid, c, withWho) {
   const t = targetOf(c.targetId), cur = t ? docFor(t.id).style || {} : {};
-  const canRestore = store.canEdit && t && c.before && (c.fields || []).some((f) => STYLE_CATEGORY[f]) && JSON.stringify(c.before.style || {}) !== JSON.stringify(cur);
+  const canRestore = c.kind === 'group' ? store.canEdit && c.before && c.before.styles && Object.keys(c.before.styles).length > 0 && (c.fields || []).some((f) => STYLE_CATEGORY[f] || f === 'style')
+    : store.canEdit && t && c.before && (c.fields || []).some((f) => STYLE_CATEGORY[f]) && JSON.stringify(c.before.style || {}) !== JSON.stringify(cur);
   return el('div', { class: 'pitem' },
     el('div', { class: 'row', style: 'justify-content:space-between;gap:6px' },
-      withWho ? el('button', { class: 'btn link who', type: 'button', onclick: () => t && focusTarget(t.id) }, t ? nameOf(t.id) : c.targetName || c.targetId) : el('span', { class: 'hint' }, `${rel(c.at)} · ${clock(c.at)}`),
+      withWho ? el('button', { class: 'btn link who', type: 'button', onclick: () => { if (c.kind === 'group') { setMulti(c.targets || []); const ce = selectionCentre(c.targets || []); if (ce && player.mode !== 'plan') { setMode('map'); tweenCamera(new THREE.Vector3(ce[0] + 150, 450, ce[1] + 450), new THREE.Vector3(ce[0], 0, ce[1]), 1.4); } } else if (t) focusTarget(t.id); } }, c.kind === 'group' ? c.targetName : t ? nameOf(t.id) : c.targetName || c.targetId) : el('span', { class: 'hint' }, `${rel(c.at)} · ${clock(c.at)}`),
       el('span', { class: 'row', style: 'gap:4px' }, withWho ? el('span', { class: 'pill' }, labelOf(c.kind)) : null, el('span', { class: 'pill cat' }, c.category))),
     el('div', { class: 'txt' }, c.summary),
     c.prompt ? el('div', { class: 'hint' }, '“' + c.prompt + '”') : null,
@@ -2486,6 +2721,11 @@ function changeItem(cid, c, withWho) {
       canRestore ? el('button', { class: 'btn small', type: 'button', onclick: () => restoreChange(c) }, 'Restore earlier look') : null));
 }
 function restoreChange(c) {
+  if (c.kind === 'group') {
+    const styles = c.before.styles || {}, r = bulkUpdate(Object.keys(styles), (d, id) => { d.style = clone(styles[id]); return true; });
+    logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Restored the look from before: ${c.summary}`, category: 'Revert', fields: c.fields });
+    toast('Earlier look restored.'); return;
+  }
   const before = docFor(c.targetId), after = { ...before, style: clone(c.before.style), updatedAt: new Date().toISOString() };
   saveTarget(c.targetId, after, 0);
   logChange({ id: c.targetId, source: 'manual', summary: `Restored the look from before: ${c.summary}`, category: 'Revert', before, after });
@@ -2670,6 +2910,7 @@ function drawPlan() {
   for (const idx of plan.custom) { const b = world.buildings[idx]; if (!vis(b.bbox)) continue; const p = ringPath(b.rings), st = b.style || styleOf(b); g.fillStyle = st.wall; g.fill(p, 'evenodd'); g.strokeStyle = 'rgba(18,50,63,.55)'; g.lineWidth = 1 * px; g.stroke(p); }
   drawTargetOutline(g, ui.hover, '#e9a21b', 2.5, 'rgba(255,255,255,.35)', px);
   drawTargetOutline(g, ui.selected, '#1f57a8', 3.5, 'rgba(255,255,255,.35)', px);
+  for (const id of multi) drawTargetOutline(g, id, '#1f57a8', 2.5, 'rgba(31,87,168,.28)', px);
   for (const idx of marked) { const p = ringPath(world.buildings[idx].rings); g.fillStyle = 'rgba(255,211,77,.85)'; g.fill(p, 'evenodd'); }
   // labels for anything named
   if (s > 0.3) {
@@ -2687,6 +2928,7 @@ const planWorld = (sx, sy) => [plan.cx + (sx - innerWidth / 2) / plan.scale, pla
 function pickAt(x, z, tol) { const b = buildingAt(x, z); if (b >= 0) return world.buildings[b].id; const f = featureAt(x, z, tol); return f >= 0 ? world.features[f].id : null; }
 function initPlanInput() {
   const c = plan.canvas; let drag = null;
+  attachBoxSelect(c, (sx, sy) => { const [x, z] = planWorld(sx, sy); return pickAt(x, z, 3 / plan.scale); }, boxSelect2D);
   c.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; c.setPointerCapture(e.pointerId); });
   c.addEventListener('pointermove', (e) => {
     if (drag && e.pointerId === drag.id) {
@@ -2784,7 +3026,8 @@ function initControls() {
   addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
-    if (k === 'escape') { if (ui.trayOpen) toggleTray(); else select(null); }
+    if (k === 'escape') { if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if (k === 'b') toggleBoxTool();
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
@@ -2800,6 +3043,7 @@ function initControls() {
   addEventListener('blur', () => keys.clear());
   // drag tilts the camera (walk/fly); a click without dragging selects a building
   let drag = null, lastPick = 0, pickTimer = 0;
+  attachBoxSelect(canvas, pick3D, boxSelect3D);
   canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, moved: false }; if (player.mode !== 'map') canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', (e) => {
     if (drag && e.pointerId === drag.id) {
@@ -2826,6 +3070,7 @@ function initControls() {
   }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
+  $('select-btn').addEventListener('click', () => toggleBoxTool());
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
