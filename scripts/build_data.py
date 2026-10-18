@@ -6,7 +6,7 @@ curated People / Places / Political parties / Heads of state records
 transcribed from the five worldbuilding sheets. Emits data/wiki_data.json:
 a single object of entities + typed relationships that the artifact renders.
 """
-import json, re, unicodedata
+import os, json, re, unicodedata
 from collections import OrderedDict
 
 STREETS = json.load(open("/home/user/worldbuilder/data/streets.json"))
@@ -297,12 +297,126 @@ for st in STREETS:
     elif find(st["name"],"person"):
         rel(slug, find(st["name"],"person"), "named after", f"Street honouring {st['name']}")
 
+# ── PORTRAITS (from exported Characters xlsx tabs) ─────────────────────────
+def _norm(s):
+    return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode().lower().strip()
+def _lev1(a, b):  # True if edit distance between a and b is <= 1
+    if a == b: return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1: return False
+    if la == lb:  # single substitution
+        return sum(x != y for x, y in zip(a, b)) == 1
+    if la > lb: a, b, la, lb = b, a, lb, la   # ensure a shorter
+    i = j = 0; diff = 0
+    while i < la and j < lb:
+        if a[i] == b[j]: i += 1; j += 1
+        else:
+            diff += 1; j += 1
+            if diff > 1: return False
+    return True
+
+# era context for people who only appear here as portraits
+ERA = {
+ "Pirates era":      ("A pirate-era figure of Amparacán (17th–early 18th century).", [2]),
+ "Legitimation era": ("A figure of Amparacán's colonial legitimation era (18th century).", [4]),
+ "Independence era": ("A figure of Amparacán's independence era (early–mid 19th century).", [6]),
+ "Early republic":   ("A figure of Amparacán's early republic.", [7]),
+ "Sheet9":           ("A figure of Amparacán's history.", []),
+}
+PORT_PATH = "/home/user/worldbuilder/data/portraits.json"
+if os.path.exists(PORT_PATH):
+    portraits = json.load(open(PORT_PATH))
+    people_norms = {_norm(e["name"]): e["slug"] for e in entities.values() if e["type"] == "person"}
+    matched = new = 0
+    for rec in portraits.values():
+        nm, uri, sheet = rec["name"], rec["uri"], rec.get("sheet", "")
+        k = _norm(nm)
+        slug = people_norms.get(k)
+        if not slug:  # fuzzy fallback: catch spelling variants (Abarco/Abaco)
+            for kk, sl in people_norms.items():
+                if _lev1(k, kk): slug = sl; break
+        if slug:
+            entities[slug]["photo"] = uri; matched += 1
+        else:
+            desc, seasons = ERA.get(sheet, ("A figure of Amparacán's history.", []))
+            s = add(nm, "person", desc, seasons=seasons, photo=uri)
+            people_norms[k] = s; new += 1
+    print(f"portraits: matched {matched}, added {new} new people")
+
+# ── TIMELINE / CHRONOLOGY ──────────────────────────────────────────────────
+chronology = []
+TL_PATH = "/home/user/worldbuilder/data/timeline_raw.json"
+if os.path.exists(TL_PATH):
+    tl = json.load(open(TL_PATH))
+    # candidate entity names to auto-link inside event text (people + places);
+    # only multi-word or reasonably long names, to avoid noisy matches
+    # link people, places, parties and streets (heads of state are person
+    # entities, so they link too). Longest match wins; ties prefer the more
+    # specific type over a street with the same name.
+    PRIO = {"person": 0, "place": 1, "political_party": 2, "street": 3}
+    cand = []
+    for e in entities.values():
+        t = e["type"]
+        if t not in PRIO: continue
+        nm = e["name"]
+        ok = (len(nm) >= 6 or len(nm.split()) >= 2) if t != "street" else (len(nm) >= 7)
+        if ok: cand.append((nm, e["slug"], PRIO[t]))
+    cand.sort(key=lambda x: (-len(x[0]), x[2]))
+    linked = 0
+    for ev in tl:
+        text = ev["text"]; claimed = [False]*len(text); spans = []; refs = set()
+        for nm, slug, _ in cand:
+            start = 0
+            while True:
+                i = text.find(nm, start)
+                if i < 0: break
+                j = i + len(nm); start = j
+                if i > 0 and text[i-1].isalnum(): continue
+                if j < len(text) and text[j].isalnum(): continue
+                if any(claimed[i:j]): continue
+                for k in range(i, j): claimed[k] = True
+                spans.append((i, j)); refs.add(slug)
+        spans.sort()
+        out = []; pos = 0
+        for i, j in spans:
+            out.append(text[pos:i]); out.append("[[" + text[i:j] + "]]"); pos = j
+        out.append(text[pos:])
+        if spans: linked += 1
+        chronology.append({"y": ev["y"], "label": ev["label"], "text": "".join(out),
+                           "approx": ev.get("approx", False), "refs": sorted(refs)})
+    print(f"chronology: {len(chronology)} events, {linked} auto-linked to entities")
+
+# ── real-world Wikipedia links for foreign figures ─────────────────────────
+WIKIPEDIA = {
+ "Alexander von Humboldt":"https://en.wikipedia.org/wiki/Alexander_von_Humboldt",
+ "Ignacio Manuel Altamirano":"https://en.wikipedia.org/wiki/Ignacio_Manuel_Altamirano",
+ "Antonieta Rivas Mercado":"https://en.wikipedia.org/wiki/Antonieta_Rivas_Mercado",
+ "Bartolomé de las Casas":"https://en.wikipedia.org/wiki/Bartolom%C3%A9_de_las_Casas",
+ "Carlos Finaly":"https://en.wikipedia.org/wiki/Carlos_Finlay",
+ "Carlos Fuentes":"https://en.wikipedia.org/wiki/Carlos_Fuentes",
+ "Cervantes":"https://en.wikipedia.org/wiki/Miguel_de_Cervantes",
+}
+for e in entities.values():
+    if e["name"] in WIKIPEDIA:
+        e["wikipedia"] = WIKIPEDIA[e["name"]]
+
+# use real Wikipedia lead images as portraits where we fetched them
+WIMG_PATH = "/home/user/worldbuilder/data/wiki_images.json"
+if os.path.exists(WIMG_PATH):
+    wimg = json.load(open(WIMG_PATH))
+    n = 0
+    for e in entities.values():
+        if e["type"] == "person" and not e.get("photo") and e["name"] in wimg and wimg[e["name"]]:
+            e["photo"] = wimg[e["name"]]; n += 1
+    if n: print(f"wikipedia images: applied {n}")
+
 # ── finalise ──────────────────────────────────────────────────────────────
 data = {
     "meta": {"title":"Amparacán","subtitle":"A wiki of the island city-state, 1650s–2060s"},
     "entities": list(entities.values()),
     "relationships": rels,
     "heads_of_state": heads,
+    "chronology": chronology,
 }
 json.dump(data, open("/home/user/worldbuilder/data/wiki_data.json","w"),
           ensure_ascii=False, separators=(",",":"))
