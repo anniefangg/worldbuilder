@@ -1012,6 +1012,8 @@ function balcony(geo, f, y, t0, t1, col) {
   rail(Q0, Q1, len, fw); rail(P0, Q0, d, [-dx, 0, -dz]); rail(P1, Q1, d, [dx, 0, dz]);
   // planters on the slab and trailing greenery over the rail
   const rr = mulberry((Math.floor((f.ax + f.az) * 37) ^ Math.floor(y * 11) ^ 0x9e37) >>> 0), n = Math.max(2, Math.round(len / 1.6));
+  // a towel or sheet slung over the rail on a few balconies
+  if (rr() < 0.12) { const c = t0 + (t1 - t0) * (0.2 + rr() * 0.6), w = 0.22 + rr() * 0.2, top = y + 1.04, col = LAUNDRY[(rr() * LAUNDRY.length) | 0]; clothQuad(geo, f, c - w, c + w, d + 0.03, top, y + 0.35 + rr() * 0.2, col); }
   for (let k = 0; k < n; k++) {
     const t = t0 + (t1 - t0) * (k + 0.5) / n + (rr() - 0.5) * 0.3, px = f.ax + dx * t + f.nx * (d - 0.2), pz = f.az + dz * t + f.nz * (d - 0.2);
     const bloom = rr() < 0.45;
@@ -1221,6 +1223,12 @@ function roofClutter(geo, rec, s, top, pitched, ridge) {
     blossom(geo, p[0], top + 0.55 + r * 0.6, p[1], r + 0.15, rnd() < 0.3 ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
   }
 }
+const LAUNDRY = ['#f3efe4', '#ffffff', '#e9b44c', '#d7503c', '#3f78a8', '#f4c9d4', '#6bb3a2', '#c8504a', '#8a6bb0', '#e8896a'].map(linear), ROPE = linear('#cfc6b0');
+// a cloth hanging on a wall-local frame: top edge from (t0, d, yTop) to (t1, d, yTop), drooping to yBot; visible from both sides
+function clothQuad(geo, f, t0, t1, d, yTop, yBot, col) {
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (t, y) => [f.ax + dx * t + f.nx * d, y, f.az + dz * t + f.nz * d], q = [P(t0, yTop), P(t1, yTop), P(t1, yBot), P(t0, yBot)];
+  quadN(geo, q, [f.nx, 0, f.nz], col, Z4); quadN(geo, q, [-f.nx, 0, -f.nz], col, Z4);
+}
 const PIPE = linear('#6f7476'), AC_BODY = linear('#d9dbd8'), AC_GRILL = linear('#4f565f'), CREAM = linear('#efe6d2');
 // the small things that make a wall look lived in: striped awnings over some doors, drainpipes, air-conditioning units and trailing vines
 function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
@@ -1239,6 +1247,18 @@ function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
   if (s.floors >= 2 && rnd() < 0.4) for (let k = 0; k < 1 + (rnd() < 0.4 ? 1 : 0); k++) {     // split air-conditioners
     const t = 1 + rnd() * (f.L - 2), fl = 1 + ((rnd() * (s.floors - 1)) | 0), y = base + gf + (fl - 1) * fh + 0.75 + rnd() * 0.5;
     boxW(geo, f, t - 0.38, t + 0.38, 0, 0.3, y, y + 0.36, AC_BODY); boxW(geo, f, t - 0.3, t + 0.3, 0.3, 0.32, y + 0.05, y + 0.27, AC_GRILL);
+  }
+  if (f.L >= 7 && s.floors >= 2 && rnd() < 0.065) {                                                 // washing on a line between two windows
+    const nb = Math.max(2, Math.floor(f.L / 3.4)), bw = f.L / nb, k = (rnd() * (nb - 1)) | 0, t0 = (k + 0.5) * bw + 0.15, t1 = (k + 1.5) * bw - 0.15;
+    const fl = 1 + ((rnd() * (s.floors - 1)) | 0), y = base + gf + (fl - 1) * fh + 2.75, d = 0.6;
+    rec.laundry = { x: f.ax + (f.bx - f.ax) / f.L * (t0 + t1) / 2 + f.nx * d, y, z: f.az + (f.bz - f.az) / f.L * (t0 + t1) / 2 + f.nz * d, nx: f.nx, nz: f.nz };
+    boxW(geo, f, t0 - 0.03, t0 + 0.03, 0, d, y - 0.03, y + 0.03, IRON); boxW(geo, f, t1 - 0.03, t1 + 0.03, 0, d, y - 0.03, y + 0.03, IRON);   // two little poles
+    for (let m = 0, n = 8; m < n; m++) { const a = t0 + (t1 - t0) * m / n, b = t0 + (t1 - t0) * (m + 1) / n, sag = 0.1 * Math.sin(Math.PI * (m + 0.5) / n); boxW(geo, f, a, b, d - 0.01, d + 0.01, y - 0.015 - sag, y + 0.015 - sag, ROPE); }
+    const pcs = 3 + ((rnd() * 3) | 0), base0 = LAUNDRY[(rnd() * LAUNDRY.length) | 0];
+    for (let m = 0; m < pcs; m++) {
+      const c = t0 + (t1 - t0) * (m + 0.7) / (pcs + 0.4), w = 0.2 + rnd() * 0.16, len = 0.45 + rnd() * 0.5, sag = 0.1 * Math.sin(Math.PI * (c - t0) / (t1 - t0));
+      clothQuad(geo, f, c - w, c + w, d, y - sag - 0.02, y - sag - len, rnd() < 0.6 ? base0 : LAUNDRY[(rnd() * LAUNDRY.length) | 0]);
+    }
   }
   if (rnd() < 0.3) for (let v = 0; v < 1 + (rnd() < 0.5 ? 1 : 0); v++) {                       // vines trailing from the roof edge
     const t = 0.8 + rnd() * (f.L - 1.6), len = 2 + rnd() * 5, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, flower = rnd() < 0.45;
@@ -4234,6 +4254,7 @@ function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; mark
 window.amparacan = {
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
+  laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
