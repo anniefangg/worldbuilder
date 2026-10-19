@@ -237,6 +237,11 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 }
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
 #layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#undo-box { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(242px + env(safe-area-inset-top, 0px)); display: flex; padding: 3px; gap: 2px; }
+#undo-box button { display: flex; gap: 5px; align-items: center; border: 0; background: none; color: var(--ink); font: 600 12.5px/1 var(--font-ui); padding: 7px 9px; border-radius: 9px; cursor: pointer; }
+#undo-box button:hover:not(:disabled) { background: rgba(31, 87, 168, 0.1); }
+#undo-box button:disabled { opacity: 0.38; cursor: default; }
+#undo-box button:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 1px; }
 #measure-btn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(204px + env(safe-area-inset-top, 0px)); font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center; }
 #measure-btn[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); }
 #measure-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
@@ -270,6 +275,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
   #measure-btn { top: calc(144px + env(safe-area-inset-top, 0px)); }
+  #undo-box { top: calc(180px + env(safe-area-inset-top, 0px)); }
   #search { top: calc(66px + env(safe-area-inset-top, 0px)); width: min(260px, calc(100vw - 32px)); }
   #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
@@ -313,6 +319,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 </div>
 <button id="measure-btn" class="plaque" type="button" aria-pressed="false" title="Measure a distance (X)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Measure</button>
 <svg id="measure-svg" aria-hidden="true"></svg><div id="measure-label" class="plaque" hidden></div>
+<div id="undo-box" class="plaque" role="group" aria-label="Undo and redo" hidden><button id="undo-btn" type="button" title="Undo the last edit (⌘/Ctrl Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button><button id="redo-btn" type="button" title="Redo (⇧⌘/Ctrl Z or Ctrl Y)" aria-label="Redo" disabled>Redo<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button></div>
 <button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
 <div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
@@ -3635,6 +3642,7 @@ function persistLocal() {
   try { const o = {}; for (const c of COLLECTIONS) o[c] = Object.fromEntries(store[c]); localStorage.setItem(LOCAL_KEY, JSON.stringify(o)); } catch (e) {}
 }
 function saveDoc(col, id, body, delay = 500) {
+  trackUndo(col, id, body);
   store[col].set(id, body);
   if (store.kind === 'local') { persistLocal(); return; }
   if (store.kind !== 'db') return;
@@ -3652,9 +3660,39 @@ async function flushDoc(path) {
   if (w.body === body) pending.delete(path); else flushDoc(path);
 }
 function deleteDoc(col, id) {
+  trackUndo(col, id, null);
   store[col].delete(id);
   if (store.kind === 'local') { persistLocal(); return; }
   if (store.kind === 'db') DB.collection(col).doc(id).delete().catch(() => toast('Couldn’t remove that. Try again.'));
+}
+// ─────────────────────────── undo / redo ───────────────────────────
+// Every write to a building's or feature's edit doc is recorded; writes within ~0.45 s of each other (a slider drag, a group edit) form one step.
+const undo = { stack: [], redo: [], open: null, t: 0, busy: false };
+function trackUndo(col, id, body) {
+  if (undo.busy || (col !== 'buildings' && col !== 'features')) return;
+  const key = col + '/' + id, now = performance.now();
+  if (!undo.open || now - undo.t > 450) { undo.open = new Map(); undo.stack.push(undo.open); if (undo.stack.length > 100) undo.stack.shift(); undo.redo.length = 0; }
+  undo.t = now;
+  if (!undo.open.has(key)) { const prev = store[col].get(id); undo.open.set(key, { before: prev ? clone(prev) : null }); }
+  undo.open.get(key).after = body ? clone(body) : null;
+}
+function applyUndoStep(step, dir) {
+  undo.busy = true; const byCol = {};
+  for (const [key, v] of step) {
+    const [col, id] = key.split('/'), body = dir === 'undo' ? v.before : v.after;
+    if (body) saveDoc(col, id, clone(body), 0); else deleteDoc(col, id);
+    (byCol[col] = byCol[col] || []).push(id);
+  }
+  for (const col in byCol) store.emit(col, byCol[col]);
+  undo.busy = false; undo.open = null;
+}
+function undoEdit() { const st = undo.stack.pop(); if (!st) return; applyUndoStep(st, 'undo'); undo.redo.push(st); toast(`Undone${st.size > 1 ? ` (${st.size} items)` : ''}.`); refreshUndo(); }
+function redoEdit() { const st = undo.redo.pop(); if (!st) return; applyUndoStep(st, 'redo'); undo.stack.push(st); toast('Redone.'); refreshUndo(); }
+let _undoShown = '';
+function refreshUndo() {
+  const box = $('undo-box'); if (!box) return;
+  const sig = `${store.canEdit}|${undo.stack.length}|${undo.redo.length}`; if (sig === _undoShown) return; _undoShown = sig;
+  box.hidden = !store.canEdit; $('undo-btn').disabled = !undo.stack.length; $('redo-btn').disabled = !undo.redo.length;
 }
 function docFor(id) { return { ...blankDoc(), ...clone(store[colFor(id)].get(id)) }; }
 function saveTarget(id, body, delay) { saveDoc(colFor(id), id, body, delay); store.emit(colFor(id), [id]); }
@@ -4772,6 +4810,7 @@ function initControls() {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
     if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
@@ -4809,6 +4848,8 @@ function initControls() {
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
   $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
+  $('undo-btn').addEventListener('click', (e) => { e.stopPropagation(); undoEdit(); });
+  $('redo-btn').addEventListener('click', (e) => { e.stopPropagation(); redoEdit(); });
   $('edit-pill').addEventListener('click', (e) => { if (!ui.hover) return; if (e.shiftKey) toggleMulti(ui.hover); else select(ui.hover, { focusPrompt: true }); });
   // the pill floats over the map: let scrolling over it zoom the view underneath
   $('edit-pill').addEventListener('wheel', (e) => {
@@ -4878,7 +4919,7 @@ function update(dt, t) {
   if (player.mode === 'plan') {
     stepAnim(dt, t);
     if (plan.need) drawPlan();
-    placePill(); placeMeasure();
+    placePill(); placeMeasure(); refreshUndo();
     const ew = plan.cx / 1000, ns = -plan.cz / 1000;
     hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · 1 px = ${(1 / plan.scale).toFixed(1)} m`;
     return false;
@@ -4970,7 +5011,7 @@ function update(dt, t) {
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
-  placePill(); placeMeasure();
+  placePill(); placeMeasure(); refreshUndo();
   // HUD
   const yawRef = player.mode === 'map' ? controls.target : player.pos, yaw = Math.atan2(camera.position.x - yawRef.x, camera.position.z - yawRef.z);
   hud.needle.setAttribute('transform', `rotate(${(yaw * 180 / Math.PI).toFixed(1)})`);
