@@ -247,7 +247,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
 #layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
 #undo-box { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(154px + env(safe-area-inset-top, 0px)); display: flex; padding: 3px; gap: 2px; }
-#undo-box button { display: flex; gap: 5px; align-items: center; border: 0; background: none; color: var(--ink); font: 600 12.5px/1 var(--font-ui); padding: 7px 9px; border-radius: 9px; cursor: pointer; }
+#undo-box button { display: flex; gap: 5px; align-items: center; border: 0; background: none; color: var(--ink); font: 600 12.5px/1 var(--font-ui); padding: 7px 10px; border-radius: 9px; cursor: pointer; }
 #undo-box button:hover:not(:disabled) { background: rgba(31, 87, 168, 0.1); }
 #undo-box button:disabled { opacity: 0.38; cursor: default; }
 #undo-box button:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 1px; }
@@ -330,7 +330,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 </div>
 <button id="measure-btn" class="plaque" type="button" aria-pressed="false" title="Measure a distance (X)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Measure</button>
 <svg id="measure-svg" aria-hidden="true"></svg><div id="measure-label" class="plaque" hidden></div>
-<div id="undo-box" class="plaque" role="group" aria-label="Undo and redo" hidden><button id="undo-btn" type="button" title="Undo the last edit (⌘/Ctrl Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button><button id="redo-btn" type="button" title="Redo (⇧⌘/Ctrl Z or Ctrl Y)" aria-label="Redo" disabled>Redo<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button></div>
+<div id="undo-box" class="plaque" role="group" aria-label="Undo and redo" hidden><button id="undo-btn" type="button" title="Undo the last edit (⌘/Ctrl Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button id="redo-btn" type="button" title="Redo (⇧⌘/Ctrl Z or Ctrl Y)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button></div>
 <button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
 <div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
@@ -3509,7 +3509,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
     // arms swing against the legs; with no one to clasp, hands settle in front
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, swing = Math.cos(phase + (i === 1 ? Math.PI : 0)) * (0.09 + 0.14 * P.run) * w * 2.1, lift = 0.08 + 0.2 * P.run;
-      const sw2 = swing * (1 - 0.55 * bk), free = _ikA2.set(side * 0.085 * (1 - 0.6 * bk), -0.485 + lift * 0.4 * Math.abs(sw2) * 2, sw2 * 0.3 + 0.025 + lift * 0.2 * (1 - 0.7 * bk));   // elbows softly bent, hands swinging low   // arms held closer, swinging less
+      const sw2 = swing * (1 - 0.55 * bk), free = _ikA2.set(side * 0.09 * (1 - 0.5 * bk), -0.49, sw2 * 0.085 - 0.015);   // arms hang straight down at his sides, with only the faintest swing   // arms held closer, swinging less
       const idle = _ikB2.set(side * 0.07, -0.5, 0.02);
       free.lerp(idle, P.clasp);
       solveArm(arm, free, _pole.set(side * 0.55, -0.35, -0.75), u.A1, u.A2, 0.6);
