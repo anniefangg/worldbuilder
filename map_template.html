@@ -5165,7 +5165,7 @@ function drawMinimap(now) {
   const box = $('alt-box'), mr = $('minimap').getBoundingClientRect();
   $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
   box.hidden = false; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
-  let nice = 1; for (const m of [1, 2, 5]) for (let e = -1; e < 6; e++) { const v = m * 10 ** e; if (v * s <= 48) nice = v; }
+  const maxPx = clamp(W * 0.38, 40, 110); let nice = 0.1; for (let e = -1; e < 7; e++) for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v * s <= maxPx) nice = v; }   // the longest round length (…10, 20, 50, 100, 200, 500 m, 1, 2, 5 km…) that fits
   const bar = $('mm-bar'); bar.firstChild.style.width = Math.max(4, Math.round(nice * s)) + 'px'; bar.lastChild.textContent = nice >= 1000 ? `${nice / 1000} km` : `${nice < 1 ? nice.toFixed(1) : nice} m`;
 }
 function placeMinimap() { const sb = document.querySelector('#search .sbox'); if (sb) $('minimap').style.top = Math.round(sb.getBoundingClientRect().bottom + 7 + 10) + 'px'; }
