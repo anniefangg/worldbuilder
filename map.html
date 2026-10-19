@@ -47,6 +47,13 @@ body {
   font: 600 13px/1 var(--font-ui); color: var(--ink); background: transparent; border: 0; border-radius: 8px;
   padding: 9px 12px; cursor: pointer; display: flex; gap: 6px; align-items: center;
 }
+#mix-panel { position: fixed; z-index: 15; width: min(300px, calc(100vw - 16px)); padding: 10px 12px 8px; display: grid; gap: 2px; }
+#mix-panel[hidden] { display: none; }
+#mix-panel h4 { margin: 0 0 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+#mix-panel label { display: grid; grid-template-columns: 1fr 96px 38px; align-items: center; gap: 8px; padding: 3px 0; font: 500 12.5px/1.2 var(--font-ui); color: var(--ink); }
+#mix-panel .mv { font: 500 11px/1 var(--font-mono); color: var(--ink-soft); text-align: right; }
+#mix-panel input[type=range] { accent-color: var(--azulejo); width: 100%; margin: 0; }
+#mix-panel p { margin: 4px 0 0; font: 400 11px/1.3 var(--font-ui); color: var(--ink-soft); }
 #modes button.drop svg, #modes button.tog svg { display: block; }
 #modes button.tog[aria-pressed="true"] .slash { display: none; }
 #modes button.tog { padding: 9px 9px; }
@@ -307,12 +314,13 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 </div>
 
 <div id="opt-menu" class="plaque" role="menu" hidden></div>
+<div id="mix-panel" class="plaque" hidden role="group" aria-label="Sound mix"></div>
 <div id="modes" class="plaque" role="group" aria-label="Navigation mode">
   <button id="mode-walk" type="button" aria-pressed="false">Walk</button>
   <button id="mode-fly" type="button" aria-pressed="false">Fly <kbd>F</kbd></button>
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
-  <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, birds, water, waves and weather" aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
+  <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, birds, water, waves and weather. Ctrl-click for the sound mix." aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="mus" class="tog" type="button" aria-pressed="false" title="Music: dreamlike ambient" aria-label="Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="tod" class="drop" type="button" title="Time of day (T)" aria-haspopup="menu" aria-expanded="false">Dusk</button>
   <button id="wx" class="drop" type="button" title="Weather (R)" aria-haspopup="menu" aria-expanded="false">Sunny</button>
@@ -4729,7 +4737,7 @@ function initPlanInput() {
 // Everything is synthesised with the Web Audio API (no files): a bed of breeze, gulls, waves near the shore and rain/thunder for the weather;
 // and, separately, a slow generative ambient piece (pads, a deep drone and glassy notes through a long reverb and an echo).
 const AUD = { ctx: null, sfx: false, mus: false, started: false, nextGull: 0, shore: 400, tick: 0, mNext: 0, aNext: 0, chord: 0, suspendT: 0 };
-const mx = (k) => (AUD.mute && AUD.mute[k] ? 0 : 1);   // the sound mixer: 0 when a group has been switched off
+const mx = (k) => (AUD.vol && AUD.vol[k] !== undefined ? AUD.vol[k] : 1);   // the sound mixer: each group's volume, 0 (off) to 1.5; 1 is the normal level
 const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12), rndR = (a, b) => a + Math.random() * (b - a);
 function noiseBuf(C, sec, pink) {
   const b = C.createBuffer(2, Math.round(C.sampleRate * sec), C.sampleRate);
@@ -4825,7 +4833,7 @@ function gullCall(C, t0, pan, gain) {
   g.connect(AUD.verbIn); o.start(t0); o2.start(t0); o.stop(t0 + len + 0.4); o2.stop(t0 + len + 0.4);
 }
 function gulls() {
-  const C = AUD.ctx, now = C.currentTime, n = 2 + ((Math.random() * 3) | 0), pan = rndR(-0.8, 0.8), gain = rndR(0.04, 0.085);
+  const C = AUD.ctx, now = C.currentTime, n = 2 + ((Math.random() * 3) | 0), pan = rndR(-0.8, 0.8), gain = rndR(0.04, 0.085) * mx('gulls');
   for (let i = 0; i < n; i++) gullCall(C, now + i * rndR(0.5, 0.75), pan, gain * (1 - i * 0.12));
 }
 function thunderBus(C) {
@@ -4854,12 +4862,13 @@ function thunder(delay) {
   AUD.thunders = (AUD.thunders || 0) + 1;
   if (!AUD.sfx || !AUD.ctx || !mx('thunder')) return;
   const C = AUD.ctx, t0 = C.currentTime + delay, far = clamp(delay / 3.6, 0, 1), soft = 1 - far * 0.35;
-  if (far < 0.55) crack(C, t0, 1.5 * (1 - far));
-  rumble(C, t0 + 0.03, rndR(7, 12), rndR(650, 950) * soft, rndR(70, 105), 1.7 * soft, rndR(-0.3, 0.3));       // the main roll
+  const tv = mx('thunder');
+  if (far < 0.55) crack(C, t0, 1.5 * (1 - far) * tv);
+  rumble(C, t0 + 0.03, rndR(7, 12), rndR(650, 950) * soft, rndR(70, 105), 1.7 * soft * tv, rndR(-0.3, 0.3));       // the main roll
   const echoes = 1 + ((Math.random() * 3) | 0);                                                               // then the sky rolling it on, further off
-  for (let i = 0; i < echoes; i++) rumble(C, t0 + rndR(1.3, 4.8), rndR(4.5, 8.5), rndR(420, 700) * soft, rndR(65, 95), 0.95 * soft * Math.pow(0.78, i), rndR(-0.8, 0.8));
+  for (let i = 0; i < echoes; i++) rumble(C, t0 + rndR(1.3, 4.8), rndR(4.5, 8.5), rndR(420, 700) * soft, rndR(65, 95), 0.95 * soft * tv * Math.pow(0.78, i), rndR(-0.8, 0.8));
   const sub = C.createOscillator(), sg = C.createGain(); sub.type = 'triangle'; sub.frequency.setValueAtTime(rndR(48, 62), t0); sub.frequency.exponentialRampToValueAtTime(32, t0 + 7);   // the felt boom underneath
-  sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
+  sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft * tv, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 // ─────────────────────────── ambience that follows the place ───────────────────────────
 // Birdsong, rustling trees, canals, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
@@ -4952,31 +4961,31 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   // fog: a muffled world
   AUD.fogLP.frequency.setTargetAtTime(w === 'fog' ? 1700 : w === 'misty' ? 4200 : 22000, now, 1.2);
   // reverb: narrow streets echo, open squares are dry
-  AUD.sfxVerb.gain.setTargetAtTime(mx('reverb') ? 0.025 + 0.5 * E.narrow : 0.02, now, 0.7);
+  AUD.sfxVerb.gain.setTargetAtTime(0.02 + mx('reverb') * (0.005 + 0.5 * E.narrow), now, 0.7);
   // underwater
-  if (E.swim !== N.swim) { N.swim = E.swim; if (mx('swim')) splash(C, now, 0.18); }
-  AUD.uwLP.frequency.setTargetAtTime(E.swim ? 480 : 22000, now, 0.12); set(AUD.under, E.swim && mx('swim') ? 0.25 : 0, 0.3);
-  if (E.swim && mx('swim') && now > N.bubble) { tone(C, now, rndR(300, 700), rndR(700, 1400), 0.12, 0.05, { att: 0.01, wet: 0.1 }); N.bubble = now + rndR(0.25, 1.1); }
+  if (E.swim !== N.swim) { N.swim = E.swim; if (mx('swim')) splash(C, now, 0.18 * mx('swim')); }
+  AUD.uwLP.frequency.setTargetAtTime(E.swim ? 480 : 22000, now, 0.12); set(AUD.under, E.swim ? 0.25 * mx('swim') : 0, 0.3);
+  if (E.swim && mx('swim') && now > N.bubble) { tone(C, now, rndR(300, 700), rndR(700, 1400), 0.12, 0.05 * mx('swim'), { att: 0.01, wet: 0.1 }); N.bubble = now + rndR(0.25, 1.1); }
   // flight
   const fly = player.mode === 'fly';
   set(AUD.roar, fly ? mx('flying') * smooth(8, 130, ctx.hv) * 0.38 : 0, 0.4); AUD.roarBP.frequency.setTargetAtTime(240 + Math.min(ctx.hv, 400) * 3.2, now, 0.4);
-  if (mx('flying') && fly && ctx.hv > 18 && E.nearWall < 9 && now > N.whoosh) { whoosh(C, now, 0.075 * smooth(18, 120, ctx.hv)); N.whoosh = now + 1.6; }
+  if (mx('flying') && fly && ctx.hv > 18 && E.nearWall < 9 && now > N.whoosh) { whoosh(C, now, 0.075 * mx('flying') * smooth(18, 120, ctx.hv)); N.whoosh = now + 1.6; }
   // events
   const birdAct = (dawn ? clamp((now - N.dawnAt) / 90, 0.1, 1) : dusk ? 0.75 : day ? 0.32 : 0) * (0.12 + canopy * 0.88) * (ctx.rain ? 0.1 : 1) * (1 - fogAmt * 0.3) * gf;
   if (mx('birds') && birdAct > 0.07 && now > N.bird) {
-    const pan = rndR(-0.8, 0.8), r = Math.random(), g = rndR(0.012, 0.03) * (0.5 + birdAct * 0.7);
+    const pan = rndR(-0.8, 0.8), r = Math.random(), g = rndR(0.012, 0.03) * (0.5 + birdAct * 0.7) * mx('birds');
     if (r < 0.1 && canopy > 0.5) parrot(C, now + 0.05, pan, g * 1.3); else if (r < 0.2) dove(C, now + 0.05, pan, g * 1.1); else songbird(C, now + 0.05, pan, g);
     N.bird = now + rndR(2.5, 9) / birdAct;
   }
-  if (mx('trees') && canopy > 0.25 && ctx.wind > 0.1 && now > N.clack) { clickBurst(C, now, rndR(900, 1700), 2, 0.05, 0.03 * canopy * gf, AUD.eco); N.clack = now + rndR(0.4, 2.2) / (0.4 + ctx.wind * 4); }
-  if (mx('canals') && E.canal > 0.12 && now > N.lap) { tone(C, now, rndR(220, 340), rndR(110, 170), 0.16, 0.05 * E.canal * gf, { att: 0.01, tau: 0.35, pan: rndR(-0.6, 0.6) }); N.lap = now + rndR(0.5, 1.9); }
-  if (mx('fog') && fogAmt && now > N.horn) { foghorn(C, now + 0.1, 0.16 * (fogAmt > 0.9 ? 1 : 0.6)); N.horn = now + (fogAmt > 0.9 ? rndR(28, 55) : rndR(80, 150)); }
+  if (mx('trees') && canopy > 0.25 && ctx.wind > 0.1 && now > N.clack) { clickBurst(C, now, rndR(900, 1700), 2, 0.05, 0.03 * mx('trees') * canopy * gf, AUD.eco); N.clack = now + rndR(0.4, 2.2) / (0.4 + ctx.wind * 4); }
+  if (mx('canals') && E.canal > 0.12 && now > N.lap) { tone(C, now, rndR(220, 340), rndR(110, 170), 0.16, 0.05 * mx('canals') * E.canal * gf, { att: 0.01, tau: 0.35, pan: rndR(-0.6, 0.6) }); N.lap = now + rndR(0.5, 1.9); }
+  if (mx('fog') && fogAmt && now > N.horn) { foghorn(C, now + 0.1, 0.16 * mx('fog') * (fogAmt > 0.9 ? 1 : 0.6)); N.horn = now + (fogAmt > 0.9 ? rndR(28, 55) : rndR(80, 150)); }
   if (night && !ctx.rain && gf > 0.3) {
-    if (mx('night') && now > N.owl) { owl(C, now + 0.1, rndR(-0.8, 0.8), 0.03); N.owl = now + rndR(70, 170); }
-    if (mx('night') && now > N.song && E.narrow > 0.05) { distantSong(C, now + 0.1, rndR(-0.8, 0.8), 0.018); N.song = now + rndR(150, 320); }
+    if (mx('night') && now > N.owl) { owl(C, now + 0.1, rndR(-0.8, 0.8), 0.03 * mx('night')); N.owl = now + rndR(70, 170); }
+    if (mx('night') && now > N.song && E.narrow > 0.05) { distantSong(C, now + 0.1, rndR(-0.8, 0.8), 0.018 * mx('night')); N.song = now + rndR(150, 320); }
   }
-  if (mx('fire') && (night || dusk) && !ctx.rain && gf > 0.3 && E.nearWall < 6 && now > N.fire) { fireCrackle(C, now + 0.1, 0.022); N.fire = now + rndR(35, 85); }   // a hearth glowing behind the wall right beside you
-  if (mx('dawn') && dawn && !ctx.rain && gf > 0.3 && now > N.rooster) { rooster(C, now + 0.1, rndR(-0.9, 0.9), 0.04); N.rooster = now + rndR(70, 170); }
+  if (mx('fire') && (night || dusk) && !ctx.rain && gf > 0.3 && E.nearWall < 6 && now > N.fire) { fireCrackle(C, now + 0.1, 0.022 * mx('fire')); N.fire = now + rndR(35, 85); }   // a hearth glowing behind the wall right beside you
+  if (mx('dawn') && dawn && !ctx.rain && gf > 0.3 && now > N.rooster) { rooster(C, now + 0.1, rndR(-0.9, 0.9), 0.04 * mx('dawn')); N.rooster = now + rndR(70, 170); }
 }
 function audioTick() {
   const C = AUD.ctx; if (!C || C.state !== 'running') return;
@@ -5030,8 +5039,32 @@ function musicTick(C, now) {
   }
 }
 
+const MIX = [['breeze', 'Breeze'], ['birds', 'Birds'], ['trees', 'Leaves and palms'], ['gulls', 'Gulls'], ['waves', 'Waves'], ['canals', 'Canals'], ['rain', 'Rain'], ['thunder', 'Thunder'], ['fog', 'Foghorn'], ['night', 'Owl and distant song'], ['fire', 'Fire crackle'], ['dawn', 'Dawn rooster'], ['flying', 'Wind and whooshes when flying'], ['swim', 'Swimming'], ['reverb', 'Street echo']];
+// Sound mix: Ctrl-click (or right-click) the sound button for one volume slider per sound group, saved in localStorage
+function initMixer() {
+  AUD.vol = {}; try { AUD.vol = JSON.parse(localStorage.getItem('amparacan-map-mixvol') || '{}') || {}; } catch (e) {}
+  const panel = $('mix-panel'), btn = $('snd'), save = () => { try { localStorage.setItem('amparacan-map-mixvol', JSON.stringify(AUD.vol)); } catch (e) {} };
+  const build = () => {
+    const rows = MIX.map(([k, label]) => {
+      const out = el('span', { class: 'mv' }), sl = el('input', { type: 'range', min: 0, max: 150, step: 5, 'aria-label': label + ' volume' });
+      const show = () => { out.textContent = Math.round(mx(k) * 100) + '%'; };
+      sl.value = Math.round(mx(k) * 100); show();
+      sl.addEventListener('input', () => { AUD.vol[k] = sl.value / 100; show(); save(); });
+      sl.addEventListener('dblclick', () => { delete AUD.vol[k]; sl.value = 100; show(); save(); });
+      return el('label', {}, el('span', { class: 'mn' }, label), sl, out);
+    });
+    panel.replaceChildren(el('h4', {}, 'Sound mix'), ...rows, el('p', {}, 'Double-click a slider to reset it.'));
+  };
+  const place = () => { const r = btn.getBoundingClientRect(); panel.style.top = Math.round(r.bottom + 8) + 'px'; panel.style.left = Math.round(clamp(r.left + r.width / 2 - 150, 8, innerWidth - 308)) + 'px'; };
+  const toggle = (open) => { if (open) { build(); place(); } panel.hidden = !open; };
+  btn.addEventListener('click', (e) => { if (e.ctrlKey) { e.preventDefault(); e.stopImmediatePropagation(); e.stopPropagation(); toggle(panel.hidden); } }, true);
+  btn.addEventListener('contextmenu', (e) => { e.preventDefault(); toggle(panel.hidden); });
+  panel.addEventListener('click', (e) => e.stopPropagation());
+  addEventListener('click', () => { if (!panel.hidden) panel.hidden = true; });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) panel.hidden = true; });
+}
 function initAudioUI() {
-  AUD.mute = {};
+  initMixer();
   $('snd').addEventListener('click', (e) => { e.stopPropagation(); setAudio('sfx', !AUD.sfx); });
   $('mus').addEventListener('click', (e) => { e.stopPropagation(); setAudio('mus', !AUD.mus); });
   let want = { sfx: false, mus: false };
