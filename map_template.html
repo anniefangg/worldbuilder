@@ -2306,13 +2306,7 @@ const CANOPY_GLSL = `
 varying vec2 vWP; uniform float uCanopy;
 float ch(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float cn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(ch(i), ch(i + vec2(1, 0)), f.x), mix(ch(i + vec2(0, 1)), ch(i + vec2(1, 1)), f.x), f.y); }
-vec3 canopyColor(vec2 p) {
-  float crown = cn(p / 6.5) * 0.55 + cn(p / 3.1) * 0.3 + cn(p / 1.4) * 0.15;       // crowns of 5–8 m, with leaf clumps
-  float gap = smoothstep(0.34, 0.2, cn(p / 11.0 + 7.0));                              // the odd clearing
-  float lit = smoothstep(0.3, 0.8, crown);
-  vec3 c = mix(vec3(0.05, 0.17, 0.06), vec3(0.2, 0.4, 0.12), lit);
-  return mix(c, vec3(0.28, 0.4, 0.17), gap * 0.55);
-}`;
+vec3 canopyColor(vec2 p) { return vec3(0.055, 0.215, 0.08); }   // one solid, deep green`;
 const CANOPY_H = 8;   // metres: the height the far-off canopy floats at, about the top of a park tree
 function canopyMaterial() {
   const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: true });
