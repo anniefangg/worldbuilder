@@ -180,8 +180,10 @@ body.tray-open #info { display: none; }
 #minimap .mm-btns button[hidden] { display: none; }
 #minimap .mm-n { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); font: 700 10px/1 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border-radius: 999px; padding: 3px 5px; pointer-events: none; }
 #minimap .mm-scale { position: absolute; right: 8px; top: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
-#minimap .mm-bar { position: absolute; left: 10px; bottom: 40px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 3px 5px 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
+#minimap .mm-bar { position: absolute; right: 8px; top: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 3px 5px 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar i { display: block; height: 5px; border: 1.6px solid var(--ink); border-top: 0; margin-bottom: 3px; }
+#alt-box { position: fixed; z-index: 5; padding: 6px 10px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; border-radius: 10px; pointer-events: none; }
+#alt-box span { font: 500 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-right: 6px; }
 #preview-banner { margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff1c9; color: #6b4a10; font-size: 11.5px; line-height: 1.35; max-width: 220px; }
 #preview-banner a { color: var(--azulejo); font-weight: 600; }
 #info .attach-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -316,7 +318,8 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
-<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-scale" id="mm-scale"></span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
+<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
+<div id="alt-box" class="plaque" hidden><span>Altitude</span><b id="alt-val"></b></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -4599,7 +4602,7 @@ function setMode(mode) {
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
   plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
-  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); mm.last = 0; placeMinimap();
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = $('minimap').hidden; mm.last = 0; placeMinimap();
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -5036,8 +5039,10 @@ function drawMinimap(now) {
   // a scale bar label: the map's width in metres
   // altitude above the street, and a scale bar a nice round number of metres long
   const up = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z) - GROUND_SKIN);
-  $('mm-scale').textContent = `Altitude ${up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m'}`;
-  let nice = 1; for (const m of [1, 2, 5]) for (let e = -1; e < 6; e++) { const v = m * 10 ** e; if (v * s <= 90) nice = v; }
+  const box = $('alt-box'), mr = $('minimap').getBoundingClientRect();
+  $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
+  box.hidden = false; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
+  let nice = 1; for (const m of [1, 2, 5]) for (let e = -1; e < 6; e++) { const v = m * 10 ** e; if (v * s <= 56) nice = v; }
   const bar = $('mm-bar'); bar.firstChild.style.width = Math.max(4, Math.round(nice * s)) + 'px'; bar.lastChild.textContent = nice >= 1000 ? `${nice / 1000} km` : `${nice < 1 ? nice.toFixed(1) : nice} m`;
 }
 function placeMinimap() { const sb = document.querySelector('#search .sbox'); if (sb) $('minimap').style.top = Math.round(sb.getBoundingClientRect().bottom + 7 + 10) + 'px'; }
