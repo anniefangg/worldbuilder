@@ -2236,11 +2236,13 @@ function ribbonOverlay(items) {
   }
   return geo;
 }
-function overlayMesh(geo, tex, order) {
+function overlayMesh(geo, tex, order, dim = null) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
-  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight
-    sh.uniforms.uNight = NIGHT;
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;')
+  mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
+  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; park lawns darken once the trees that shade them are no longer drawn
+    sh.uniforms.uNight = NIGHT; if (dim) sh.uniforms.uDim = dim;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim;' : ''))
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\ndiffuseColor.rgb *= uDim;' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
   };
   const m = new THREE.Mesh(geo.build(), mat);
@@ -2264,7 +2266,7 @@ function buildGround(kind) {
     g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
-  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0)));
+  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null));
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -4697,6 +4699,8 @@ function updateCull(dt) {
   for (const o of world.lightObjs || []) o.visible = alt < a * 1.4 && (o !== world.bulbs || NIGHT.value > 0.5);
   if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
   updateDetail(); updateVeg(p, alt);
+  // from far away (or on Low, where the trees vanish early) a park is just its lawn: take the lime out of it, as the trees would
+  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); }
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
