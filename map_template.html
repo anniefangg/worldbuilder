@@ -2302,14 +2302,7 @@ function ribbonOverlay(items) {
   }
   return geo;
 }
-function overlayMesh(geo, tex, order, dim = null) {
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
-  mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
-  if (dim) world.parkCanopy = world.parkCanopy || { value: 0 };
-  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns turn into a mottled tree canopy once the real trees stop being drawn
-    sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uCanopy = world.parkCanopy; }
-    if (dim) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
-    const canopyFn = `
+const CANOPY_GLSL = `
 varying vec2 vWP; uniform float uCanopy;
 float ch(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float cn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(ch(i), ch(i + vec2(1, 0)), f.x), mix(ch(i + vec2(0, 1)), ch(i + vec2(1, 1)), f.x), f.y); }
@@ -2320,6 +2313,25 @@ vec3 canopyColor(vec2 p) {
   vec3 c = mix(vec3(0.05, 0.17, 0.06), vec3(0.2, 0.4, 0.12), lit);
   return mix(c, vec3(0.28, 0.4, 0.17), gap * 0.55);
 }`;
+const CANOPY_H = 8;   // metres: the height the far-off canopy floats at, about the top of a park tree
+function canopyMaterial() {
+  const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: true });
+  mat.customProgramCacheKey = () => 'park-canopy';
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uCanopy = { value: 1 };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>' + CANOPY_GLSL).replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = canopyColor(vWP);');
+  };
+  return mat;
+}
+function overlayMesh(geo, tex, order, dim = null) {
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
+  mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
+  if (dim) world.parkCanopy = world.parkCanopy || { value: 0 };
+  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns turn into a mottled tree canopy once the real trees stop being drawn
+    sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uCanopy = world.parkCanopy; }
+    if (dim) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
+    const canopyFn = CANOPY_GLSL;
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim;' + canopyFn : ''))
       .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\ndiffuseColor.rgb = mix(diffuseColor.rgb * uDim, canopyColor(vWP), uCanopy);' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
@@ -2345,7 +2357,9 @@ function buildGround(kind) {
     g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
+  const parkCanopy = (list) => { for (const m of world.parkCanopyMeshes || []) { scene.remove(m); m.geometry.dispose(); } world.parkCanopyMat = world.parkCanopyMat || canopyMaterial(); world.parkCanopyMeshes = list.map((m) => { const g = m.geometry.clone(); g.translate(0, CANOPY_H, 0); const c = new THREE.Mesh(g, world.parkCanopyMat); c.renderOrder = 9; c.visible = false; c.frustumCulled = false; scene.add(c); return c; }); };
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null));
+  if (kind === 'park') parkCanopy(world.ground[kind]);
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -5012,7 +5026,7 @@ function updateCull(dt) {
   if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
   updateDetail(); updateVeg(p, alt);
   // from far away (or on Low, where the trees vanish early) a park is just its lawn: take the lime out of it, as the trees would
-  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkCanopy) world.parkCanopy.value = k; }   // lawns become tree canopy as the real trees drop out
+  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkCanopy) world.parkCanopy.value = k * 0.35; if (world.parkCanopyMat) { const m = world.parkCanopyMat, tr = k < 0.99; if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; } m.opacity = k; for (const c of world.parkCanopyMeshes) c.visible = k > 0.01; } }   // lawns become tree canopy as the real trees drop out
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
