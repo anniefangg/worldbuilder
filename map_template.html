@@ -595,7 +595,7 @@ const TOD = {
   dusk: { sun: [-0.86, 0.22, 0.46], sunCol: '#ff8c68', sunI: 1.45, hemiSky: '#7aa9dc', hemiGround: '#5a4a64', hemiI: 1.6,
     hor: '#5cbcc6', mid: '#22769a', top: '#0e2c4c', glow: '#ff9a7a', fog: '#3f8fa8', exposure: 1.15, night: 1,
     cloud: '#f4b0c8', cloudEm: '#a8558c', cloudEmI: 0.55, waterSky: '#2f7f99', waterDark: 0.62, bounce: ['#e29a8c', 0.6],
-    post: { ao: 0.8, curve: 0.12, bloom: 0.5, thr: 0.95, radius: 0.75, sat: 1.16, lift: 0.03, vig: 0.3, sh: [0.006, -0.004, 0.04], hi: [0.05, 0.014, 0.0] } },
+    post: { ao: 0.8, curve: 0.12, bloom: 0.34, thr: 1.1, radius: 0.95, sat: 1.16, lift: 0.03, vig: 0.3, sh: [0.006, -0.004, 0.04], hi: [0.05, 0.014, 0.0] } },
   dawn: { sun: [0.84, 0.2, 0.36], sunCol: '#ffc49a', sunI: 1.9, hemiSky: '#c6cde8', hemiGround: '#8f7a78', hemiI: 1.55,
     hor: '#ffd3a8', mid: '#e8b8b6', top: '#6f8fc4', glow: '#ffb48c', fog: '#e8c9bb', exposure: 1.1, night: 0.3,
     cloud: '#ffe0e6', cloudEm: '#f2a593', cloudEmI: 0.45, waterSky: '#f0c8b8', waterDark: 0.85, bounce: ['#ffc4a0', 0.5],
@@ -603,7 +603,7 @@ const TOD = {
   night: { sun: [0.32, 0.6, -0.62], sunCol: '#9db4ff', sunI: 0.55, hemiSky: '#33456f', hemiGround: '#1c1828', hemiI: 0.7,
     hor: '#132a4c', mid: '#081630', top: '#02050d', glow: '#2a4373', fog: '#0d1c36', exposure: 1.15, night: 1, milky: 1,
     cloud: '#56627f', cloudEm: '#232c4a', cloudEmI: 0.5, waterSky: '#10233f', waterDark: 0.2, bounce: ['#3d5a9a', 0.22],
-    post: { ao: 0.7, curve: 0.1, bloom: 0.85, thr: 0.6, radius: 0.7, sat: 1.06, lift: 0.02, vig: 0.32, sh: [-0.004, 0.0, 0.03], hi: [0.04, 0.02, 0.0] } },
+    post: { ao: 0.7, curve: 0.1, bloom: 0.5, thr: 0.8, radius: 0.9, sat: 1.06, lift: 0.02, vig: 0.32, sh: [-0.004, 0.0, 0.03], hi: [0.04, 0.02, 0.0] } },
 };
 const TOD_ORDER = ['dawn', 'day', 'dusk', 'night'];
 const todState = { name: 'dusk' };
@@ -1109,7 +1109,7 @@ async function buildWorld() {
     world.water.uniforms.uSky.value.set(t.waterSky); world.water.uniforms.uDark.value = t.waterDark;
     world.cloudMat.color.set(t.cloud); world.cloudMat.emissive.set(t.cloudEm); world.cloudMat.emissiveIntensity = t.cloudEmI;
     world.bulbs.visible = t.night > 0.5;
-    world.lampMat.emissiveIntensity = t.night > 0.5 ? 2.6 : 0;
+    world.lampMat.emissiveIntensity = t.night > 0.5 ? 1.3 : 0;
   };
 }
 
@@ -1823,7 +1823,7 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         win *= 1.0 - ivy * 0.85;
         vec3 glassDay = mix(vec3(0.03, 0.05, 0.08), vec3(0.2, 0.3, 0.4), smoothstep(0.3, 0.85, fy));
         float curtain = step(hw * 0.62, x) * step(0.001, hw);
-        vec3 room = mix(vec3(0.62, 0.3, 0.1), vec3(0.95, 0.62, 0.3), smoothstep(lo, hi, fy) * 0.4 + curtain * 0.5);
+        vec3 room = mix(vec3(0.5, 0.24, 0.08), vec3(0.78, 0.48, 0.22), smoothstep(lo, hi, fy) * 0.4 + curtain * 0.5);
         vec3 glassNight = mix(vec3(0.05, 0.08, 0.12), room, lit);
         vec3 glass = mix(glassDay, glassNight, uNight);
         float reveal = 1.0 - step(0.001, hw) * (0.4 * smoothstep(hi - 0.1, hi + 0.06, fy) + 0.25 * step(cx, 0.5 - hw + 0.035));   // shadowed reveal at the head and one jamb
@@ -1889,7 +1889,7 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.82, 0.25), vState.z * 0.55);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       totalEmissiveRadiance += vec3(0.42, 0.3, 0.08) * vState.x + vec3(0.03, 0.08, 0.22) * vState.y + vec3(0.3, 0.22, 0.02) * vState.z;
-      totalEmissiveRadiance += uNight * (vec3(1.0, 0.46, 0.14) * glow * 1.15 + diffuseColor.rgb * vec3(1.0, 0.58, 0.28) * lantern * 0.6 + vec3(1.0, 0.62, 0.28) * lamp * 3.2);
+      totalEmissiveRadiance += uNight * (vec3(1.0, 0.5, 0.2) * glow * 0.5 + diffuseColor.rgb * vec3(1.0, 0.6, 0.34) * lantern * 0.34 + vec3(1.0, 0.62, 0.3) * lamp * 1.7);
       totalEmissiveRadiance += (1.0 - uNight) * lamp * vec3(0.12, 0.1, 0.06);`);
   };
   return m;
@@ -2660,7 +2660,7 @@ function addStreetLights() {
     const sc = document.createElement('canvas'); sc.width = sc.height = 64; const sg = sc.getContext('2d'), gr = sg.createRadialGradient(32, 32, 0, 32, 32, 32);
     gr.addColorStop(0, 'rgba(255,240,210,1)'); gr.addColorStop(0.25, 'rgba(255,190,110,0.9)'); gr.addColorStop(1, 'rgba(255,150,60,0)'); sg.fillStyle = gr; sg.fillRect(0, 0, 64, 64);
     world.bulbTex = new THREE.CanvasTexture(sc);
-    world.bulbMat = new THREE.PointsMaterial({ size: 0.8, map: world.bulbTex, color: '#ffb36b', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    world.bulbMat = new THREE.PointsMaterial({ size: 0.9, map: world.bulbTex, color: '#c98a52', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
     world.wireMat = new THREE.LineBasicMaterial({ color: '#2a2a2e', transparent: true, opacity: 0.7 });
     world.flagMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, emissive: '#3a2a20', emissiveIntensity: 0.4 });
     world.flagGeo = new THREE.PlaneGeometry(0.36, 0.44).translate(0, -0.24, 0);
@@ -2804,8 +2804,8 @@ function addStreetFurniture() {
     world.furnMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     world.lampMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#ffae5e', emissiveIntensity: 0 });
     world.waterMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1b6b7a', emissiveIntensity: 0.25, transparent: true, opacity: 0.88 });
-    world.poolMat = new THREE.MeshBasicMaterial({ map: world.bulbTex, color: '#ff9a4a', transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
-    world.haloMat = new THREE.PointsMaterial({ size: 2.6, map: world.bulbTex, color: '#ffc27a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    world.poolMat = new THREE.MeshBasicMaterial({ map: world.bulbTex, color: '#e08a48', transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    world.haloMat = new THREE.PointsMaterial({ size: 3.4, map: world.bulbTex, color: '#b98650', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
   }
   const MAT = { lampGlass: world.lampMat, fountainWater: world.waterMat, pool: world.poolMat };
   const chunks = new Map(), counts = {};
