@@ -4053,7 +4053,7 @@ function renderGroupInfo() {
 }
 function groupPromptBox(ids, bIds) {
   const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
-  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: bIds.length ? 'e.g. Make this neighbourhood feel like Cartagena: bright ochre, coral and blue façades with wooden balconies' : 'e.g. Give these streets modern pavers and palms' });
+  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
   area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
   return el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
     el('label', { for: 'prompt-text' }, `Change all ${ids.length.toLocaleString()}`),
@@ -4118,16 +4118,6 @@ function facts(t) {
   if (t.kind === 'building') { const s = styleFor(t); return `${s.floors} floor${s.floors > 1 ? 's' : ''} · ${(t.b.top - t.b.base).toFixed(1)} m · ${Math.round(t.b.area).toLocaleString()} m²`; }
   return KINDS[t.kind].geom === 'poly' ? `${Math.round(t.f.size).toLocaleString()} m²` : `${Math.round(t.f.size).toLocaleString()} m long · ${t.f.w.toFixed(1)} m wide`;
 }
-const PLACEHOLDER = {
-  building: 'e.g. Make it a pink Havana townhouse with an arcade, green shutters and a tiled roof',
-  park: 'e.g. Plant it densely with royal palms and give it a deeper green lawn',
-  plaza: 'e.g. Repave it in blue-white cobbles',
-  street: 'e.g. Use modern pavers and hang papel picado across it',
-  path: 'e.g. Make it a dirt trail',
-  canal: 'e.g. Name it Canal de las Flores and write its history',
-  water: 'e.g. Call it Laguna Azul and note that it was dredged in the 1890s',
-  beach: 'e.g. Make it a natural beach without the promenade',
-};
 function renderInfo() {
   if (multi.size >= 2) return renderGroupInfo();
   const box = $('info'), id = ui.selected || ui.hover, t = targetOf(id);
@@ -4271,7 +4261,7 @@ function renderAttachments() {
 }
 function promptBox(t) {
   const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
-  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: PLACEHOLDER[t.kind] || '' });
+  const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
   area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
   const box = el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
     el('label', { for: 'prompt-text' }, `Change this ${labelOf(t.kind).toLowerCase()}`),
