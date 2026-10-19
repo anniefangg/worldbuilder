@@ -4736,7 +4736,8 @@ function update(dt, t) {
       if (player.pos.y <= g) { player.pos.y = g; player.vy = 0; player.onGround = true; }
       else if (player.onGround && player.pos.y - g < 0.6 && player.vy <= 0) { player.pos.y = g; player.vy = 0; } else player.onGround = false;
     } else { // fly
-      const speed = fast ? 140 : 32;
+      player.boostT = Math.max(0, (player.boostT || 0) + (fast && mag > 0 ? dt : -dt * 2.5));   // holding shift keeps building speed
+      const speed = fast ? 140 * (1 + 5 * Math.pow(Math.min(player.boostT / 9, 1), 1.6)) : 32;
       _desired.copy(_move).multiplyScalar(speed * mag);
       const climb = (k(' ', 'e') || pad.up ? 1 : 0) - (k('q', 'c') || pad.down ? 1 : 0);
       _desired.y = climb * speed * 0.7;
