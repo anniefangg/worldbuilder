@@ -4707,9 +4707,21 @@ function audioInit() {
   AUD.waveLo = bus(0); AUD.waveLoG = bus(0.5); chain(loop(pink), [filt('lowpass', 650, 0.6)], AUD.waveLoG); AUD.waveLoG.connect(AUD.waveLo); AUD.waveLo.connect(AUD.sfxBus);
   AUD.waveHi = bus(0); AUD.waveHiG = bus(0.3); chain(loop(white), [filt('highpass', 1800, 0.5), filt('lowpass', 7000, 0.5)], AUD.waveHiG); AUD.waveHiG.connect(AUD.waveHi); AUD.waveHi.connect(AUD.sfxBus);
   for (const [f, depth, node] of [[0.105, 0.38, AUD.waveLoG], [0.16, 0.22, AUD.waveLoG], [0.105, 0.25, AUD.waveHiG], [0.13, 0.16, AUD.waveHiG]]) { const o = C.createOscillator(); o.frequency.value = f; const g = bus(depth); o.connect(g); g.connect(node.gain); o.start(); }
-  // rain: a hiss, with a lower patter under it
-  AUD.rainHi = bus(0); chain(loop(white), [filt('highpass', 1500, 0.4), filt('lowpass', 9000, 0.4)], AUD.rainHi); AUD.rainHi.connect(AUD.sfxBus);
-  AUD.rainLo = bus(0); chain(loop(pink), [filt('bandpass', 380, 0.6)], AUD.rainLo); AUD.rainLo.connect(AUD.sfxBus);
+  // rain, after "gentle night rain": a warm, even wash (no harsh hiss) with soft droplets pattering on leaves and ground
+  AUD.rainLo = bus(0); chain(loop(pink), [filt('highpass', 160, 0.5), filt('lowpass', 2800, 0.5)], AUD.rainLo); AUD.rainLo.connect(AUD.sfxBus);
+  AUD.rainHi = bus(0);
+  const wash = bus(0.55); chain(loop(white), [filt('bandpass', 1500, 0.35), filt('lowpass', 4200, 0.5)], wash); wash.connect(AUD.rainHi);
+  { const sr = C.sampleRate, len = Math.round(sr * 7), drops = C.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = drops.getChannelData(ch), n = 7 * 85;
+      for (let k = 0; k < n; k++) {
+        const st = Math.floor(Math.random() * (len - 4000)), f = rndR(700, 3300), amp = Math.pow(Math.random(), 1.8) * 0.9 + 0.05, dur = Math.round(sr * rndR(0.012, 0.045)), ph = Math.random() * 6.28;
+        for (let i = 0; i < dur; i++) d[st + i] += amp * Math.sin(ph + 6.2832 * f * i / sr * (1 - 0.2 * i / dur)) * Math.exp(-i / (dur * 0.28));
+      }
+    }
+    const src = C.createBufferSource(); src.buffer = drops; src.loop = true; src.start(0, Math.random() * 3);
+    const dg = bus(0.34), soft = filt('lowpass', 5200, 0.5); src.connect(soft); soft.connect(dg); dg.connect(AUD.rainHi); }
+  AUD.rainHi.connect(AUD.sfxBus);
   AUD.noise = white; AUD.pink = pink;
   // music: a slow echo and the pad bus
   AUD.echo = C.createDelay(2); AUD.echo.delayTime.value = 0.68; const fb = bus(0.45), lp = filt('lowpass', 2600, 0.5); AUD.echo.connect(lp); lp.connect(fb); fb.connect(AUD.echo); lp.connect(AUD.musBus);
@@ -4785,8 +4797,8 @@ function audioTick() {
     const dist = Math.hypot(AUD.shore, alt * 0.8), near = smooth(260, 12, dist) * (1 - 0.3 * smooth(300, 1500, alt));
     const surf = 1 + (storm ? 0.7 : rain ? 0.2 : 0);
     AUD.waveLo.gain.setTargetAtTime(near * 0.55 * surf, now, 0.6); AUD.waveHi.gain.setTargetAtTime(near * 0.34 * surf, now, 0.6);
-    const rv = rain ? (storm ? 0.52 : 0.2) * (1 - smooth(500, 1800, alt) * 0.7) : 0;
-    AUD.rainHi.gain.setTargetAtTime(rv, now, 0.8); AUD.rainLo.gain.setTargetAtTime(rv * 0.9, now, 0.8);
+    const rv = rain ? (storm ? 0.55 : 0.16) * (1 - smooth(500, 1800, alt) * 0.7) : 0;
+    AUD.rainHi.gain.setTargetAtTime(rv * 1.5, now, 1.2); AUD.rainLo.gain.setTargetAtTime(rv * 1.35, now, 1.2);
     if (!night && !storm && !rain && now > AUD.nextGull) { if (alt < 900) gulls(); AUD.nextGull = now + rndR(9, 26); }
     if (!storm && now > AUD.nextBell && !AUD.bellsLeft) { AUD.bellsLeft = 3 + ((Math.random() * 6) | 0); AUD.bellF = [196, 220, 246.9, 261.6][(Math.random() * 4) | 0]; AUD.nextStrike = now; AUD.nextBell = now + rndR(55, 120); }
     while (AUD.bellsLeft && now >= AUD.nextStrike - 0.1) { bellStrike(C, Math.max(now, AUD.nextStrike), AUD.bellF, 0.2 * (1 - 0.3 * hi)); AUD.nextStrike += 2.7; AUD.bellsLeft--; }
