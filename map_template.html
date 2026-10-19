@@ -4771,17 +4771,20 @@ function bellStrike(C, t0, f0, gain) {
   }
 }
 function thunder(delay) {
+  AUD.thunders = (AUD.thunders || 0) + 1;
   if (!AUD.sfx || !AUD.ctx) return;
   const C = AUD.ctx, t0 = C.currentTime + delay, far = clamp(delay / 3.5, 0, 1);
+  // a soft-clipper adds harmonics, so the low rumble still comes through laptop and phone speakers that can't reproduce deep bass
+  if (!AUD.sat) { const n = 2048, cv = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = Math.tanh(x * 3.2); } AUD.sat = C.createWaveShaper(); AUD.sat.curve = cv; AUD.satG = C.createGain(); AUD.satG.gain.value = 0.55; AUD.sat.connect(AUD.satG); AUD.satG.connect(AUD.sfxBus); AUD.satG.connect(AUD.verbIn); }
   const mk = (start, len, f1, f2, gain) => {
-    const s = C.createBufferSource(); s.buffer = AUD.pink; s.loop = true; const lp = C.createBiquadFilter(), g = C.createGain(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    const s = C.createBufferSource(); s.buffer = AUD.pink; s.loop = true; const lp = C.createBiquadFilter(), hp = C.createBiquadFilter(), g = C.createGain(); lp.type = 'lowpass'; lp.Q.value = 0.9; hp.type = 'highpass'; hp.frequency.value = 38;
     lp.frequency.setValueAtTime(f1, start); lp.frequency.exponentialRampToValueAtTime(f2, start + len);
-    g.gain.setValueAtTime(0.0001, start); g.gain.linearRampToValueAtTime(gain, start + Math.min(0.25, len * 0.25)); g.gain.setTargetAtTime(0.0001, start + len * 0.35, len * 0.3);
-    s.connect(lp); lp.connect(g); g.connect(AUD.sfxBus); s.start(start, Math.random() * 3); s.stop(start + len + 0.6);
+    g.gain.setValueAtTime(0.0001, start); g.gain.linearRampToValueAtTime(gain, start + Math.min(0.35, len * 0.25)); g.gain.setTargetAtTime(0.0001, start + len * 0.4, len * 0.28);
+    s.connect(lp); lp.connect(hp); hp.connect(g); g.connect(AUD.sat); s.start(start, Math.random() * 3); s.stop(start + len + 1.2);
   };
-  if (far < 0.55) mk(t0, 0.7, 5200, 700, 1.1 * (1 - far));          // the crack, when it's close
-  let t = t0 + 0.05; const rolls = 4 + ((Math.random() * 4) | 0);       // then the rolling rumble
-  for (let i = 0; i < rolls; i++) { mk(t, rndR(1.4, 3.2), rndR(260, 420), rndR(55, 90), rndR(0.55, 1.0) * (1 - far * 0.45) * (1 - i * 0.07)); t += rndR(0.35, 1.1); }
+  if (far < 0.55) mk(t0, 0.9, 6000, 500, 1.6 * (1 - far));          // the crack, when it's close
+  let t = t0 + 0.05; const rolls = 5 + ((Math.random() * 4) | 0);       // then the long rolling rumble
+  for (let i = 0; i < rolls; i++) { mk(t, rndR(1.8, 3.8), rndR(650, 1100), rndR(110, 170), rndR(0.8, 1.4) * (1 - far * 0.4) * (1 - i * 0.06)); t += rndR(0.4, 1.3); }
 }
 function audioTick() {
   const C = AUD.ctx; if (!C || C.state !== 'running') return;
@@ -5532,7 +5535,7 @@ function initSearch() {
   refreshLit();
 }
 window.amparacan = {
-  audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), bells: AUD.bellsLeft }; },
+  audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), bells: AUD.bellsLeft, thunders: AUD.thunders || 0 }; },
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
