@@ -224,6 +224,7 @@ body.tray-open #info { display: none; }
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
   <button id="tod" type="button" title="Switch between dusk and day (T)">Dusk</button>
   <button id="wx" type="button" title="Weather (R)">Sunny</button>
+  <button id="qual" type="button" title="Graphics quality">Auto</button>
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
 <button id="select-btn" class="plaque" type="button" aria-pressed="false" title="Select an area (B), or hold Shift and drag">Select area</button>
@@ -492,7 +493,7 @@ function applyWeather() {
   if (world.cloudMat) {
     world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
-    world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds; });
+    world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds + (Q.t.sky ? 0 : 14); });
   }
   if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; }
   if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
@@ -566,6 +567,7 @@ function stepWeather(dt, t) {
           c += mw * uMilky * smoothstep(0.02, 0.3, h);
         }
         // towering painterly cumulus: a layer of fbm-sculpted clouds, lit from the sun's side with a bright silver edge and cool underbellies
+        #ifndef SKY_LOW
         if (h > 0.012) {
           vec2 q = d.xz / (h + 0.28) * 1.15 + vec2(uTime * 0.006, uTime * 0.002);
           vec2 sd = normalize(uSun.xz + 1e-4) * 0.12;
@@ -578,6 +580,7 @@ function stepWeather(dt, t) {
           float fade = smoothstep(0.012, 0.2, h) * (1.0 - smoothstep(0.75, 1.0, h) * 0.45);
           c = mix(c, cc, dens * fade * (1.0 - uOvercast * 0.6));
         }
+        #endif
         // overcast: a low grey ceiling hides the sun, stars and Milky Way; lightning lights it up
         c = mix(c, uOver * (0.9 + 0.25 * h) * (0.9 + 0.2 * fbm(d * 5.0 + 1.0)), uOvercast * 0.94) + vec3(0.75, 0.8, 0.95) * uFlash * (0.4 + 0.6 * h);
         gl_FragColor = vec4(c, 1.0);
@@ -1274,13 +1277,13 @@ function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
     }
   }
 }
-function emitBuilding(geo, rec) {
+function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes (separate, distance-culled meshes)
   const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0], RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
   const neo = s.facade === 'neoclassical';
-  const start = geo.count, pitched = s.roofType === 'hip' && !neo, parapet = pitched ? 0 : neo ? 1.1 : 0.9;
+  const start = geo.count, dstart = dg.count, pitched = s.roofType === 'hip' && !neo, parapet = pitched ? 0 : neo ? 1.1 : 0.9;
   const doors = neo ? [] : doorsOf(rec), doorBay = new Map(doors.map((d) => [d.i, d.bay]));
   const y0 = base - 2.5, y1 = top + parapet, hgt = top - base, cTrim = _cF.copy(cWall).lerp(WHITE_LIME, 0.65);
   for (const R of RR) {
@@ -1330,15 +1333,15 @@ function emitBuilding(geo, rec) {
     if (s.roof) _cR.copy(linear(s.roof)); else _cR.copy(linear(s.flatRoof)).lerp(cWall, 0.3);
     polyFlat(geo, RR.map((R) => R.pts), top, _cR, [0, 0, -5, 0]);
   }
-  roofClutter(geo, rec, s, top, pitched, ridge);
+  roofClutter(dg, rec, s, top, pitched, ridge);
   // front doors: a stone stoop and a wrought-iron lantern over each
   for (const d of doors) {
     const f = d.f, stone = _cK.copy(cWall).lerp(new THREE.Color(0.7, 0.68, 0.64), 0.7);
-    boxW(geo, f, d.u - 0.95, d.u + 0.95, 0, 0.75, base - 0.3, base + 0.16, stone);
-    boxW(geo, f, d.u - 0.8, d.u + 0.8, 0, 0.4, base + 0.16, base + 0.32, stone);
-    boxW(geo, f, d.u - 0.03, d.u + 0.03, 0, 0.42, base + 3.5, base + 3.56, IRON);                  // bracket
-    boxW(geo, f, d.u - 0.15, d.u + 0.15, 0.27, 0.57, base + 3.05, base + 3.45, IRON, LAMP_AW);     // lantern glass
-    boxW(geo, f, d.u - 0.2, d.u + 0.2, 0.22, 0.62, base + 3.45, base + 3.55, IRON);               // lantern cap
+    boxW(dg, f, d.u - 0.95, d.u + 0.95, 0, 0.75, base - 0.3, base + 0.16, stone);
+    boxW(dg, f, d.u - 0.8, d.u + 0.8, 0, 0.4, base + 0.16, base + 0.32, stone);
+    boxW(dg, f, d.u - 0.03, d.u + 0.03, 0, 0.42, base + 3.5, base + 3.56, IRON);                  // bracket
+    boxW(dg, f, d.u - 0.15, d.u + 0.15, 0.27, 0.57, base + 3.05, base + 3.45, IRON, LAMP_AW);     // lantern glass
+    boxW(dg, f, d.u - 0.2, d.u + 0.2, 0.22, 0.62, base + 3.45, base + 3.55, IRON);               // lantern cap
   }
   // balconies on the main street façades, one per upper floor
   const facades = s.windows === 'balconies' || rec.flowers || neo ? facadesOf(rec) : [];
@@ -1347,30 +1350,58 @@ function emitBuilding(geo, rec) {
     _cT.copy(cWall).lerp(new THREE.Color(1, 0.97, 0.92), 0.7);
     for (const f of facades.slice(0, f2(facades))) {
       const span = Math.min(f.L * 0.7, 9), t0 = (f.L - span) / 2;
-      for (let fl = 1; fl < Math.min(s.floors, 5); fl++) balcony(geo, f, base + gf + (fl - 1) * fh + 0.08, t0, t0 + span, _cT);
+      for (let fl = 1; fl < Math.min(s.floors, 5); fl++) balcony(dg, f, base + gf + (fl - 1) * fh + 0.08, t0, t0 + span, _cT);
     }
   }
   if (rec.flowers && facades.length) {
     const f = facades[0], rnd = mulberry(rec.seed ^ 0x5bd1e995);
     for (let k = 0; k < rec.flowers; k++) {
       const t = 0.15 + rnd() * 0.7, x = f.ax + (f.bx - f.ax) * t + f.nx * 0.45, z = f.az + (f.bz - f.az) * t + f.nz * 0.45;
-      for (let y = top - 0.6, m = 0; y > base + 2.5 && m < 4; y -= 1.3 + rnd(), m++) for (let b = 0; b < 3; b++) blossom(geo, x + (rnd() - 0.5) * 1.2, y + (rnd() - 0.5) * 0.6, z + (rnd() - 0.5) * 0.3, 0.32 + rnd() * 0.3, m === 3 && b === 0 ? LEAF : BLOOMS[(rnd() * BLOOMS.length) | 0]);
+      for (let y = top - 0.6, m = 0; y > base + 2.5 && m < 4; y -= 1.3 + rnd(), m++) for (let b = 0; b < 3; b++) blossom(dg, x + (rnd() - 0.5) * 1.2, y + (rnd() - 0.5) * 0.6, z + (rnd() - 0.5) * 0.3, 0.32 + rnd() * 0.3, m === 3 && b === 0 ? LEAF : BLOOMS[(rnd() * BLOOMS.length) | 0]);
     }
   }
-  if (!neo) buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors);
+  if (!neo) buildingExtras(dg, rec, s, base, top, gf, fh, cWall, cShut, doors);
   const g = neo ? 3 : GROUND[s.groundFloor], w = neo ? 3 : WINDOWS[s.windows];
   for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
+  if (dg !== geo) for (let i = dstart; i < dg.count; i++) { dg.extra.aBid.push(rec.idx); dg.extra.aStyle.push(g, w); }
 }
 const f2 = (fs) => (fs.length > 1 && fs[1].L >= 7 ? 2 : 1);
+const DCELL = 250;   // detail cells tile exactly into the 1750 m building tiles
 function rebuildTile(tk) {
-  const geo = new Geo(EX);
-  for (const idx of world.tileList.get(tk)) emitBuilding(geo, world.buildings[idx]);
+  const geo = new Geo(EX), cells = new Map();
+  for (const idx of world.tileList.get(tk)) {
+    const rec = world.buildings[idx], ck = Math.floor(rec.cx / DCELL) * 4096 + Math.floor(rec.cz / DCELL);
+    let dg = cells.get(ck); if (!dg) cells.set(ck, dg = new Geo(EX));
+    emitBuilding(geo, rec, dg);
+  }
   const g = geo.build(); g.computeBoundsTree();
   let m = world.tileMeshes.get(tk);
   if (m) { m.geometry.disposeBoundsTree(); m.geometry.dispose(); m.geometry = g; }
   else {
     m = new THREE.Mesh(g, world.bMat); m.customDepthMaterial = world.bDepth;
     m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.tileMeshes.set(tk, m);
+  }
+  // fine detail (balconies, vines, pipes, awnings, stoops, rooftop clutter, laundry…) in 250 m cells that only draw near the camera
+  world.detail = world.detail || new Map();
+  for (const dm of world.tileCells ? world.tileCells.get(tk) || [] : []) { scene.remove(dm); dm.geometry.dispose(); }
+  world.tileCells = world.tileCells || new Map(); const mine = [];
+  for (const [ck, dg] of cells) {
+    if (!dg.count) continue;
+    const dm = new THREE.Mesh(dg.build(), world.bMat); dm.customDepthMaterial = world.bDepth;
+    dm.castShadow = Q.t.detailShadow; dm.receiveShadow = true; dm.renderOrder = 10; dm.visible = false;
+    dm.userData.cx = (Math.floor(ck / 4096) + 0.5) * DCELL; dm.userData.cz = (ck % 4096 + 0.5) * DCELL;
+    scene.add(dm); mine.push(dm);
+  }
+  world.tileCells.set(tk, mine);
+}
+// show only the detail cells near the camera (and none from high above)
+function updateDetail() {
+  if (!world.tileCells) return;
+  const p = camera.position, high = p.y - H(p.x, p.z) > Q.t.cullAlt, R = Q.t.detailR + DCELL * 0.75;
+  for (const list of world.tileCells.values()) for (const m of list) {
+    const vis = !high && Math.hypot(m.userData.cx - p.x, m.userData.cz - p.z) < R;
+    if (m.visible !== vis) m.visible = vis;
+    if (m.castShadow !== Q.t.detailShadow) m.castShadow = Q.t.detailShadow;
   }
 }
 const dirtyTiles = new Set();
@@ -1511,7 +1542,7 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
           if (tall < 0.5 && neo < 0.5 && ground < 0.5) {
             closed = step(winR, 0.16) * step(wStyle, 0.5);                   // some shutters pulled to
             box = step(0.6, winR) * step(x, hw + 0.05) * step(lo - 0.17, fy) * step(fy, lo - 0.075); // window box…
-            bloomM = step(0.6, winR) * step(x, hw + 0.07 - 0.03 * vn2(vec2(u * 9.0, 1.0))) * step(lo - 0.085, fy) * step(fy, lo + 0.03 + 0.05 * vn2(vec2(u * 7.0, v))); // …spilling flowers
+            if (winR > 0.6 && camD < 320.0) bloomM = step(x, hw + 0.07 - 0.03 * vn2(vec2(u * 9.0, 1.0))) * step(lo - 0.085, fy) * step(fy, lo + 0.03 + 0.05 * vn2(vec2(u * 7.0, v))); // …spilling flowers
           }
         }
         // front door in its bay: an arched plank door in the shutter colour, fanlight over it, lantern above
@@ -1524,18 +1555,22 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         win *= can; frame *= can; shut *= can * step(0.01, dot(vShut, vec3(1.0))); iron = min(iron, 1.0) * can; awning *= can; door *= can; box *= can; bloomM *= can;
         float lit = step(0.42, h31(vec3(flr, col, vBid)));                          // about half the rooms have their lamps on
         // ---- plaster: soft washes, patches and rain streaks, so walls look hand-limed rather than flat
-        float wash = fb2(fp * 0.16), blot = mix(0.5, fb2(fp * 1.7), near);
-        vec3 c = wall * (0.9 + 0.14 * wash) * (0.95 + 0.1 * blot);
-        c = mix(c, c * vec3(1.04, 0.98, 0.9), smoothstep(0.55, 0.8, wash) * 0.5);                  // sun-bleached, warmer patches
-        float streak = smoothstep(0.55, 0.95, vn2(vec2(u * 1.7, v * 0.09 + mod(vBid, 31.0)))) * smoothstep(top - 5.0, top - 0.6, v);
-        c *= 1.0 - 0.14 * streak * near;
-        c *= 1.0 + 0.07 * (vn2(vec2(u * 0.9 + vBid, v * 5.0)) - 0.5) * (0.4 + 0.6 * near);                // hand-painted brush strokes
+        vec3 c = wall * 0.97;
+        if (camD < 560.0) {   // the painted plaster is only worked out where you can see it
+          float wash = fb2(fp * 0.16), blot = mix(0.5, fb2(fp * 1.7), near);
+          c = wall * (0.9 + 0.14 * wash) * (0.95 + 0.1 * blot);
+          c = mix(c, c * vec3(1.04, 0.98, 0.9), smoothstep(0.55, 0.8, wash) * 0.5);                  // sun-bleached, warmer patches
+          float streak = smoothstep(0.55, 0.95, vn2(vec2(u * 1.7, v * 0.09 + mod(vBid, 31.0)))) * smoothstep(top - 5.0, top - 0.6, v);
+          c *= 1.0 - 0.14 * streak * near;
+          c *= 1.0 + 0.07 * (vn2(vec2(u * 0.9 + vBid, v * 5.0)) - 0.5) * (0.4 + 0.6 * near);                // hand-painted brush strokes
+        }
         c = mix(c * vec3(1.06, 0.97, 0.88), c * vec3(0.93, 0.99, 1.06), smoothstep(1.0, max(top, 6.0), v));  // warm below, cooler above
         float quoin = (1.0 - step(0.38, min(u, L - u))) * step(0.5, fract(v / 0.62)) * step(2.4, L) * step(0.4, v);   // dressed stone corners
         c = mix(c, mix(wall, vec3(1.0, 0.97, 0.9), 0.55) * 0.97, quoin * 0.75 * near);
         c *= mix(0.7, 1.0, smoothstep(-0.5, 2.4, v));                                               // grime at the base
         // exposed stone or brick where the plaster has come away (older buildings)
-        float peel = near * step(0.45, bidR) * smoothstep(0.69, 0.72, fb2(fp * vec2(0.42, 0.55)) + 0.12 * (1.0 - smoothstep(0.0, 3.5, v)));
+        float peel = 0.0;
+        if (near > 0.0 && bidR > 0.45) peel = near * smoothstep(0.69, 0.72, fb2(fp * vec2(0.42, 0.55)) + 0.12 * (1.0 - smoothstep(0.0, 3.5, v)));
         if (peel > 0.0) {
           float br = floor(v / 0.12), bx = fract(u / 0.27 + 0.5 * mod(br, 2.0)), by = fract(v / 0.12);
           vec3 brick = mix(vec3(0.6, 0.33, 0.22), vec3(0.72, 0.5, 0.36), h21(vec2(floor(u / 0.27 + 0.5 * mod(br, 2.0)), br))) * (1.0 - 0.4 * max(step(0.84, by), step(0.92, bx)));
@@ -1564,11 +1599,16 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         // ivy and bougainvillea climbing some walls from the street
         float ivyB = step(0.72, h31(vec3(vBid, 9.2, 1.3)));
         float ends = max(1.0 - smoothstep(0.0, 3.5, u), smoothstep(L - 3.5, L, u)) * step(2.4, L);       // vines climb from the corners
-        float ivyF = fb2(vec2(u * 0.3 + mod(vBid, 53.0), v * 0.16)) + 0.2 * vn2(fp * 3.1) + 0.12 * vn2(fp * 7.3);  // leafy edge
-        float ivy = ivyB * smoothstep(0.66, 0.69, ivyF + ends * 0.35 - v / max(top, 4.0) * 0.5) * step(0.0, v);
-        vec3 leaf = mix(vec3(0.12, 0.28, 0.09), vec3(0.32, 0.55, 0.18), vn2(fp * 6.0));
-        leaf = mix(leaf, vec3(0.82, 0.18, 0.52), step(0.86, h31(vec3(vBid, 4.0, 2.0))) * step(0.62, vn2(fp * 4.0)));   // bougainvillea blooms
-        leaf *= 0.75 + 0.35 * vn2(fp * 13.0);
+        float ivy = 0.0; vec3 leaf = vec3(0.2, 0.4, 0.12);
+        if (ivyB > 0.5 && camD < 700.0) {
+          float ivyF = fb2(vec2(u * 0.3 + mod(vBid, 53.0), v * 0.16)) + 0.2 * vn2(fp * 3.1) + 0.12 * vn2(fp * 7.3);  // leafy edge
+          ivy = smoothstep(0.66, 0.69, ivyF + ends * 0.35 - v / max(top, 4.0) * 0.5) * step(0.0, v);
+          if (ivy > 0.0) {
+            leaf = mix(vec3(0.12, 0.28, 0.09), vec3(0.32, 0.55, 0.18), vn2(fp * 6.0));
+            leaf = mix(leaf, vec3(0.82, 0.18, 0.52), step(0.86, h31(vec3(vBid, 4.0, 2.0))) * step(0.62, vn2(fp * 4.0)));   // bougainvillea blooms
+            leaf *= 0.75 + 0.35 * vn2(fp * 13.0);
+          }
+        }
         c = mix(c, leaf, ivy * (1.0 - door));
         win *= 1.0 - ivy * 0.85;
         vec3 glassDay = mix(vec3(0.03, 0.05, 0.08), vec3(0.2, 0.3, 0.4), smoothstep(0.3, 0.85, fy));
@@ -1601,7 +1641,7 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
       } else if (vWall.z < -4.5) {                     // roof terrace: square tiles with grout lines
         vec2 tq = vWP.xz / 0.5, ti = floor(tq), tf = fract(tq);
         float grout = max(step(0.94, tf.x), step(0.94, tf.y));
-        diffuseColor.rgb *= (0.9 + 0.16 * h21(ti)) * (1.0 - 0.22 * grout) * (0.92 + 0.12 * fb2(vWP.xz * 0.3));
+        diffuseColor.rgb *= (0.9 + 0.16 * h21(ti)) * (1.0 - 0.22 * grout) * (camD < 420.0 ? 0.92 + 0.12 * fb2(vWP.xz * 0.3) : 1.0);
       } else if (vWall.z < -2.5) {                     // wrought-iron balcony railing
         float bar = step(0.78, fract(vWall.x * 7.0)), rails = step(0.9, vWall.y) + step(vWall.y, 0.06) + step(0.48, vWall.y) * step(vWall.y, 0.53);
         if (bar + rails < 0.5) discard;
@@ -1619,9 +1659,11 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         rc = mix(vec3(lum), rc, 0.9 - 0.22 * h31(vec3(vBid, 5.5, 1.1)));                                // some roofs fade, some stay vivid
         float repl = step(0.93, h21(floor(vec2(across, down) * 0.35) + 11.0));                          // a few replacement tiles, a different batch
         rc = mix(rc, rc * vec3(1.2, 0.95, 0.8) + 0.03, repl * 0.8);
-        float age = fb2(vWP.xz * 0.22 + vBid);
-        rc = mix(rc, rc * vec3(0.62, 0.7, 0.5), smoothstep(0.58, 0.8, age) * 0.65 * (0.4 + 0.6 * near));  // moss and lichen
-        rc *= 0.9 + 0.14 * fb2(vWP.xz * 0.9);                                                           // dirt and sun-bleached streaks
+        if (camD < 420.0) {
+          float age = fb2(vWP.xz * 0.22 + vBid);
+          rc = mix(rc, rc * vec3(0.62, 0.7, 0.5), smoothstep(0.58, 0.8, age) * 0.65 * (0.4 + 0.6 * near));  // moss and lichen
+          rc *= 0.9 + 0.14 * fb2(vWP.xz * 0.9);                                                           // dirt and sun-bleached streaks
+        }
         rc *= 0.84 + 0.2 * smoothstep(0.0, 0.5, fract(down)) * near + 0.16 * (1.0 - near);               // each course shadows the next
         diffuseColor.rgb = rc;
       }
@@ -1651,10 +1693,10 @@ function buildingDepthMaterial() {
 const WIND = { value: 0 };
 // Adds a wind sway to a lit, instanced material. `hh` is a GLSL expression (0 at the roots → 1 at the tips); `amp` scales the push; `fade` shrinks far blades into the ground.
 function windPatch(mat, { hh, amp = 1, fade = null }) {
-  mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${fade}`;   // each patch compiles its own program
+  mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${!!fade}`;   // each patch compiles its own program
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uWind = WIND;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;')
+    sh.uniforms.uWind = WIND; if (fade) sh.uniforms.uFade = fade;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;' + (fade ? '\nuniform vec2 uFade;' : ''))
       .replace('#include <project_vertex>', `
         vec4 mvPosition = vec4(transformed, 1.0);
         float isc = 1.0;
@@ -1672,7 +1714,7 @@ function windPatch(mat, { hh, amp = 1, fade = null }) {
         vec2 push = W * (0.12 + 0.5 * gust + 0.15 * gust2) + vec2(-W.y, W.x) * flut * 0.07;
         float bend = hh * hh * ${amp.toFixed(3)} * isc;
         wpos.xz += push * bend; wpos.y -= length(push) * bend * 0.25;
-        ${fade ? `float fd = 1.0 - smoothstep(${fade[0].toFixed(1)}, ${fade[1].toFixed(1)}, distance(cameraPosition, rootW.xyz)); wpos.y = rootW.y + (wpos.y - rootW.y) * fd;` : ''}
+        ${fade ? 'float fd = 1.0 - smoothstep(uFade.x, uFade.y, distance(cameraPosition, rootW.xyz)); wpos.y = rootW.y + (wpos.y - rootW.y) * fd;' : ''}
         mvPosition = viewMatrix * wpos;
         gl_Position = projectionMatrix * mvPosition;`);
   };
@@ -1688,7 +1730,7 @@ function bladeGeometry() {
   g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
   return g;
 }
-const GRASS_CH = 32, GRASS_R = 72;
+const GRASS_CH = 32; let GRASS_R = 72;
 // Is (x, z) on a street, a path or a paved street-area, give or take m metres? (exact: the coarse occupancy raster is 4 m a pixel)
 function hardAt(x, z, m = 0.6) {
   for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) {
@@ -1741,10 +1783,10 @@ function updateGrass(dt) {
   world.grass = world.grass || new Map();
   if (!world.bladeGeo) {
     world.bladeGeo = bladeGeometry();
-    world.grassMat = windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'clamp(position.y, 0.0, 1.0)', amp: 2.0, fade: [GRASS_R * 0.55, GRASS_R] });
+    world.grassMat = windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'clamp(position.y, 0.0, 1.0)', amp: 2.0, fade: (world.grassFade = { value: new THREE.Vector2(GRASS_R * 0.55, Math.max(GRASS_R, 1)) }) });
   }
   grassTimer -= dt; if (grassTimer > 0) return; grassTimer = 0.25;
-  const p = camera.position, high = p.y - H(p.x, p.z) > 120 || player.mode === 'plan';
+  const p = camera.position, high = p.y - H(p.x, p.z) > 120 || player.mode === 'plan' || GRASS_R < 10;
   const want = new Set();
   if (!high) {
     const cx = Math.floor(p.x / GRASS_CH), cz = Math.floor(p.z / GRASS_CH), r = Math.ceil(GRASS_R / GRASS_CH) + 1;
@@ -1764,11 +1806,11 @@ function clearGrass() { for (const [, m] of world.grass || []) if (m) { scene.re
 function bushGeometry(flowers) {
   const greens = ['#3d7f35', '#4a8f3a', '#356f2f', '#5a9c40'].map(linear), parts = [];
   [[0, 0.55, 0, 0.75], [0.6, 0.42, 0.25, 0.55], [-0.55, 0.45, -0.2, 0.6], [0.1, 0.4, -0.6, 0.5], [-0.15, 0.38, 0.6, 0.5]].forEach(([x, y, z, r], i) => {
-    parts.push(colorize(new THREE.IcosahedronGeometry(r, 1).scale(1, 0.78, 1).translate(x, y, z), greens[i % 4]));
+    parts.push(colorize(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.78, 1).translate(x, y, z), greens[i % 4]));
   });
   if (flowers) {
     const cols = ['#e0609f', '#f2c230', '#fafafa', '#d94aa0', '#f08a2c'].map(linear), rr = mulberry(31);
-    for (let k = 0; k < 16; k++) { const a = rr() * 6.283, el = rr() * 1.1 + 0.15, r = 0.8; parts.push(colorize(new THREE.OctahedronGeometry(0.1 + rr() * 0.05, 0).translate(Math.cos(a) * Math.cos(el) * r, 0.2 + Math.sin(el) * r * 0.75, Math.sin(a) * Math.cos(el) * r), cols[k % 5])); }
+    for (let k = 0; k < 9; k++) { const a = rr() * 6.283, el = rr() * 1.1 + 0.15, r = 0.8; parts.push(colorize(new THREE.OctahedronGeometry(0.1 + rr() * 0.05, 0).translate(Math.cos(a) * Math.cos(el) * r, 0.2 + Math.sin(el) * r * 0.75, Math.sin(a) * Math.cos(el) * r), cols[k % 5])); }
   }
   return mergeGeometries(parts.map(stripUV));
 }
@@ -2153,27 +2195,57 @@ function buildChinampas(list) {
 // ---- trees
 const occAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j = ((z / EXT + 0.5) * N) | 0; return i < 0 || j < 0 || i >= N || j >= N ? 1 : world.occ[j * N + i] / 255; };
 const occParkAt = (x, z) => { const N = world.occN, i = ((x / EXT + 0.5) * N) | 0, j = ((z / EXT + 0.5) * N) | 0; return i < 0 || j < 0 || i >= N || j >= N ? 1 : world.occP[j * N + i] / 255; };
-const TREE_TILE = 1750, TREE_TN = Math.ceil(EXT / TREE_TILE);
+const TREE_TILE = 250, TREE_TN = Math.ceil(EXT / TREE_TILE);   // 250 m cells, so vegetation can be culled and simplified by distance
 const treeTile = (x, z) => Math.floor(x / TREE_TILE + TREE_TN / 2) * 1000 + Math.floor(z / TREE_TILE + TREE_TN / 2);
+// Cheap stand-ins for far-away trees: a thin trunk and one or two simple shapes (10–30 triangles instead of 100–300)
+function proxyGeometries() {
+  const trunk = (r, h, c) => colorize(new THREE.CylinderGeometry(r * 0.7, r, h, 4).translate(0, h / 2, 0).toNonIndexed(), linear(c)), blob = (g, c) => colorize(g.toNonIndexed(), linear(c));
+  const m = (parts) => mergeGeometries(parts.map(stripUV));
+  return {
+    palm: m([trunk(0.28, 7.2, '#7a5a3c'), blob(new THREE.ConeGeometry(2.7, 1.5, 6).translate(0.9, 7.4, 0), '#3f8f34')]),
+    broad: m([trunk(0.3, 2.8, '#6e5238'), blob(new THREE.IcosahedronGeometry(2.1, 0).scale(1, 0.9, 1).translate(0, 4.2, 0), '#4a8c3c')]),
+    canopy: m([trunk(0.42, 4.6, '#6e5238'), blob(new THREE.IcosahedronGeometry(3.7, 0).scale(1, 0.55, 1).translate(0, 6.3, 0), '#3f7f37')]),
+    cypress: m([blob(new THREE.ConeGeometry(1.0, 9.2, 5).translate(0, 4.8, 0), '#24502f')]),
+  };
+}
+function dropVeg(list) { for (const m of list || []) { scene.remove(m); m.dispose(); world.veg.delete(m); } }
 function treeMeshes(buckets) {
   world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry(), bush: bushGeometry(false), flowerBush: bushGeometry(true) };
-  world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16 }) };
+  world.treeProxy = world.treeProxy || proxyGeometries();
+  world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16 }), far: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
   world.treeMats.flowerBush = world.treeMats.bush;
   world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad; world.treeMats.cypress = world.treeMats.cypress || world.treeMats.broad;
+  world.veg = world.veg || new Set();
   const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  for (const kind of ['palm', 'broad', 'canopy', 'cypress', 'bush', 'flowerBush']) for (const [, l] of buckets[kind] || []) {
+  for (const kind of ['palm', 'broad', 'canopy', 'cypress', 'bush', 'flowerBush']) for (const [tk, l] of buckets[kind] || []) {
     const n = l.length / 6; if (!n) continue;
-    const mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n);
+    const small = kind === 'bush' || kind === 'flowerBush', mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n), far = small ? null : new THREE.InstancedMesh(world.treeProxy[kind], world.treeMats.far, n);
     for (let i = 0; i < n; i++) {
       const [x, y, z, s, rot, hue] = l.slice(i * 6, i * 6 + 6);
-      M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(s, s * (0.9 + hue * 0.25), s)); mesh.setMatrixAt(i, M4);
-      if (kind === 'bush' || kind === 'flowerBush') tint.setHSL(0.27 + (hue - 0.5) * 0.06, 0.35, 0.52 + hue * 0.12).lerp(white, kind === 'bush' ? 0.45 : 0.78); else if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
-      mesh.setColorAt(i, tint);
+      M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(s, s * (0.9 + hue * 0.25), s)); mesh.setMatrixAt(i, M4); if (far) far.setMatrixAt(i, M4);
+      if (small) tint.setHSL(0.27 + (hue - 0.5) * 0.06, 0.35, 0.52 + hue * 0.12).lerp(white, kind === 'bush' ? 0.45 : 0.78); else if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
+      mesh.setColorAt(i, tint); if (far) far.setColorAt(i, tint);
     }
-    mesh.castShadow = true; mesh.receiveShadow = true; mesh.renderOrder = 10; mesh.computeBoundingSphere();
-    scene.add(mesh); out.push(mesh);
+    const cx = (Math.floor(tk / 1000) - TREE_TN / 2 + 0.5) * TREE_TILE, cz = ((tk % 1000) - TREE_TN / 2 + 0.5) * TREE_TILE;
+    for (const [m, role] of [[mesh, 'near'], [far, 'far']]) {
+      if (!m) continue;
+      m.castShadow = role === 'near'; m.receiveShadow = true; m.renderOrder = 10; m.computeBoundingSphere(); m.matrixAutoUpdate = false; m.visible = false;
+      m.userData = { cx, cz, role, small }; scene.add(m); out.push(m); world.veg.add(m);
+    }
   }
   return out;
+}
+// Vegetation by distance: full models near the camera, cheap stand-ins further out, nothing from high above
+function updateVeg(p, alt) {
+  if (!world.veg) return;
+  const t = Q.t, high = alt > t.vegAlt;
+  for (const m of world.veg) {
+    const u = m.userData, d = Math.hypot(u.cx - p.x, u.cz - p.z);
+    const near = d < (u.small ? t.nearR * 0.8 : t.nearR), far = !near && d < t.farR;
+    const vis = !high && (u.role === 'near' ? near : far && !u.small);
+    if (m.visible !== vis) m.visible = vis;
+    if (u.role === 'near' && m.castShadow !== t.treeShadow) m.castShadow = t.treeShadow;
+  }
 }
 function bucketAdd(buckets, kind, x, z, s, rnd) {
   const tk = treeTile(x, z); buckets[kind] = buckets[kind] || new Map(); let l = buckets[kind].get(tk); if (!l) buckets[kind].set(tk, l = []);
@@ -2185,7 +2257,7 @@ function rebuildParkTrees(onlyTiles) {
   const tiles = onlyTiles || new Set(world.features.filter((f) => f.kind === 'park').map((f) => treeTile(f.cx, f.cz)));
   let count = 0;
   for (const tk of tiles) {
-    for (const m of world.parkTrees.get(tk) || []) { scene.remove(m); m.dispose(); }
+    dropVeg(world.parkTrees.get(tk));
     const buckets = { palm: new Map(), broad: new Map() };
     for (const f of world.features) {
       if (f.kind !== 'park' || treeTile(f.cx, f.cz) !== tk || f.rings[0].length < 6) continue;
@@ -2227,7 +2299,7 @@ function canopyGeometry() {
 }
 // Trees along streets follow each street's style; rebuilt as a whole when one changes
 function rebuildStreetTrees() {
-  for (const m of world.streetTrees || []) { scene.remove(m); m.dispose(); }
+  dropVeg(world.streetTrees);
   const buckets = { palm: new Map(), broad: new Map(), canopy: new Map() }; let n = 0;
   for (const f of world.features) {
     if (f.kind !== 'street') continue;
@@ -2468,7 +2540,7 @@ function bridgeAt(x, z) {
 // ---- highlight shapes for hovered / selected ground features
 // ---- street furniture: lamp posts, benches, bins, bollards, potted plants, planters, fountains and canal railings.
 // Instanced per 400 m chunk and drawn only near the camera, so the whole island can be furnished.
-const FURN_CH = 400, FURN_NEAR = 800;
+const FURN_CH = 400; let FURN_NEAR = 800;
 function furnitureGeometries() {
   const iron = linear('#1e2622'), wood = linear('#a8743f'), woodD = linear('#7f5330'), pot = linear('#b9653d'), green = linear('#2f5140'), stone = linear('#e2dccf'), stoneD = linear('#c9c1b1');
   const P = (g, c, x = 0, y = 0, z = 0) => colorize((g.index ? g.toNonIndexed() : g).translate(x, y, z), c);
@@ -4030,6 +4102,7 @@ function initControls() {
   $('tod').addEventListener('click', toggleTOD);
   $('compass').addEventListener('click', faceNorth);
   $('wx').addEventListener('click', toggleWeather);
+  $('qual').addEventListener('click', cycleQuality);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
   $('start-fly').addEventListener('click', () => startExploring('fly'));
   $('stay-map').addEventListener('click', () => { $('intro').hidden = true; });
@@ -4148,7 +4221,7 @@ function update(dt, t) {
   stepAnim(dt, t);
   // sun & shadows follow the view
   const focus = player.mode === 'map' ? controls.target : player.pos, dist = camera.position.distanceTo(focus);
-  sun.castShadow = dist < 2200;   // from high above, shadows are invisible but cost a full extra pass
+  sun.castShadow = dist < Q.t.shadowDist;   // from high above, shadows are invisible but cost a full extra pass
   const S = clamp(dist * 1.4, 70, 2600), sc = sun.shadow.camera;
   if (Math.abs(sc.right - S) / S > 0.08) { sc.left = -S; sc.right = S; sc.top = S; sc.bottom = -S; sc.near = 10; sc.far = 9000; sc.updateProjectionMatrix(); sun.shadow.normalBias = S / 1500; }
   const texel = (2 * S) / sun.shadow.mapSize.x;
@@ -4160,6 +4233,7 @@ function update(dt, t) {
   stepWeather(dt, t);
   WIND.value = t;
   updateGrass(dt);
+  updateCull(dt);
   updateFurniture();
   post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
@@ -4175,17 +4249,71 @@ function update(dt, t) {
   return true;
 }
 // Adaptive resolution: drop the pixel ratio when frames run long, restore it when there's headroom.
+// ─────────────────────────── quality: speed versus fidelity ───────────────────────────
+// Three tiers trade the costly extras for frame rate. In Auto the game watches its own frame time and steps down when it struggles
+// (and back up, carefully, when there is room). Everything it changes is detail you only see up close.
+const TIERS = [
+  { name: 'Low',    dpr: 1,    bloom: false, samples: 0, shadowMap: 1024, shadowDist: 500,  grassR: 0,  furnNear: 220, detailR: 90,  cullAlt: 160, sky: 0, detailShadow: false, nearR: 200, farR: 700,  vegAlt: 500,  treeShadow: false },
+  { name: 'Medium', dpr: 1.25, bloom: true,  samples: 0, shadowMap: 2048, shadowDist: 1200, grassR: 46, furnNear: 450, detailR: 260, cullAlt: 320, sky: 1, detailShadow: false, nearR: 300, farR: 1500, vegAlt: 1100, treeShadow: true },
+  { name: 'High',   dpr: 1.75, bloom: true,  samples: 4, shadowMap: 4096, shadowDist: 2200, grassR: 72, furnNear: 800, detailR: 560, cullAlt: 700, sky: 1, detailShadow: true, nearR: 440, farR: 2800, vegAlt: 2200, treeShadow: true },
+];
+const QKEY = 'amparacan-map-quality';
+const Qs = { mode: 'auto', tier: 2, t: TIERS[2], good: 0, bad: 0, changed: 0, ceil: 2, ceilUntil: 0 };
+try { const m = localStorage.getItem(QKEY); if (m === 'low' || m === 'medium' || m === 'high' || m === 'auto') Qs.mode = m; } catch (e) {}
+if (Qs.mode !== 'auto') { Qs.tier = { low: 0, medium: 1, high: 2 }[Qs.mode]; Qs.t = TIERS[Qs.tier]; }
+const Q = Qs;
 const res = { max: Math.min(devicePixelRatio, 1.75), cur: Math.min(devicePixelRatio, 1.75), last: 0, acc: 0, n: 0, since: 0 };
+function setPixelRatio(r) { res.cur = r; renderer.setPixelRatio(r); renderer.setSize(innerWidth, innerHeight); post.composer.setPixelRatio(r); post.composer.setSize(innerWidth, innerHeight); }
+function applyQuality() {
+  const t = Q.t = TIERS[Q.tier];
+  res.max = Math.min(devicePixelRatio, t.dpr);
+  setPixelRatio(Math.min(res.max, Math.max(res.cur, Math.min(res.max, 1))));
+  post.bloom.enabled = t.bloom;
+  for (const rt of [post.composer.renderTarget1, post.composer.renderTarget2]) if (rt.samples !== t.samples) { rt.samples = t.samples; rt.dispose(); }
+  if (sun.shadow.mapSize.x !== t.shadowMap) { sun.shadow.mapSize.set(t.shadowMap, t.shadowMap); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  GRASS_R = t.grassR; FURN_NEAR = t.furnNear;
+  if (world.grassFade) world.grassFade.value.set(GRASS_R * 0.55, Math.max(GRASS_R, 1));
+  if (camera.userData.sky) { const m = camera.userData.sky.material; if (!!m.defines.SKY_LOW !== !t.sky) { if (t.sky) delete m.defines.SKY_LOW; else m.defines.SKY_LOW = ''; m.needsUpdate = true; } }
+  if (typeof applyWeather === 'function' && world.clouds) applyWeather();
+  clearGrass();
+  const b = $('qual'); if (b) { b.textContent = Q.mode === 'auto' ? `Auto · ${t.name}` : t.name; b.title = `Graphics quality: ${Q.mode === 'auto' ? 'Auto (currently ' + t.name + ')' : t.name}. Click to change.`; }
+}
+function setTier(n, why) {
+  n = clamp(n, 0, 2); if (n === Q.tier) return;
+  Q.tier = n; Q.changed = performance.now(); Q.good = Q.bad = 0; applyQuality();
+  if (Q.mode === 'auto') toast(`Graphics adjusted to ${Q.t.name} to keep the map smooth.`);
+}
+function cycleQuality() {
+  const order = ['auto', 'low', 'medium', 'high'], next = order[(order.indexOf(Q.mode) + 1) % order.length];
+  Q.mode = next; try { localStorage.setItem(QKEY, next); } catch (e) {}
+  if (next !== 'auto') { Q.tier = { low: 0, medium: 1, high: 2 }[next]; Q.ceil = 2; Q.good = Q.bad = 0; }
+  applyQuality(); toast(next === 'auto' ? 'Graphics: Auto — adjusts itself to keep the map smooth.' : `Graphics: ${Q.t.name}.`);
+}
 function adaptResolution(now, drew) {
   if (!drew || document.hidden) { res.last = 0; return; }
   if (res.last) { res.acc += now - res.last; res.n++; }
   res.last = now;
-  if (now - res.since < 1500 || res.n < 30) return;
+  if (now - res.since < 1500 || res.n < 5) return;
   const avg = res.acc / res.n; res.acc = 0; res.n = 0; res.since = now;
   let next = res.cur;
   if (avg > 24 && res.cur > 1) next = Math.max(1, res.cur - 0.25);
   else if (avg < 13 && res.cur < res.max) next = Math.min(res.max, res.cur + 0.25);
-  if (next !== res.cur) { res.cur = next; renderer.setPixelRatio(next); renderer.setSize(innerWidth, innerHeight); post.composer.setPixelRatio(next); post.composer.setSize(innerWidth, innerHeight); }
+  if (next !== res.cur) setPixelRatio(next);
+  if (Q.mode !== 'auto') return;
+  // resolution is already as low as it goes and it is still slow → lighten the scene; fast for a while → try a richer tier
+  if (avg > 28 && res.cur <= 1.001) { Q.bad++; Q.good = 0; if (Q.bad >= 2 && Q.tier > 0) { if (now - Q.changed < 25000) { Q.ceil = Q.tier - 1; Q.ceilUntil = now + 120000; } setTier(Q.tier - 1); } }
+  else if (avg < 14 && res.cur >= res.max - 0.01) { Q.good++; Q.bad = 0; const cap = now < Q.ceilUntil ? Q.ceil : 2; if (Q.good >= 8 && Q.tier < cap && now - Q.changed > 15000) setTier(Q.tier + 1); }
+  else { Q.good = Math.max(0, Q.good - 1); Q.bad = 0; }
+}
+// wires, string lights and the like are invisible from high up: skip them there
+let cullTimer = 0;
+function updateCull(dt) {
+  cullTimer -= dt; if (cullTimer > 0) return; cullTimer = 0.3;
+  const p = camera.position, alt = p.y - H(p.x, p.z), a = Q.t.cullAlt;
+  for (const o of world.wireObjs || []) o.visible = alt < a * 1.1;
+  for (const o of world.lightObjs || []) o.visible = alt < a * 1.4 && (o !== world.bulbs || NIGHT.value > 0.5);
+  if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
+  updateDetail(); updateVeg(p, alt);
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
@@ -4336,6 +4464,7 @@ store.on((what, ids) => {
 (async function boot() {
   try {
     try { if (localStorage.getItem('amparacan-map-help') === '1') { $('help').dataset.collapsed = 'true'; $('help-toggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
+    applyQuality();
     const storeReady = initStore().catch((e) => console.warn('Edits unavailable', e));
     await Promise.race([storeReady, new Promise((r) => setTimeout(r, 2500))]); // saved looks before the first build when they arrive quickly
     await buildWorld();
