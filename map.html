@@ -312,7 +312,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   <button id="mode-fly" type="button" aria-pressed="false">Fly <kbd>F</kbd></button>
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
-  <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, birds, insects, water, waves and weather" aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
+  <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, birds, water, waves and weather" aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="mus" class="tog" type="button" aria-pressed="false" title="Music: dreamlike ambient" aria-label="Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="tod" class="drop" type="button" title="Time of day (T)" aria-haspopup="menu" aria-expanded="false">Dusk</button>
   <button id="wx" class="drop" type="button" title="Weather (R)" aria-haspopup="menu" aria-expanded="false">Sunny</button>
@@ -4812,7 +4812,7 @@ function thunder(delay) {
   sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 // ─────────────────────────── ambience that follows the place ───────────────────────────
-// Insects and frogs, birdsong, rustling trees, fountains and canals, rain on roofs, fog muffling and a foghorn, owls, a distant song, a fire, a dawn rooster,
+// Birdsong, rustling trees, fountains and canals, rain on roofs, fog muffling and a foghorn, owls, a distant song, a fire, a dawn rooster,
 // reverb that depends on how enclosed the street is, a muffled underwater world, and wind and whooshes while flying.
 function ambienceInit(C) {
   const bus = (g) => { const n = C.createGain(); n.gain.value = g; return n; };
@@ -4821,16 +4821,6 @@ function ambienceInit(C) {
   const chain = (src, nodes, dest) => { let p = src; for (const n of nodes) { p.connect(n); p = n; } p.connect(dest); };
   AUD.eco = bus(1); AUD.eco.connect(AUD.sfxBus);
   AUD.sfxVerb = bus(0.05); AUD.sfxBus.connect(AUD.sfxVerb); AUD.sfxVerb.connect(AUD.verbIn);
-  // crickets: a looping bed of chirping trains, many voices at slightly different pitches
-  { const sr = C.sampleRate, len = Math.round(sr * 9), b = C.createBuffer(2, len, sr);
-    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch);
-      for (let v = 0; v < 14; v++) { const f = rndR(4100, 5300), per = rndR(0.36, 0.62), start = Math.random() * per, amp = rndR(0.25, 0.8), pulses = 3 + ((Math.random() * 2) | 0);
-        for (let t0 = start; t0 < 9 - 0.3; t0 += per) for (let p = 0; p < pulses; p++) { const s0 = Math.round((t0 + p * 0.032) * sr), dur = Math.round(0.016 * sr); for (let i = 0; i < dur; i++) d[s0 + i] += amp * Math.sin(6.2832 * f * i / sr) * Math.sin(Math.PI * i / dur); } } }
-    AUD.cricket = bus(0); chain(loop(b), [filt('bandpass', 4700, 0.7)], AUD.cricket); AUD.cricket.connect(AUD.eco); }
-  // cicadas: a shimmering buzz, amplitude-modulated and slowly swelling
-  { const o = C.createOscillator(), o2 = C.createOscillator(), am = C.createOscillator(), amg = bus(0.5), g = bus(0.5), sw = C.createOscillator(), swg = bus(0.25);
-    o.type = 'sawtooth'; o.frequency.value = 3150; o2.type = 'sawtooth'; o2.frequency.value = 3260; am.frequency.value = 74; am.connect(amg); amg.connect(g.gain); sw.frequency.value = 0.11; sw.connect(swg); swg.connect(g.gain);
-    AUD.cicada = bus(0); const bp = filt('bandpass', 3300, 3); o.connect(bp); o2.connect(bp); bp.connect(g); g.connect(AUD.cicada); AUD.cicada.connect(AUD.eco); o.start(); o2.start(); am.start(); sw.start(); }
   // leaves and palm fronds
   AUD.rustle = bus(0); { const g = bus(0.5), l = C.createOscillator(), lg = bus(0.35); l.frequency.value = 0.21; l.connect(lg); lg.connect(g.gain); l.start(); chain(loop(AUD.noise), [filt('bandpass', 3400, 0.5), filt('highpass', 1800, 0.5)], g); g.connect(AUD.rustle); AUD.rustle.connect(AUD.eco); }
   // fountain trickle: bright droplets over a soft splash
@@ -4848,7 +4838,7 @@ function ambienceInit(C) {
   AUD.roar = bus(0); AUD.roarBP = filt('bandpass', 320, 0.6); chain(loop(AUD.pink), [AUD.roarBP], AUD.roar); AUD.roar.connect(AUD.sfxBus);
   // fog: a low-pass on the whole sound bed, and a foghorn with its own long echoes
   AUD.horn = bus(1); { const d = C.createDelay(3); d.delayTime.value = 1.15; const fb = bus(0.42), lp = filt('lowpass', 520, 0.5); AUD.horn.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(AUD.sfxBus); AUD.horn.connect(AUD.sfxBus); AUD.horn.connect(AUD.verbIn); }
-  AUD.nx = { bird: 0, frog: 0, clack: 0, lap: 0, drip: 0, ping: 0, horn: 0, owl: 0, song: 0, fire: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', wetUntil: 0, swim: false, nextEnv: 0 };
+  AUD.nx = { bird: 0, clack: 0, lap: 0, drip: 0, ping: 0, horn: 0, owl: 0, song: 0, fire: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
 }
 function tone(C, t0, f0, f1, dur, gain, o = {}) {
   const osc = C.createOscillator(), g = C.createGain(); osc.type = o.type || 'sine';
@@ -4880,7 +4870,6 @@ function rooster(C, t0, pan, gain) {
 function owl(C, t0, pan, gain) { const n = 3 + ((Math.random() * 2) | 0); for (let i = 0; i < n; i++) tone(C, t0 + (i ? 0.7 + i * 0.5 : 0), 345, 295, i === n - 1 ? 0.9 : 0.4, gain, { pan, lp: 600, wet: 0.6, vib: 6, vibDepth: 0.008, att: 0.07, tau: 0.35 }); }
 function distantSong(C, t0, pan, gain) { const sc = [293.7, 349.2, 392, 440, 523.3, 587.3]; let t = t0; const n = 6 + ((Math.random() * 4) | 0); for (let i = 0; i < n; i++) { const f = sc[(Math.random() * sc.length) | 0]; tone(C, t, f, f * 0.995, 1.4, gain, { type: 'triangle', lp: 1300, pan, wet: 0.7, hold: 0.05, tau: 0.5, att: 0.01 }); t += rndR(0.45, 0.95); } }
 function fireCrackle(C, t0, gain) { const n = 24 + ((Math.random() * 30) | 0), len = rndR(6, 12); for (let i = 0; i < n; i++) clickBurst(C, t0 + Math.pow(Math.random(), 0.8) * len, rndR(1800, 5200), 1.2, rndR(0.01, 0.04), gain * rndR(0.3, 1), AUD.eco); }
-function frogCall(C, t0, pan, gain) { const n = 4 + ((Math.random() * 4) | 0), f = rndR(1800, 2500); for (let i = 0; i < n; i++) tone(C, t0 + i * 0.078, f, f * 1.4, 0.04, gain, { pan, bp: 2400, wet: 0.2, tau: 0.3 }); }
 function foghorn(C, t0, gain) {
   const g = C.createGain(), lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.6;
   g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.7); g.gain.setValueAtTime(gain, t0 + 2.9); g.gain.setTargetAtTime(0.0001, t0 + 2.9, 0.5);
@@ -4911,14 +4900,10 @@ function audioEnvSample() {
 function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, night, wind }
   const N = AUD.nx, tod = todState.name, w = ctx.w;
   if (N.todName !== tod) { N.todName = tod; if (tod === 'dawn') N.dawnAt = now; N.rooster = tod === 'dawn' ? now + rndR(20, 45) : N.rooster; }
-  if (ctx.rain) N.wetUntil = now + 240;
   AUD.envT = (AUD.envT || 0) + 1; if (AUD.envT % 3 === 1 || !AUD.env) audioEnvSample();
   const E = AUD.env, gf = ctx.gf, day = tod === 'day', dusk = tod === 'dusk', dawn = tod === 'dawn', night = tod === 'night';
   const fogAmt = w === 'fog' ? 1 : w === 'misty' ? 0.45 : 0, dry = ctx.rain ? 0.12 : 1;
-  const canopy = E.canopy, seaCalm = 1 - smooth(120, 10, AUD.shore) * 0.85, set = (n, v, t = 0.8) => n.gain.setTargetAtTime(v, now, t);
-  // insects (kept low) and frogs
-  set(AUD.cricket, (night ? 1 : dusk ? 0.5 : dawn ? 0.25 : 0) * (0.35 + 0.65 * canopy) * seaCalm * dry * gf * 0.022);
-  set(AUD.cicada, (day ? 1 : dusk ? 0.25 : dawn ? 0.1 : 0) * (0.25 + 0.75 * canopy) * seaCalm * dry * (w === 'sunny' ? 1 : 0.4) * gf * 0.026);
+  const canopy = E.canopy, set = (n, v, t = 0.8) => n.gain.setTargetAtTime(v, now, t);
   // wind in the trees
   set(AUD.rustle, canopy * (0.035 + ctx.wind * 0.55) * gf);
   // fountains and canals, and the water-side fauna
@@ -4945,8 +4930,6 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
     if (r < 0.1 && canopy > 0.5) parrot(C, now + 0.05, pan, g * 1.3); else if (r < 0.2) dove(C, now + 0.05, pan, g * 1.1); else songbird(C, now + 0.05, pan, g);
     N.bird = now + rndR(2.5, 9) / birdAct;
   }
-  const frogAct = (now < N.wetUntil + (ctx.rain ? 0 : 0) && !ctx.storm && (night || dusk || !ctx.rain)) ? (night ? 1 : dusk ? 0.7 : 0.3) * (0.3 + 0.7 * Math.max(canopy, E.canal, E.fountain * 0.6)) * (ctx.rain ? 0.4 : 1) * seaCalm * gf : 0;
-  if (frogAct > 0.08 && now > N.frog) { frogCall(C, now + 0.05, rndR(-0.8, 0.8), 0.018 * frogAct); N.frog = now + rndR(0.7, 2.6) / frogAct; }
   if (canopy > 0.25 && ctx.wind > 0.1 && now > N.clack) { clickBurst(C, now, rndR(900, 1700), 2, 0.05, 0.03 * canopy * gf, AUD.eco); N.clack = now + rndR(0.4, 2.2) / (0.4 + ctx.wind * 4); }
   if (E.canal > 0.12 && now > N.lap) { tone(C, now, rndR(220, 340), rndR(110, 170), 0.16, 0.05 * E.canal * gf, { att: 0.01, tau: 0.35, pan: rndR(-0.6, 0.6) }); N.lap = now + rndR(0.5, 1.9); }
   if (ctx.rain && nearRoof > 0.3) {
