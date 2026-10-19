@@ -2305,10 +2305,23 @@ function ribbonOverlay(items) {
 function overlayMesh(geo, tex, order, dim = null) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
   mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
-  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; park lawns darken once the trees that shade them are no longer drawn
-    sh.uniforms.uNight = NIGHT; if (dim) sh.uniforms.uDim = dim;
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim;' : ''))
-      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\ndiffuseColor.rgb *= uDim;' : ''))
+  if (dim) world.parkCanopy = world.parkCanopy || { value: 0 };
+  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns turn into a mottled tree canopy once the real trees stop being drawn
+    sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uCanopy = world.parkCanopy; }
+    if (dim) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
+    const canopyFn = `
+varying vec2 vWP; uniform float uCanopy;
+float ch(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float cn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(ch(i), ch(i + vec2(1, 0)), f.x), mix(ch(i + vec2(0, 1)), ch(i + vec2(1, 1)), f.x), f.y); }
+vec3 canopyColor(vec2 p) {
+  float crown = cn(p / 6.5) * 0.55 + cn(p / 3.1) * 0.3 + cn(p / 1.4) * 0.15;       // crowns of 5–8 m, with leaf clumps
+  float gap = smoothstep(0.34, 0.2, cn(p / 11.0 + 7.0));                              // the odd clearing
+  float lit = smoothstep(0.3, 0.8, crown);
+  vec3 c = mix(vec3(0.05, 0.17, 0.06), vec3(0.2, 0.4, 0.12), lit);
+  return mix(c, vec3(0.28, 0.4, 0.17), gap * 0.55);
+}`;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim;' + canopyFn : ''))
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\ndiffuseColor.rgb = mix(diffuseColor.rgb * uDim, canopyColor(vWP), uCanopy);' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
   };
   const m = new THREE.Mesh(geo.build(), mat);
@@ -4999,7 +5012,7 @@ function updateCull(dt) {
   if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
   updateDetail(); updateVeg(p, alt);
   // from far away (or on Low, where the trees vanish early) a park is just its lawn: take the lime out of it, as the trees would
-  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); }
+  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkCanopy) world.parkCanopy.value = k; }   // lawns become tree canopy as the real trees drop out
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
