@@ -4773,7 +4773,7 @@ function audioTick() {
     const dist = Math.hypot(AUD.shore, alt * 0.8), near = smooth(260, 12, dist) * (1 - 0.3 * smooth(300, 1500, alt));
     const surf = 1 + (storm ? 0.7 : rain ? 0.2 : 0);
     AUD.waveLo.gain.setTargetAtTime(near * 0.55 * surf, now, 0.6); AUD.waveHi.gain.setTargetAtTime(near * 0.34 * surf, now, 0.6);
-    const rv = rain ? (storm ? 0.46 : 0.15) * (1 - smooth(500, 1800, alt) * 0.7) : 0;
+    const rv = rain ? (storm ? 0.52 : 0.2) * (1 - smooth(500, 1800, alt) * 0.7) : 0;
     AUD.rainHi.gain.setTargetAtTime(rv, now, 0.8); AUD.rainLo.gain.setTargetAtTime(rv * 0.9, now, 0.8);
     if (!night && !storm && !rain && now > AUD.nextGull) { if (alt < 900) gulls(); AUD.nextGull = now + rndR(9, 26); }
     if (!storm && now > AUD.nextBell && !AUD.bellsLeft) { AUD.bellsLeft = 3 + ((Math.random() * 6) | 0); AUD.bellF = [196, 220, 246.9, 261.6][(Math.random() * 4) | 0]; AUD.nextStrike = now; AUD.nextBell = now + rndR(55, 120); }
