@@ -5134,7 +5134,7 @@ function drawMinimap(now) {
   if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr); }
   if (plan.bldDirty) planBuildings();
   const alt = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z));
-  const s = mm.scale = clamp(0.42 * mm.zoom * (player.mode === 'fly' ? 40 / Math.max(8, alt) : 1), 0.0015, 3), px = 1 / s;   // follows your height all the way from the ground to the stratosphere
+  const s = mm.scale = clamp(0.42 * mm.zoom * (player.mode === 'fly' ? 40 / Math.max(8, alt) : 1), 0.0015, Math.min(3, W / 50)), px = 1 / s;   // never closer than 50 m across   // follows your height all the way from the ground to the stratosphere
   const g = c.getContext('2d'), P = plan.paths, cx = player.pos.x + mm.px, cz = player.pos.z + mm.pz;
   g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#7fc6d6'; g.fillRect(0, 0, W, Hh);
   g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - cx * s), dpr * (Hh / 2 - cz * s));
@@ -5172,7 +5172,7 @@ function placeMinimap() { const sb = document.querySelector('#search .sbox'); if
 function initMinimap() {
   addEventListener('resize', placeMinimap);
   const c = $('mm'), box = $('minimap'), home = $('mm-home');
-  const setZoom = (z) => { mm.zoomT = clamp(z, 0.02, 10); mm.last = 0; };
+  const setZoom = (z) => { mm.zoomT = clamp(z, 0.02, Math.min(10, ($('mm').clientWidth || 172) / 50 / 0.42));   // 50 m across is as close as it gets mm.last = 0; };
   const panned = () => { const on = Math.abs(mm.px) + Math.abs(mm.pz) > 1; home.hidden = !on; box.classList.toggle('panned', on); };
   const recentre = () => { mm.px = mm.pz = 0; panned(); mm.last = 0; };
   c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); setZoom(mm.zoomT * Math.exp(-e.deltaY * 0.0045)); }, { passive: false });
