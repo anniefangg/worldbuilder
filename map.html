@@ -118,7 +118,7 @@ body {
   background: var(--azulejo); color: var(--azulejo-ink); box-shadow: 0 6px 18px rgba(18, 50, 63, 0.28);
 }
 #edits-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(124px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(70px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
 }
 #edits-btn .count { background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 2px 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -157,7 +157,7 @@ body {
 .sep { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
 .status { font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-soft); min-height: 1em; }
 #tray {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(196px + env(safe-area-inset-top, 0px));
   width: min(380px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
   display: grid; gap: 12px; z-index: 5;
 }
@@ -241,12 +241,12 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 #s-status button { border: 0; background: none; color: var(--azulejo); font: 600 12px/1 var(--font-ui); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
 #s-status button:hover { background: rgba(31, 87, 168, 0.08); }
 #layers-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(112px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
 }
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
 #layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
-#undo-box { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(242px + env(safe-area-inset-top, 0px)); display: flex; padding: 3px; gap: 2px; }
+#undo-box { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(154px + env(safe-area-inset-top, 0px)); display: flex; padding: 3px; gap: 2px; }
 #undo-box button { display: flex; gap: 5px; align-items: center; border: 0; background: none; color: var(--ink); font: 600 12.5px/1 var(--font-ui); padding: 7px 9px; border-radius: 9px; cursor: pointer; }
 #undo-box button:hover:not(:disabled) { background: rgba(31, 87, 168, 0.1); }
 #undo-box button:disabled { opacity: 0.38; cursor: default; }
@@ -258,7 +258,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 #measure-label { position: fixed; left: 0; top: 0; z-index: 10; pointer-events: none; padding: 7px 11px; font: 600 14px/1.2 var(--font-ui); color: var(--ink); text-align: center; white-space: nowrap; }
 #measure-label small { display: block; font: 400 11px/1.3 var(--font-ui); color: var(--ink-soft); margin-top: 2px; }
 body.measuring #scene, body.measuring #plan { cursor: crosshair; }
-#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
+#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(152px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
 #layers-menu[hidden] { display: none; }
 #layers-menu h4 { margin: 0 4px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
 #layers-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font: 500 13px/1.2 var(--font-ui); color: var(--ink); }
@@ -284,7 +284,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
   #measure-btn { top: calc(144px + env(safe-area-inset-top, 0px)); }
-  #undo-box { top: calc(180px + env(safe-area-inset-top, 0px)); }
+  #undo-box { top: calc(144px + env(safe-area-inset-top, 0px)); }
   #search { top: calc(66px + env(safe-area-inset-top, 0px)); width: min(260px, calc(100vw - 32px)); }
   #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
@@ -3718,6 +3718,18 @@ function applyUndoStep(step, dir) {
 }
 function undoEdit() { const st = undo.stack.pop(); if (!st) return; applyUndoStep(st, 'undo'); undo.redo.push(st); toast(`Undone${st.size > 1 ? ` (${st.size} items)` : ''}.`); refreshUndo(); }
 function redoEdit() { const st = undo.redo.pop(); if (!st) return; applyUndoStep(st, 'redo'); undo.stack.push(st); toast('Redone.'); refreshUndo(); }
+// Compass and Measure sit by the minimap: the compass to its right, Measure under it (or under the altitude counter while flying)
+let _hudSig = '';
+function placeHud() {
+  const mmEl = $('minimap'), sr = $('search').getBoundingClientRect(), vis = !mmEl.hidden, mr = mmEl.getBoundingClientRect(), alt = $('alt-box');
+  const cl = vis ? mr.right + 8 : sr.right + 8, ct = vis ? mr.top : sr.top;
+  const ml = vis ? mr.left : sr.left, ar = alt.hidden ? null : alt.getBoundingClientRect(), mt = ar ? ar.bottom + 6 : vis ? mr.bottom + 6 : sr.bottom + 7;
+  const sig = [cl, ct, ml, mt].map(Math.round).join();
+  if (sig === _hudSig) return; _hudSig = sig;
+  const c = $('compass').style, m = $('measure-btn').style;
+  c.right = 'auto'; c.left = Math.round(cl) + 'px'; c.top = Math.round(ct) + 'px';
+  m.right = 'auto'; m.left = Math.round(ml) + 'px'; m.top = Math.round(mt) + 'px';
+}
 let _undoShown = '';
 function refreshUndo() {
   const box = $('undo-box'); if (!box) return;
@@ -5115,7 +5127,7 @@ function update(dt, t) {
   if (player.mode === 'plan') {
     stepAnim(dt, t);
     if (plan.need) drawPlan();
-    placePill(); placeMeasure(); refreshUndo();
+    placePill(); placeMeasure(); refreshUndo(); placeHud();
     const ew = plan.cx / 1000, ns = -plan.cz / 1000;
     hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · 1 px = ${(1 / plan.scale).toFixed(1)} m`;
     return false;
@@ -5207,7 +5219,7 @@ function update(dt, t) {
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
-  placePill(); placeMeasure(); refreshUndo();
+  placePill(); placeMeasure(); refreshUndo(); placeHud();
   // HUD
   const yawRef = player.mode === 'map' ? controls.target : player.pos, yaw = Math.atan2(camera.position.x - yawRef.x, camera.position.z - yawRef.z);
   hud.needle.setAttribute('transform', `rotate(${(yaw * 180 / Math.PI).toFixed(1)})`);
