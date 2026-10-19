@@ -72,7 +72,14 @@ body {
   position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   padding: 12px 14px; max-width: min(320px, calc(100vw - 32px)); display: grid; gap: 8px;
 }
-#help-toggle { all: unset; cursor: pointer; font: 600 12px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+#help .help-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+#help-toggle { all: unset; cursor: pointer; flex: 1; font: 600 12px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); padding: 4px 0; }
+#help-min { all: unset; cursor: pointer; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--ink-soft); }
+#help-min:hover { background: rgba(31, 87, 168, 0.1); color: var(--ink); }
+#help-min:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 1px; }
+#help[data-collapsed="true"] #help-min { display: none; }
+#help[data-collapsed="true"] .help-head { gap: 0; }
+#help[data-collapsed="true"] #help-toggle { flex: none; }
 #help dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; align-items: baseline; }
 #help dt { font: 500 11px/1.2 var(--font-mono); white-space: nowrap; }
 #help dd { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
@@ -335,7 +342,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 </button>
 
 <div id="help" class="plaque" data-collapsed="false">
-  <button id="help-toggle" type="button" aria-expanded="true">Controls · H</button>
+  <div class="help-head"><button id="help-toggle" type="button" aria-expanded="true">Controls</button><button id="help-min" type="button" aria-label="Minimise the controls" title="Minimise"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button></div>
   <dl>
     <dt>W · S</dt><dd>Forward · back (or ↑ ↓)</dd>
     <dt>A · D</dt><dd>Turn left · right (or ← →)</dd>
@@ -2184,9 +2191,10 @@ function initFeatures() {
   world.features = []; world.featById = new Map(); world.fGrid = new Map();
   const cellAdd = (idx, x0, z0, x1, z1) => {
     for (let ix = Math.floor(x0 / FGRID); ix <= Math.floor(x1 / FGRID); ix++) for (let iz = Math.floor(z0 / FGRID); iz <= Math.floor(z1 / FGRID); iz++) {
-      const k = gkey(ix + 2000, iz + 2000); let l = world.fGrid.get(k); if (!l) world.fGrid.set(k, l = []); if (l[l.length - 1] !== idx) l.push(idx);
+      const k = gkey(ix + 2000, iz + 2000); let l = world.fGrid.get(k); if (!l) world.fGrid.set(k, l = []); if (!l.includes(idx)) l.push(idx);
     }
   };
+  world.cellAdd = cellAdd;
   for (const kind of FEATURE_KINDS) {
     const K = KINDS[kind];
     for (const src of world.layers[K.layer]) {
@@ -2231,7 +2239,7 @@ function featureAt(x, z, tol = 1, pickable = false) {   // pickable: only the la
     if (x < bb[0] - tol || x > bb[2] + tol || z < bb[1] - tol || z > bb[3] + tol) continue;
     let hit = false, score = 0;
     if (K.geom === 'poly') { hit = pointInRings(x, z, f.rings); score = f.size; }
-    else { const d = distToLine(f.pts, x, z); hit = d <= f.w / 2 + tol; score = d; }
+    else { const d = distToLine(f.pts, x, z); hit = d <= f.w / 2 + tol || (f.sandRings && pointInRings(x, z, f.sandRings)); score = hit ? Math.min(d, 1e6) : d; }
     if (hit && (K.prio < bp || (K.prio === bp && score < bs))) { best = idx; bp = K.prio; bs = score; }
   }
   return best;
@@ -2357,7 +2365,7 @@ function shiftLine(P, d, side) {      // offset a polyline sideways by d metres 
 // until the ground drops below sea level, and lay a strip whose vertices follow the terrain,
 // so the sand meets the sea exactly at the coast and never spills over the water.
 function sandStrip(geo, P, side) {
-  const STEP = 5, K = 18, MAX = 320, col = linear('#f3dca6'), rows = [];
+  const STEP = 5, K = 18, MAX = 320, col = linear('#f3dca6'), rows = [], edge = [];   // edge: the inland and waterline points of each row, for picking
   let carry = 0;
   for (let i = 0; i < P.length - 2; i += 2) {
     const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
@@ -2365,7 +2373,7 @@ function sandStrip(geo, P, side) {
     for (let d = carry; d <= len; d += STEP) {
       const x0 = ax + tx * d, z0 = az + tz * d;
       let w = 0; for (let m = 2; m <= MAX; m += 2) { if (H(x0 + sx * m, z0 + sz * m) < 0) { w = m; break; } }
-      if (!w) { rows.push(null); continue; }                                       // no sea within reach: no sand here
+      if (!w) { rows.push(null); edge.push(null); continue; }                                       // no sea within reach: no sand here
       // refine the waterline to half a metre
       let lo = w - 2, hi = w; for (let k = 0; k < 3; k++) { const mid = (lo + hi) / 2; if (H(x0 + sx * mid, z0 + sz * mid) < 0) hi = mid; else lo = mid; }
       const row = [];
@@ -2373,7 +2381,7 @@ function sandStrip(geo, P, side) {
         const o = -2 + (lo + 2) * (k / K), x = x0 + sx * o, z = z0 + sz * o, h = H(x, z);
         row.push(geo.v(x, Math.max(h, 0) + 0.12 + 0.13 * smooth(0, 1.2, h), z, 0, 1, 0, col, x / 4, z / 4));
       }
-      rows.push(row);
+      rows.push(row); edge.push([x0 - sx * 2, z0 - sz * 2, x0 + sx * lo, z0 + sz * lo]);
     }
     carry = (carry + Math.ceil((len - carry) / STEP) * STEP) - len;
   }
@@ -2381,6 +2389,11 @@ function sandStrip(geo, P, side) {
     const A = rows[r], B = rows[r + 1]; if (!A || !B) continue;
     for (let k = 0; k < K; k++) { geo.triUp(A[k], B[k], A[k + 1]); geo.triUp(A[k + 1], B[k], B[k + 1]); }
   }
+  // the sand as polygons (each unbroken run of rows), so a click anywhere on it picks the beach
+  const rings = []; let run = [];
+  const flush = () => { if (run.length > 1) { const r = []; for (const e of run) r.push(e[0], e[1]); for (let k = run.length - 1; k >= 0; k--) r.push(run[k][2], run[k][3]); rings.push(r); } run = []; };
+  for (const e of edge) { if (e) run.push(e); else flush(); }
+  flush(); return rings;
 }
 function buildBeaches(list) {
   for (const o of world.beachObjs || []) { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); }
@@ -2412,7 +2425,8 @@ function buildBeaches(list) {
     // the Illustrator line marks the beach's inland edge: sand runs from it down to the sea
     // (the far side is hidden under the water), the promenade runs along its city side
     const side = vote >= 0 ? 1 : -1;
-    sandStrip(sandGeo, P, side);
+    f.sandRings = sandStrip(sandGeo, P, side);
+    { let x0 = f.bbox[0], z0 = f.bbox[1], x1 = f.bbox[2], z1 = f.bbox[3]; for (const r of f.sandRings) for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); } f.bbox = [x0, z0, x1, z1]; world.cellAdd(f.idx, x0, z0, x1, z1); }
     if (look !== 'copacabana') continue;
     walk.push({ pts: shiftLine(P, 4.5, side), w: 9, color: '#ffffff' });
     // walk the line placing kiosks, lifeguard posts, umbrellas and promenade palms
@@ -4868,6 +4882,7 @@ function initControls() {
   for (const [id, key] of [['pad-up', 'up'], ['pad-down', 'down']]) { $(id).addEventListener('pointerdown', () => { pad[key] = true; }); $(id).addEventListener('pointerup', () => { pad[key] = false; }); $(id).addEventListener('pointerleave', () => { pad[key] = false; }); }
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
   $('help-toggle').addEventListener('click', toggleHelp);
+  $('help-min').addEventListener('click', () => { if ($('help').dataset.collapsed !== 'true') toggleHelp(); });
   initDropdowns();
   $('compass').addEventListener('click', faceNorth);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
