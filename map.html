@@ -1949,12 +1949,10 @@ function bladeGeometry() {
 }
 const GRASS_CH = 32; let GRASS_R = 72;
 // Is (x, z) on a street, a path or a paved street-area, give or take m metres? (exact: the coarse occupancy raster is 4 m a pixel)
-function hardAt(x, z, m = 0.6) {
+function roadAt(x, z, m = 0.6, withPaths = true) {   // on a street (or a path) or on paved street-area, give or take m metres
   for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) {
     const f = world.features[idx];
-    if ((f.kind === 'street' || f.kind === 'path') && distToLine(f.pts, x, z) < f.w / 2 + m) return true;
-    if (f.kind === 'canal' && distToLine(f.pts, x, z) < f.w / 2 + 3 + m) return true;                  // canals and their soft banks
-    if (f.kind === 'water' && pointInRings(x, z, f.rings)) return true;
+    if ((f.kind === 'street' || (withPaths && f.kind === 'path')) && distToLine(f.pts, x, z) < f.w / 2 + m) return true;
   }
   if (!world.saGrid) {
     world.saGrid = new Map(); const SA = world.layers.streetAreas;
@@ -1962,6 +1960,16 @@ function hardAt(x, z, m = 0.6) {
       for (let ix = Math.floor(x0 / 64); ix <= Math.floor(x1 / 64); ix++) for (let iz = Math.floor(z0 / 64); iz <= Math.floor(z1 / 64); iz++) { const k = ix * 8192 + iz; let l = world.saGrid.get(k); if (!l) world.saGrid.set(k, l = []); l.push(i); } });
   }
   for (const i of world.saGrid.get(Math.floor(x / 64) * 8192 + Math.floor(z / 64)) || []) if (pointInRings(x, z, world.layers.streetAreas[i])) return true;
+  return false;
+}
+// roads, plus canals and their soft banks and lakes: nowhere for grass, trees or bushes
+function hardAt(x, z, m = 0.6) {
+  if (roadAt(x, z, m)) return true;
+  for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) {
+    const f = world.features[idx];
+    if (f.kind === 'canal' && distToLine(f.pts, x, z) < f.w / 2 + 3 + m) return true;
+    if (f.kind === 'water' && pointInRings(x, z, f.rings)) return true;
+  }
   return false;
 }
 function parksIn(x0, z0, x1, z1) {
@@ -2536,10 +2544,10 @@ function rebuildStreetTrees() {
       while (next <= run + len) {
         const t = (next - run) / len, cx = ax + dx * t, cz = az + dz * t;
         const sides = both ? [1, -1] : [k++ % 2 ? 1 : -1];
-        if (c >= 0.85 && f.w >= 12) sides.push(0);                       // a central row down wide boulevards
         for (const side of sides) {
           const x = cx + nx * off * side + (rnd() - 0.5) * 0.8, z = cz + nz * off * side + (rnd() - 0.5) * 0.8;
           if (buildingAt(x, z) >= 0 || H(x, z) < 0.6 || bridgeAt(x, z) > -Infinity) continue;
+          if (roadAt(x, z, 0.6)) continue;                                           // never in a carriageway, whichever street it belongs to
           if (side !== 0 && narrowWalk(cx, cz, nx, nz, side, f.w / 2)) continue;   // no trees on narrow pavements
           const big = rnd() < shade;
           const scale = big ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) * (0.8 + 0.4 * c) : 0.85 + rnd() * 0.3;
@@ -2579,7 +2587,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
   for (let z = minZ; z < maxZ && wild < 60000; z += S) for (let x = minX; x < maxX && wild < 60000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
-    if (m < 0.75 || occAt(px, pz) > 0.2) continue;
+    if (m < 0.75 || occAt(px, pz) > 0.2 || roadAt(px, pz, 1.0)) continue;
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
     const p = coast ? 0.26 : smooth(0.45, 0.75, forest) * 0.85 + 0.03;
@@ -2821,7 +2829,7 @@ function addStreetFurniture() {
   const M4 = new THREE.Matrix4(), V = new THREE.Vector3();
   for (const m of world.streetTrees || []) for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, M4); V.setFromMatrixPosition(M4); taken.add(cell(V.x, V.z)); }
   for (const ms of world.parkTrees ? world.parkTrees.values() : []) for (const m of ms) for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, M4); V.setFromMatrixPosition(M4); taken.add(cell(V.x, V.z)); }
-  const clear = (x, z, r) => H(x, z) > 0.6 && !near(x, z) && buildingAt(x, z) < 0 && buildingAt(x + r, z) < 0 && buildingAt(x - r, z) < 0 && buildingAt(x, z + r) < 0 && buildingAt(x, z - r) < 0 && bridgeAt(x, z) === -Infinity;
+  const clear = (x, z, r) => H(x, z) > 0.6 && !near(x, z) && !roadAt(x, z, 0.2, false) && buildingAt(x, z) < 0 && buildingAt(x + r, z) < 0 && buildingAt(x - r, z) < 0 && buildingAt(x, z + r) < 0 && buildingAt(x, z - r) < 0 && bridgeAt(x, z) === -Infinity;
   const claim = (x, z) => taken.add(cell(x, z));
   const lamp = (x, z) => { if (!clear(x, z, 0.4)) return false; claim(x, z); put('lamp', x, z, 0); put('lampGlass', x, z, 0); const y = H(x, z); chunkOf(x, z).halos.push(x, y + LIFT + 4.33, z); put('pool', x, z, 0, 5.5, y + LIFT + 0.04); return true; };
   const facing = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);      // rotation that turns local +z toward (tx, tz)
@@ -2914,13 +2922,13 @@ function addStreetFurniture() {
       for (const s of [-1.2, 1.2]) {
         if (rnd() < 0.3) continue;
         const t = d.u + s, x = f.ax + dx * t + f.nx * 0.5, z = f.az + dz * t + f.nz * 0.5;
-        if (t > 0.4 && t < f.L - 0.4 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.85 + rnd() * 0.35, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
+        if (t > 0.4 && t < f.L - 0.4 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6 && !roadAt(x, z, 0, false)) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.85 + rnd() * 0.35, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
       }
       const px = f.ax + dx * d.u + f.nx * 1.8, pz = f.az + dz * d.u + f.nz * 1.8;
       put('pool', px, pz, 0, 3.2, H(px, pz) + LIFT + 0.04);
       if (f.L > 9 && rnd() < 0.6) {
         const t = 0.6 + rnd() * (f.L - 1.2), x = f.ax + dx * t + f.nx * 0.45, z = f.az + dz * t + f.nz * 0.45;
-        if (Math.abs(t - d.u) > 1.8 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.8 + rnd() * 0.4, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
+        if (Math.abs(t - d.u) > 1.8 && buildingAt(x + f.nx * 0.4, z + f.nz * 0.4) < 0 && H(x, z) > 0.6 && !roadAt(x, z, 0, false)) put(POTS[(rnd() * POTS.length) | 0], x, z, rnd() * 6.28, 0.8 + rnd() * 0.4, Math.max(H(x, z) + LIFT, rec.base) - 0.03);
       }
     }
   }
@@ -3394,7 +3402,7 @@ const STYLE_DOCS = {
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
-- canopy: tree cover as a number 0-100 (0 = no trees, about 30 = a line of palms, about 75 = shade trees on both sides, 100 = a full canopy of overlapping crowns, plus a central row on wide streets). Prefer this over "trees".
+- canopy: tree cover as a number 0-100 (0 = no trees, about 30 = a line of palms, about 75 = shade trees on both sides, 100 = a full canopy of overlapping crowns, on both sides of the street). Prefer this over "trees".
 - trees: "canopy" (large shade trees on both sides whose crowns meet over the street), "palms" (a line of palms) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
 - tint: colour multiplied over the surface, "#rrggbb"`,
