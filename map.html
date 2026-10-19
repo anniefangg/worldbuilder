@@ -5309,6 +5309,145 @@ function initDropdowns() {
 function toggleTOD() { const n = TOD_ORDER[(TOD_ORDER.indexOf(todState.name) + 1) % TOD_ORDER.length]; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
 function startExploring(mode) { $('intro').hidden = true; setMode(mode); canvas.focus(); }
 
+// ─────────────────────────── houseboats ───────────────────────────
+// London-style narrowboats: a long, narrow steel hull with a pointed bow and a rounded stern, a slim cabin with an arched roof, a brass-ringed chimney,
+// painted in traditional colours with cream lining, a tiller at the back and a canvas cratch cover at the front. Some are moored along the canals, some cruise
+// slowly up and down them, and more bob in the inlets along the south coast. All of them rock gently on the water, and their windows glow at night.
+function prismGeo(len, prof, x0, y0) {   // a cross-section (z, y) pairs, extruded along +x
+  const pos = [], idx = [], n = prof.length;
+  for (const x of [x0, x0 + len]) for (const [z, y] of prof) pos.push(x, y0 + y, z);
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; idx.push(i, j, n + j, i, n + j, n + i); }
+  for (let i = 1; i < n - 1; i++) { idx.push(0, i + 1, i); idx.push(n, n + i, n + i + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  const ng = g.toNonIndexed(); ng.computeVertexNormals(); return ng;
+}
+function boatGeometries() {
+  const tint = (g, hex) => colorize(stripUV(g.index ? g.toNonIndexed() : g), linear(hex));
+  const box = (w, h, d, x, y, z, hex) => tint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), hex);
+  const cyl = (r0, r1, h, x, y, z, hex, seg = 10) => tint(new THREE.CylinderGeometry(r0, r1, h, seg).translate(x, y, z), hex);
+  const ball = (r, x, y, z, hex, sy = 1) => tint(new THREE.IcosahedronGeometry(r, 1).scale(1, sy, 1).translate(x, y, z), hex);
+  const arch = (len, hw, rise, x0, y0, n = 10) => { const pr = []; for (let i = 0; i <= n; i++) { const a = Math.PI - i * Math.PI / n; pr.push([hw * Math.cos(a), rise * Math.sin(a)]); } return prismGeo(len, pr, x0, y0); };
+  const HT = 0.62, CY = HT + 1.45;                                          // hull top, cabin top
+  // hull: a pointed bow and a rounded stern, extruded upward
+  const sh = new THREE.Shape(); const B = 1.05, L = 7;
+  sh.moveTo(-L + 0.9, -B); sh.lineTo(L - 3.4, -B); sh.quadraticCurveTo(L - 1.2, -B * 0.9, L, -0.06); sh.lineTo(L, 0.06); sh.quadraticCurveTo(L - 1.2, B * 0.9, L - 3.4, B); sh.lineTo(-L + 0.9, B);
+  sh.quadraticCurveTo(-L, B * 0.9, -L, B * 0.35); sh.lineTo(-L, -B * 0.35); sh.quadraticCurveTo(-L, -B * 0.9, -L + 0.9, -B);
+  const hull = new THREE.ExtrudeGeometry(sh, { depth: HT + 0.4, bevelEnabled: false, steps: 1 }); hull.rotateX(-Math.PI / 2); hull.translate(0, -0.4, 0);
+  const bodyParts = [tint(hull, '#ffffff'), box(8.4, 1.45, 1.86, -1.2, HT + 0.725, 0, '#ffffff')];
+  // fixed-colour details shared by every boat
+  const common = [
+    box(14.0, 0.06, 0.07, 0, HT - 0.02, B + 0.01, '#f1e3b4'), box(14.0, 0.06, 0.07, 0, HT - 0.02, -B - 0.01, '#f1e3b4'),               // cream lining along the gunwales
+    box(14.0, 0.05, 0.07, 0, HT - 0.32, B + 0.01, '#caa24a'), box(14.0, 0.05, 0.07, 0, HT - 0.32, -B - 0.01, '#caa24a'),               // and a gold line below
+    box(8.4, 0.08, 1.98, -1.2, CY - 0.02, 0, '#e8dcc0'),                                                                                  // cabin eave trim
+    cyl(0.08, 0.08, 1.0, -6.45, 0.95, 0, '#2a2018'), box(1.5, 0.06, 0.09, -5.8, 1.35, 0, '#6b4a2a'), cyl(0.12, 0.12, 0.06, -6.45, 1.46, 0, '#c9a24a', 10),   // rudder post and tiller
+    box(0.06, 1.2, 0.8, -5.43, HT + 0.62, 0.45, '#3a2a1c'), box(0.06, 1.2, 0.8, -5.43, HT + 0.62, -0.45, '#3a2a1c'),                    // back cabin doors
+    box(0.5, 0.06, 0.5, -3.1, CY + 0.06, 0, '#cbb68a'),                                                                                   // roof hatch
+    prismGeo(2.7, [[-0.8, 0], [0, 0.78], [0.8, 0]], 3.35, HT),                                                                            // canvas cratch cover over the bow well (coloured below)
+  ];
+  common[common.length - 1] = tint(common[common.length - 1], '#d8d0b4');
+  const chimney = (x) => [cyl(0.085, 0.085, 0.85, x, CY + 0.55, 0, '#1b1b1d', 10), cyl(0.12, 0.12, 0.07, x, CY + 0.2, 0, '#c9a24a', 10), cyl(0.12, 0.09, 0.1, x, CY + 1.0, 0, '#262628', 10)];
+  const roofArch = (hex) => tint(arch(8.4, 0.96, 0.3, -5.4, CY), hex);
+  const planter = (x, z, flower) => [box(0.6, 0.22, 0.28, x, CY + 0.42, z, '#7a4a2a'), ball(0.17, x - 0.17, CY + 0.6, z, '#3f7f37', 0.8), ball(0.17, x + 0.15, CY + 0.6, z + 0.02, '#4a8c3c', 0.8), ball(0.07, x - 0.1, CY + 0.72, z, flower), ball(0.07, x + 0.2, CY + 0.7, z, flower)];
+  const variants = [
+    [roofArch('#e9e1cd'), ...chimney(0.9), ...planter(-3.9, 0.42, '#e8457a'), ...planter(-2.2, -0.4, '#f2c230'), tint(new THREE.TorusGeometry(0.28, 0.07, 6, 12).rotateX(Math.PI / 2).translate(2.2, CY + 0.42, 0.1), '#c9a86a')],
+    [roofArch('#8f969b'), ...chimney(1.1), tint(new THREE.BoxGeometry(1.3, 0.05, 0.8).rotateZ(0.14).translate(-3.8, CY + 0.52, 0), '#1e2c4a'), tint(new THREE.BoxGeometry(1.3, 0.05, 0.8).rotateZ(0.14).translate(-2.3, CY + 0.52, 0), '#1e2c4a'),
+      ...[0, 1, 2, 3, 4].map((k) => tint(new THREE.CylinderGeometry(0.11, 0.11, 1.0, 8).rotateX(Math.PI / 2).translate(2.5, CY + 0.34 + (k > 2 ? 0.18 : 0), -0.3 + (k % 3) * 0.23), '#8a6a42'))],
+    [tint(arch(8.4, 0.96, 0.3, -5.4, CY), '#6aa24a'), ...chimney(1.4), ball(0.34, -3.6, CY + 0.5, 0.2, '#3f8a3a', 0.8), ball(0.28, -2.4, CY + 0.46, -0.3, '#4f9a3f', 0.8), ball(0.3, -0.6, CY + 0.46, 0.3, '#2f7a35', 0.8), cyl(0.05, 0.06, 0.7, 2.3, CY + 0.5, 0, '#5a4430', 6), ball(0.38, 2.3, CY + 1.05, 0, '#3f8a3a', 0.95), ...planter(-1.4, -0.45, '#f08a2c')],
+  ];
+  return { body: mergeGeometries(bodyParts.map((g) => stripUV(g))), common, variants };
+}
+function initBoats() {
+  const G = boatGeometries(), M = (g) => mergeGeometries(g.map((x) => stripUV(x.index ? x.toNonIndexed() : x)));
+  const matBody = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), matDet = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  // windows: small dark panes along both sides, lit warm at night
+  const wins = []; for (let i = 0; i < 6; i++) { const x = -4.5 + i * 1.4; for (const sd of [-1, 1]) { const g = new THREE.BoxGeometry(0.62, 0.52, 0.05).translate(x, 0.62 + 0.9, sd * 0.945); wins.push(stripUV(g.toNonIndexed())); } }
+  const frames = []; for (let i = 0; i < 6; i++) { const x = -4.5 + i * 1.4; for (const sd of [-1, 1]) frames.push(colorize(stripUV(new THREE.BoxGeometry(0.76, 0.66, 0.04).translate(x, 0.62 + 0.9, sd * 0.935).toNonIndexed()), linear('#f1e8d0'))); }
+  const matWin = new THREE.MeshLambertMaterial({ color: '#16253a', emissive: '#ffc15a', emissiveIntensity: 0.05, side: THREE.DoubleSide });
+  const winGeo = mergeGeometries(wins), frameGeo = M([...frames]);
+  const boats = [], rnd = mulberry(2024), PAL = ['#1f4a3a', '#1a3a63', '#7a1f2b', '#2b2b30', '#a86a2c', '#3f6d80', '#6f7f3a', '#b23a30', '#4b2a5c', '#c9922e'];
+  const bridgeNear = (x, z) => Number.isFinite(bridgeAt(x, z));
+  // canals: moored boats along the banks, and cruisers drifting up and down the middle
+  for (const f of world.features) {
+    if (f.kind !== 'canal') continue;
+    const P = f.pts, cum = [0]; for (let i = 2; i < P.length; i += 2) cum.push(cum[cum.length - 1] + Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]));
+    const Ltot = cum[cum.length - 1]; if (Ltot < 60) continue;
+    const at = (s) => { s = clamp(s, 0, Ltot); let i = 1; while (i < cum.length - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), ax = P[(i - 1) * 2], az = P[(i - 1) * 2 + 1], bx = P[i * 2], bz = P[i * 2 + 1], L = Math.hypot(bx - ax, bz - az) || 1; return [ax + (bx - ax) * t, az + (bz - az) * t, (bx - ax) / L, (bz - az) / L]; };
+    const straight = (s) => { const a = at(s - 8), b = at(s + 8); return a[2] * b[2] + a[3] * b[3] > 0.985; };
+    const clearOfBridges = (s0, s1) => { for (let s = s0; s <= s1; s += 6) { const [x, z, tx, tz] = at(s); for (const d of [-8, 0, 8]) if (bridgeNear(x + tx * d, z + tz * d)) return false; } return true; };
+    for (let s = 24 + rnd() * 50; s < Ltot - 24; s += 55 + rnd() * 110) {
+      if (!straight(s) || !clearOfBridges(s - 9, s + 9)) continue;
+      const [x, z, tx, tz] = at(s), side = rnd() < 0.5 ? 1 : -1, off = (f.w / 2 - 2.4) * side;
+      boats.push({ kind: 'moored', x: x - tz * off, z: z + tx * off, yaw: Math.atan2(-tz, tx) + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.34, ph: rnd() * 6.28, smoke: rnd() < 0.55, pri: rnd() });
+    }
+    const nCruise = Math.min(4, Math.floor(Ltot / 480) + (Ltot > 240 ? 1 : 0));
+    for (let k = 0; k < nCruise; k++) for (let tries = 0; tries < 10; tries++) {
+      const span = 140 + rnd() * 140; if (Ltot < span + 20) break; const s0 = 10 + rnd() * (Ltot - span - 20);
+      if (!clearOfBridges(s0, s0 + span)) continue;
+      boats.push({ kind: 'cruise', at, s: s0 + rnd() * span, s0, s1: s0 + span, dir: rnd() < 0.5 ? 1 : -1, w: f.w, sp: 0.8 + rnd() * 0.7, turn: 0, yawFrom: 0, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.85 + rnd() * 0.3, ph: rnd() * 6.28, smoke: true, pri: rnd() }); break;
+    }
+  }
+  // inlets along the south coast: narrow stretches of sea with land close on both sides
+  { const S = 30, cand = [], landD = (x, z, dx, dz) => { for (let d = S; d <= 110; d += S) if (H(x + dx * d, z + dz * d) > 0.4) return d; return 0; };
+    for (let z = 1500; z < 5900; z += S) for (let x = -5600; x < 5200; x += S) {
+      if (H(x, z) > -1.0) continue; const e = landD(x, z, 1, 0), w = landD(x, z, -1, 0), n = landD(x, z, 0, -1), s2 = landD(x, z, 0, 1);
+      if (!((e && w) || (n && s2))) continue; if (e && w && n && s2) continue;
+      const ci = featureAt(x, z, 14); if (ci >= 0 && world.features[ci].kind === 'canal') continue;
+      let best = 0, ba = 0; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 8, dx = Math.cos(a), dz = Math.sin(a); let f1 = 0, f2 = 0; for (let d = 4; d <= 40; d += 4) { if (H(x + dx * d, z + dz * d) > -0.2) break; f1 = d; } for (let d = 4; d <= 40; d += 4) { if (H(x - dx * d, z - dz * d) > -0.2) break; f2 = d; } const sp = Math.min(f1, f2); if (sp > best) { best = sp; ba = a; } }
+      if (best >= 16) cand.push({ x, z, a: ba, pri: rnd() });
+    }
+    cand.sort((a, b) => a.pri - b.pri); const taken = [];
+    for (const c of cand) { if (taken.length >= 40) break; if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 46)) continue; taken.push(c);
+      boats.push({ kind: rnd() < 0.5 ? 'drift' : 'moored', x: c.x, z: c.z, yaw: -c.a + (rnd() < 0.5 ? 0 : Math.PI), ax: Math.cos(c.a), az: Math.sin(c.a), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.8 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); } }
+  boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
+  const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n)); m.frustumCulled = false; m.renderOrder = 6; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
+  const body = mk(G.body, matBody, N); body.castShadow = true; body.receiveShadow = true;
+  const win = mk(winGeo, matWin, N), frame = mk(frameGeo, matDet, N);
+  const col = new THREE.Color(); boats.forEach((b, i) => { col.set(b.tint); body.setColorAt(i, col); });
+  const dets = [0, 1, 2].map((vi) => { const mine = boats.filter((b) => b.v === vi); mine.forEach((b, k) => { b.slot = k; }); return { mesh: mk(M([...G.common, ...G.variants[vi]]), matDet, mine.length), n: mine.length }; });
+  boats.forEach((b, i) => { b.i = i; b.smokeP = [Math.random(), Math.random(), Math.random()]; });
+  // chimney smoke: a few soft grey puffs per boat that has its stove lit
+  const sm = boats.filter((b) => b.smoke), pos = new Float32Array(sm.length * 3 * 3); sm.forEach((b, k) => { b.sk = k; });
+  const tex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 2, 32, 32, 30); g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ map: tex, size: 2.4, sizeAttenuation: true, transparent: true, opacity: 0.26, depthWrite: false, color: '#dcd6cc' })); pts.frustumCulled = false; pts.renderOrder = 12; scene.add(pts);
+  world.boats = { list: boats, body, win, frame, dets, winMat: matWin, pts, pos, smokeN: sm.length, _m: new THREE.Matrix4(), _q: new THREE.Quaternion(), _e: new THREE.Euler(), _p: new THREE.Vector3(), _s: new THREE.Vector3(), _zero: new THREE.Matrix4().makeScale(0, 0, 0) };
+}
+function stepBoats(dt, t) {
+  if (world.boats === undefined) { try { initBoats(); } catch (e) { console.warn('boats failed', e); world.boats = null; } }
+  const W = world.boats; if (!W) return;
+  const cp = camera.position, frac = Q.t.name === 'Low' ? 0.5 : Q.t.name === 'Medium' ? 0.75 : 1, reach = Q.t.name === 'Low' ? 900 : 1800, nShow = Math.ceil(W.list.length * frac);
+  const m = W._m, q = W._q, e = W._e, p = W._p, sc = W._s, water = 0.06 + (world.sea ? world.sea.position.y : 0);
+  const lerpA = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
+  let sk = 0;
+  for (const b of W.list) {
+    let x, z, yaw, roll = 0;
+    if (b.kind === 'cruise') {
+      if (b.turn > 0) { b.turn -= dt / 5; if (b.turn <= 0) b.turn = 0; } else { b.s += b.dir * b.sp * dt; if (b.s > b.s1 || b.s < b.s0) { b.s = clamp(b.s, b.s0, b.s1); b.dir = -b.dir; b.turn = 1; b.yawFrom = b.yaw; } }
+      const [cx, cz, tx, tz] = b.at(b.s), lane = b.dir * b.w * 0.17, tyaw = Math.atan2(-tz * b.dir, tx * b.dir);
+      x = cx - tz * lane; z = cz + tx * lane; b.yaw = b.turn > 0 ? lerpA(b.yawFrom, tyaw, 1 - b.turn) : tyaw; yaw = b.yaw; if (b.turn > 0) roll = 0.03 * Math.sin((1 - b.turn) * Math.PI);
+    } else if (b.kind === 'drift') {
+      const d = Math.sin(t * 0.06 + b.ph) * 16; x = b.x + b.ax * d; z = b.z + b.az * d; yaw = b.yaw + Math.sin(t * 0.1 + b.ph) * 0.12;
+    } else { x = b.x; z = b.z; yaw = b.yaw + Math.sin(t * 0.13 + b.ph) * 0.035; }
+    const near = b.i < nShow && Math.hypot(x - cp.x, z - cp.z) < reach && cp.y < 2500;
+    if (near) {
+      const bob = Math.sin(t * 0.9 + b.ph) * 0.045 + Math.sin(t * 1.7 + b.ph * 2) * 0.015;
+      e.set(Math.sin(t * 0.7 + b.ph) * 0.02 + roll, yaw, Math.sin(t * 0.55 + b.ph * 1.7) * 0.012, 'YXZ'); q.setFromEuler(e); p.set(x, water + bob, z); sc.set(b.len, 1, 1); m.compose(p, q, sc);
+      W.body.setMatrixAt(b.i, m); W.win.setMatrixAt(b.i, m); W.frame.setMatrixAt(b.i, m); W.dets[b.v].mesh.setMatrixAt(b.slot, m);
+    } else { W.body.setMatrixAt(b.i, W._zero); W.win.setMatrixAt(b.i, W._zero); W.frame.setMatrixAt(b.i, W._zero); W.dets[b.v].mesh.setMatrixAt(b.slot, W._zero); }
+    if (b.smoke) {   // three puffs rising from the chimney and drifting off downwind
+      for (let k = 0; k < 3; k++) {
+        const j = (b.sk * 3 + k) * 3;
+        if (!near) { W.pos[j + 1] = -500; continue; }
+        const life = ((t * 0.22 + b.smokeP[k]) % 1), cs = Math.cos(yaw), sn = Math.sin(yaw), lx = 0.9 * b.len, up = 3.3 + life * 4.5;
+        W.pos[j] = x + lx * cs + life * 3.0; W.pos[j + 1] = water + up; W.pos[j + 2] = z - lx * sn + life * 1.2;
+      }
+    }
+  }
+  W.body.instanceMatrix.needsUpdate = true; W.win.instanceMatrix.needsUpdate = true; W.frame.instanceMatrix.needsUpdate = true; for (const d of W.dets) d.mesh.instanceMatrix.needsUpdate = true;
+  W.pts.geometry.attributes.position.needsUpdate = true;
+  W.winMat.emissiveIntensity = 0.04 + NIGHT.value * 1.6;
+}
+
 // ─────────────────────────── per-frame update ───────────────────────────
 const hud = { get needle() { return this._n || (this._n = $('needle')); }, get readout() { return this._r || (this._r = $('readout')); } };
 const _move = new THREE.Vector3(), _desired = new THREE.Vector3(), _look = new THREE.Vector3(), _proj = new THREE.Vector3(), _want = new THREE.Vector3(), _tg = new THREE.Vector3();
@@ -5399,7 +5538,7 @@ function update(dt, t) {
   const alt = Math.max(0, camera.position.y);
   const W0 = WEATHER[wx.name]; const br = (wx.name === 'fog' || wx.name === 'misty') ? 1 + 0.12 * Math.sin(t * 0.23) + 0.07 * Math.sin(t * 0.41 + 1.3) : 1;   // the mist breathes in and out
   scene.fog.near = (1800 + alt * 3) * W0.nearK * br; scene.fog.far = (24000 + alt * 6) * W0.fogK * br;
-  stepWeather(dt, t);
+  stepWeather(dt, t); stepBoats(dt, t);
   WIND.value = t;
   updateGrass(dt);
   updateCull(dt);
