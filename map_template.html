@@ -233,6 +233,13 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 }
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
 #layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#measure-btn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(204px + env(safe-area-inset-top, 0px)); font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center; }
+#measure-btn[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); }
+#measure-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#measure-svg { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
+#measure-label { position: fixed; left: 0; top: 0; z-index: 10; pointer-events: none; padding: 7px 11px; font: 600 14px/1.2 var(--font-ui); color: var(--ink); text-align: center; white-space: nowrap; }
+#measure-label small { display: block; font: 400 11px/1.3 var(--font-ui); color: var(--ink-soft); margin-top: 2px; }
+body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 #layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
 #layers-menu[hidden] { display: none; }
 #layers-menu h4 { margin: 0 4px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
@@ -258,6 +265,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
   #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  #measure-btn { top: calc(144px + env(safe-area-inset-top, 0px)); }
   #search { top: calc(66px + env(safe-area-inset-top, 0px)); width: min(260px, calc(100vw - 32px)); }
   #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
@@ -299,6 +307,8 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
   <ul id="s-list" role="listbox" hidden></ul>
   <div id="s-status" hidden></div>
 </div>
+<button id="measure-btn" class="plaque" type="button" aria-pressed="false" title="Measure a distance (X)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Measure</button>
+<svg id="measure-svg" aria-hidden="true"></svg><div id="measure-label" class="plaque" hidden></div>
 <button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
 <div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
@@ -326,6 +336,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, misty, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
+    <dt>X</dt><dd>Measure: click two points to get the distance in metres</dd>
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
@@ -4514,11 +4525,11 @@ function initPlanInput() {
       if (drag.moved || Math.hypot(dx, dy) > 4) { drag.moved = true; c.classList.add('dragging'); plan.cx -= dx / plan.scale; plan.cz -= dy / plan.scale; drag.x = e.clientX; drag.y = e.clientY; plan.invalidate(); }
       return;
     }
-    const [x, z] = planWorld(e.clientX, e.clientY); setHover(pickAt(x, z, 3 / plan.scale));
+    if (measure.on) { setHover(null); return; } const [x, z] = planWorld(e.clientX, e.clientY); setHover(pickAt(x, z, 3 / plan.scale));
   });
   c.addEventListener('pointerup', (e) => {
     c.classList.remove('dragging');
-    if (drag && !drag.moved) { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale)); }
+    if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale)); } }
     drag = null;
   });
   c.addEventListener('pointerleave', (e) => { if (e.relatedTarget !== $('edit-pill')) setHover(null); });
@@ -4529,6 +4540,46 @@ function initPlanInput() {
   }, { passive: false });
   c.addEventListener('dblclick', (e) => { const [x, z] = planWorld(e.clientX, e.clientY); dropIn(x, z); });
 }
+
+// ─────────────────────────── measuring tool ───────────────────────────
+const measure = { on: false, pts: [], cursor: null };
+function measurePointAt(sx, sy) {
+  if (player.mode === 'plan') { const [x, z] = planWorld(sx, sy); return new THREE.Vector3(x, 0, z); }
+  _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
+  for (const h of raycaster.intersectObjects([...world.tileMeshes.values()], false)) { if (!isSunk(h.object.geometry.attributes.aBid.getX(h.face.a))) return h.point.clone(); }   // roofs and walls count
+  return raycaster.ray.intersectPlane(_ground, _gp) ? _gp.clone() : null;
+}
+function measureClick(sx, sy) {
+  const p = measurePointAt(sx, sy); if (!p) return;
+  if (measure.pts.length >= 2) measure.pts = [];
+  measure.pts.push(p); measure.cursor = null;
+}
+function toggleMeasure(on = !measure.on) {
+  measure.on = on; measure.pts = []; measure.cursor = null;
+  document.body.classList.toggle('measuring', on); $('measure-btn').setAttribute('aria-pressed', String(on));
+  if (on) { setHover(null); select(null); toast('Measure: click a start point, then an end point. Esc or X to finish.'); }
+}
+const fmtM = (m) => m >= 1000 ? `${Math.round(m).toLocaleString()} m (${(m / 1000).toFixed(2)} km)` : m >= 100 ? `${Math.round(m)} m` : `${m.toFixed(1)} m`;
+function placeMeasure() {
+  const svg = $('measure-svg'), lab = $('measure-label');
+  const a = measure.pts[0], b = measure.pts[1] || (measure.pts.length === 1 ? measure.cursor : null);
+  if (!measure.on || !a) { if (svg.firstChild) svg.replaceChildren(); lab.hidden = true; return; }
+  const scr = (p) => {
+    if (player.mode === 'plan') return [(p.x - plan.cx) * plan.scale + innerWidth / 2, (p.z - plan.cz) * plan.scale + innerHeight / 2];
+    _proj.copy(p).project(camera); return _proj.z > 1 ? null : [(_proj.x + 1) / 2 * innerWidth, (1 - _proj.y) / 2 * innerHeight];
+  };
+  const A = scr(a), B = b ? scr(b) : null, NS = 'http://www.w3.org/2000/svg', out = [];
+  const mk = (tag, at) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); out.push(e); };
+  if (A && B) { mk('line', { x1: A[0], y1: A[1], x2: B[0], y2: B[1], stroke: '#fff', 'stroke-width': 6, 'stroke-linecap': 'round', opacity: 0.85 }); mk('line', { x1: A[0], y1: A[1], x2: B[0], y2: B[1], stroke: '#1f57a8', 'stroke-width': 2.5, 'stroke-linecap': 'round', 'stroke-dasharray': measure.pts.length === 2 ? '' : '6 5' }); }
+  for (const P of [A, measure.pts.length === 2 ? B : null]) if (P) { mk('circle', { cx: P[0], cy: P[1], r: 7, fill: '#fff' }); mk('circle', { cx: P[0], cy: P[1], r: 4.5, fill: '#c4462f' }); }
+  svg.replaceChildren(...out);
+  if (A && B) {
+    const dx = b.x - a.x, dz = b.z - a.z, dy = b.y - a.y, hd = Math.hypot(dx, dz), d3 = Math.hypot(dx, dy, dz);
+    lab.innerHTML = `${fmtM(hd)}${Math.abs(dy) > 2 && player.mode !== 'plan' ? `<small>${fmtM(d3)} in a straight line · ${Math.abs(dy).toFixed(1)} m ${dy > 0 ? 'higher' : 'lower'}</small>` : ''}${measure.pts.length === 1 ? '<small>click to set the end point</small>' : ''}`;
+    lab.hidden = false; lab.style.transform = `translate(${Math.round((A[0] + B[0]) / 2)}px, ${Math.round((A[1] + B[1]) / 2 - 18)}px) translate(-50%, -100%)`;
+  } else lab.hidden = true;
+}
+addEventListener('pointermove', (e) => { if (measure.on && measure.pts.length === 1 && e.target && (e.target.id === 'scene' || e.target.id === 'plan')) measure.cursor = measurePointAt(e.clientX, e.clientY); });
 
 // ─────────────────────────── controls ───────────────────────────
 const keys = new Set();
@@ -4667,8 +4718,9 @@ function initControls() {
   addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
-    if (k === 'escape') { if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
     if (k === 'b') toggleBoxTool();
+    if (k === 'x') toggleMeasure();
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
@@ -4692,10 +4744,10 @@ function initControls() {
       if (player.mode !== 'map') { player.yaw -= (e.clientX - drag.x) * 0.005; cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.2, 1.45); drag.x = e.clientX; drag.y = e.clientY; }
       return;
     }
-    const run = () => { lastPick = performance.now(); if (document.body.classList.contains('pegging')) return; setHover(pick3D(e.clientX, e.clientY)); };
+    const run = () => { lastPick = performance.now(); if (document.body.classList.contains('pegging')) return; setHover(measure.on ? null : pick3D(e.clientX, e.clientY)); };
     clearTimeout(pickTimer); if (performance.now() - lastPick > 50) run(); else pickTimer = setTimeout(run, 50);
   });
-  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) select(pick3D(e.clientX, e.clientY)); drag = null; });
+  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else select(pick3D(e.clientX, e.clientY)); } drag = null; });
   canvas.addEventListener('pointerleave', (e) => { clearTimeout(pickTimer); if (e.relatedTarget !== $('edit-pill')) setHover(null); });
   canvas.addEventListener('wheel', (e) => { if (player.mode === 'map') return; e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 2.5, 600); }, { passive: false });
   canvas.addEventListener('dblclick', (e) => {
@@ -4703,6 +4755,7 @@ function initControls() {
     raycaster.setFromCamera(_ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
+  $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
   $('edit-pill').addEventListener('click', (e) => { if (!ui.hover) return; if (e.shiftKey) toggleMulti(ui.hover); else select(ui.hover, { focusPrompt: true }); });
   // the pill floats over the map: let scrolling over it zoom the view underneath
   $('edit-pill').addEventListener('wheel', (e) => {
@@ -4772,7 +4825,7 @@ function update(dt, t) {
   if (player.mode === 'plan') {
     stepAnim(dt, t);
     if (plan.need) drawPlan();
-    placePill();
+    placePill(); placeMeasure();
     const ew = plan.cx / 1000, ns = -plan.cz / 1000;
     hud.readout.textContent = `${Math.abs(ns).toFixed(2)} km ${ns >= 0 ? 'N' : 'S'} · ${Math.abs(ew).toFixed(2)} km ${ew >= 0 ? 'E' : 'W'} · 1 px = ${(1 / plan.scale).toFixed(1)} m`;
     return false;
@@ -4863,7 +4916,7 @@ function update(dt, t) {
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
-  placePill();
+  placePill(); placeMeasure();
   // HUD
   const yawRef = player.mode === 'map' ? controls.target : player.pos, yaw = Math.atan2(camera.position.x - yawRef.x, camera.position.z - yawRef.z);
   hud.needle.setAttribute('transform', `rotate(${(yaw * 180 / Math.PI).toFixed(1)})`);
