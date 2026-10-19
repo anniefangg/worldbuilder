@@ -4742,6 +4742,7 @@ function spawnPoint() {
 
 // 3D picking (BVH-accelerated); sunk buildings are skipped
 const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+const _sandPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.3), _sp = new THREE.Vector3();
 const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(LAND_Y + 0.25)), _gp = new THREE.Vector3();
 function pick3D(sx, sy) {   // a building under the cursor, else the park, street, canal… on the ground
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
@@ -4749,6 +4750,9 @@ function pick3D(sx, sy) {   // a building under the cursor, else the park, stree
   for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return layers.building ? world.buildings[idx].id : null; }   // a building you can't pick still blocks the click
   if (!raycaster.ray.intersectPlane(_ground, _gp)) return null;
   const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol, true);
+  if (f >= 0 && world.features[f].kind !== 'beach') return world.features[f].id;
+  // sand lies lower than the street plane, so at a low angle the ray meets it a little further on: look there too
+  if (raycaster.ray.intersectPlane(_sandPlane, _sp)) { const g = featureAt(_sp.x, _sp.z, tol, true); if (g >= 0 && world.features[g].kind === 'beach') return world.features[g].id; }
   return f >= 0 ? world.features[f].id : null;
 }
 
