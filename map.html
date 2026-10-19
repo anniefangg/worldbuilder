@@ -4770,21 +4770,38 @@ function bellStrike(C, t0, f0, gain) {
     o.connect(g); g.connect(out); o.start(t0); o.stop(t0 + d * 1.1 + 0.3);
   }
 }
+function thunderBus(C) {
+  // a soft-clipper adds harmonics, so the low rumble still comes through laptop and phone speakers that can't reproduce deep bass
+  if (!AUD.sat) { const n = 2048, cv = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = Math.tanh(x * 2.6); } AUD.sat = C.createWaveShaper(); AUD.sat.curve = cv; AUD.satG = C.createGain(); AUD.satG.gain.value = 0.62; AUD.sat.connect(AUD.satG); AUD.satG.connect(AUD.sfxBus); AUD.satG.connect(AUD.verbIn); }
+  return AUD.sat;
+}
+function rumble(C, start, dur, f1, f2, gain, pan) {   // one long rolling swell of low noise: a quick rise, a slow irregular decay, a darkening tone
+  const s = C.createBufferSource(); s.buffer = AUD.pink; s.loop = true;
+  const lp = C.createBiquadFilter(), hp = C.createBiquadFilter(), g = C.createGain(); lp.type = 'lowpass'; lp.Q.value = 0.8; hp.type = 'highpass'; hp.frequency.value = 34;
+  lp.frequency.setValueAtTime(f1, start); lp.frequency.exponentialRampToValueAtTime(f2, start + dur);
+  const N = 128, cv = new Float32Array(N), ph = [0, 1, 2].map(() => Math.random() * 6.28), fr = [rndR(0.3, 0.6), rndR(0.8, 1.5), rndR(1.7, 3.0)];
+  for (let i = 0; i < N; i++) { const x = i / (N - 1), t = x * dur, env = x < 0.09 ? Math.pow(x / 0.09, 1.4) : Math.exp(-(x - 0.09) * 3.4), roll = 0.62 + 0.38 * (0.5 * Math.sin(ph[0] + 6.283 * fr[0] * t) + 0.3 * Math.sin(ph[1] + 6.283 * fr[1] * t) + 0.2 * Math.sin(ph[2] + 6.283 * fr[2] * t)); cv[i] = Math.max(0.0001, gain * env * roll); }
+  g.gain.value = 0; g.gain.setValueCurveAtTime(cv, start, dur);
+  s.connect(lp); lp.connect(hp); hp.connect(g);
+  if (C.createStereoPanner) { const pn = C.createStereoPanner(); pn.pan.value = pan; g.connect(pn); pn.connect(thunderBus(C)); } else g.connect(thunderBus(C));
+  s.start(start, Math.random() * 3); s.stop(start + dur + 0.6);
+}
+function crack(C, t0, gain) {   // the tearing snap of a close strike: a burst of crackle that dies away fast
+  const s = C.createBufferSource(); s.buffer = AUD.noise; s.loop = true;
+  const hp = C.createBiquadFilter(), lp = C.createBiquadFilter(), g = C.createGain(); hp.type = 'highpass'; hp.frequency.value = 900; lp.type = 'lowpass'; lp.Q.value = 0.7; lp.frequency.setValueAtTime(7000, t0); lp.frequency.exponentialRampToValueAtTime(900, t0 + 0.9);
+  g.gain.value = 0.0001; let t = t0; for (let k = 0; k < 12; k++) { t += rndR(0.012, 0.07); g.gain.setValueAtTime(gain * Math.random() * Math.exp(-k * 0.16), t); g.gain.setTargetAtTime(0.0001, t + 0.004, 0.02); }
+  s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(thunderBus(C)); s.start(t0, Math.random() * 3); s.stop(t0 + 1.4);
+}
 function thunder(delay) {
   AUD.thunders = (AUD.thunders || 0) + 1;
   if (!AUD.sfx || !AUD.ctx) return;
-  const C = AUD.ctx, t0 = C.currentTime + delay, far = clamp(delay / 3.5, 0, 1);
-  // a soft-clipper adds harmonics, so the low rumble still comes through laptop and phone speakers that can't reproduce deep bass
-  if (!AUD.sat) { const n = 2048, cv = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; cv[i] = Math.tanh(x * 3.2); } AUD.sat = C.createWaveShaper(); AUD.sat.curve = cv; AUD.satG = C.createGain(); AUD.satG.gain.value = 0.55; AUD.sat.connect(AUD.satG); AUD.satG.connect(AUD.sfxBus); AUD.satG.connect(AUD.verbIn); }
-  const mk = (start, len, f1, f2, gain) => {
-    const s = C.createBufferSource(); s.buffer = AUD.pink; s.loop = true; const lp = C.createBiquadFilter(), hp = C.createBiquadFilter(), g = C.createGain(); lp.type = 'lowpass'; lp.Q.value = 0.9; hp.type = 'highpass'; hp.frequency.value = 38;
-    lp.frequency.setValueAtTime(f1, start); lp.frequency.exponentialRampToValueAtTime(f2, start + len);
-    g.gain.setValueAtTime(0.0001, start); g.gain.linearRampToValueAtTime(gain, start + Math.min(0.35, len * 0.25)); g.gain.setTargetAtTime(0.0001, start + len * 0.4, len * 0.28);
-    s.connect(lp); lp.connect(hp); hp.connect(g); g.connect(AUD.sat); s.start(start, Math.random() * 3); s.stop(start + len + 1.2);
-  };
-  if (far < 0.55) mk(t0, 0.9, 6000, 500, 1.6 * (1 - far));          // the crack, when it's close
-  let t = t0 + 0.05; const rolls = 5 + ((Math.random() * 4) | 0);       // then the long rolling rumble
-  for (let i = 0; i < rolls; i++) { mk(t, rndR(1.8, 3.8), rndR(650, 1100), rndR(110, 170), rndR(0.8, 1.4) * (1 - far * 0.4) * (1 - i * 0.06)); t += rndR(0.4, 1.3); }
+  const C = AUD.ctx, t0 = C.currentTime + delay, far = clamp(delay / 3.6, 0, 1), soft = 1 - far * 0.35;
+  if (far < 0.55) crack(C, t0, 1.5 * (1 - far));
+  rumble(C, t0 + 0.03, rndR(7, 12), rndR(650, 950) * soft, rndR(70, 105), 1.7 * soft, rndR(-0.3, 0.3));       // the main roll
+  const echoes = 1 + ((Math.random() * 3) | 0);                                                               // then the sky rolling it on, further off
+  for (let i = 0; i < echoes; i++) rumble(C, t0 + rndR(1.3, 4.8), rndR(4.5, 8.5), rndR(420, 700) * soft, rndR(65, 95), 0.95 * soft * Math.pow(0.78, i), rndR(-0.8, 0.8));
+  const sub = C.createOscillator(), sg = C.createGain(); sub.type = 'triangle'; sub.frequency.setValueAtTime(rndR(48, 62), t0); sub.frequency.exponentialRampToValueAtTime(32, t0 + 7);   // the felt boom underneath
+  sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 function audioTick() {
   const C = AUD.ctx; if (!C || C.state !== 'running') return;
