@@ -5359,11 +5359,14 @@ function initBoats() {
     const P = f.pts, cum = [0]; for (let i = 2; i < P.length; i += 2) cum.push(cum[cum.length - 1] + Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]));
     const Ltot = cum[cum.length - 1]; if (Ltot < 60) continue;
     const at = (s) => { s = clamp(s, 0, Ltot); let i = 1; while (i < cum.length - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), ax = P[(i - 1) * 2], az = P[(i - 1) * 2 + 1], bx = P[i * 2], bz = P[i * 2 + 1], L = Math.hypot(bx - ax, bz - az) || 1; return [ax + (bx - ax) * t, az + (bz - az) * t, (bx - ax) / L, (bz - az) / L]; };
+    const others = world.features.filter((g) => g.kind === 'canal' && g !== f);   // junctions stay clear of boats
+    const nearOther = (px, pz) => others.some((g) => px > g.bbox[0] - 10 && px < g.bbox[2] + 10 && pz > g.bbox[1] - 10 && pz < g.bbox[3] + 10 && distToLine(g.pts, px, pz) < g.w / 2 + 6);
     const straight = (s) => { const a = at(s - 8), b = at(s + 8); return a[2] * b[2] + a[3] * b[3] > 0.985; };
     const clearOfBridges = (s0, s1) => { for (let s = s0; s <= s1; s += 6) { const [x, z, tx, tz] = at(s); for (const d of [-8, 0, 8]) if (bridgeNear(x + tx * d, z + tz * d)) return false; } return true; };
     for (const side of [1, -1]) for (let s = 14 + rnd() * 20; s < Ltot - 14; s += 15.5 + rnd() * 8) {   // a moored boat every 15-24 m along both banks
       if (rnd() < 0.08 || !straight(s) || !clearOfBridges(s - 9, s + 9)) continue;
       const [x, z, tx, tz] = at(s), off = (f.w / 2 - 1.5) * side;
+      if ([-8, 0, 8].some((d) => nearOther(x - tz * off + tx * d, z + tx * off + tz * d))) continue;
       boats.push({ kind: 'moored', x: x - tz * off, z: z + tx * off, yaw: Math.atan2(-tz, tx) + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.34, ph: rnd() * 6.28, smoke: rnd() < 0.55, pri: rnd() });
     }
   }
