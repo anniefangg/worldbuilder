@@ -183,6 +183,10 @@ body.tray-open #info { display: none; }
 #info input.canopy { width: 100%; accent-color: #2f7f4f; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 #info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
+#peg { position: fixed; left: 0; top: 0; width: 38px; height: 38px; border-radius: 50%; background: var(--azulejo); display: grid; place-items: center; z-index: 30; pointer-events: none; box-shadow: 0 6px 18px rgba(18, 50, 63, 0.35); border: 2px solid #fff; }
+#peg[hidden], #peg-ring[hidden] { display: none; }
+#peg-ring { position: fixed; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #ffd36b; box-shadow: 0 0 0 2px rgba(18, 50, 63, 0.4), 0 0 14px rgba(255, 211, 107, 0.8); z-index: 29; pointer-events: none; }
+body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing !important; }
 #search { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); width: min(300px, calc(100vw - 32px)); padding: 7px; box-sizing: border-box; z-index: 9; display: grid; gap: 6px; }
 #search .sbox { display: flex; align-items: center; gap: 4px; }
 #search input[type=search] { flex: 1; min-width: 0; font: 400 13.5px/1.2 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 28px 8px 10px; -webkit-appearance: none; appearance: none; }
@@ -310,6 +314,7 @@ body.tray-open #info { display: none; }
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
+    <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
@@ -1263,6 +1268,40 @@ function eaveBand(geo, R, d, yEave, yBot, colF, colS) {
 }
 const _cF = new THREE.Color(), _cK = new THREE.Color(), CHIMNEY_CAP = linear('#9c4a32'), TANK = linear('#2b2f33'), POT = linear('#b4643f'), GREENS = ['#3e7f34', '#4f9a3c', '#356f31', '#5c9e3a'].map(linear);
 // little things on the roof: chimneys on tiles; stair huts, water tanks, antennas and potted plants on terraces
+const WOOD = linear('#8c5a32'), WOOD_L = linear('#b88650'), PARASOL = ['#e9b44c', '#d7503c', '#3f78a8', '#f4c9d4', '#6bb3a2', '#f3efe4'].map(linear), PLANTER = linear('#a9582f');
+// the green roof or timber terrace: shrubs and little trees on a lawn; a pergola, table, chairs and parasols on the deck; planters round the edge
+function roofGarden(geo, rec, top, rnd, spot, at) {
+  const garden = rec.roofKind === 'garden', y0 = top + 0.05;
+  const n = clamp(Math.round(rec.area / (garden ? 24 : 40)), 2, garden ? 22 : 12);
+  for (let k = 0; k < n; k++) {                                          // shrubs and flower beds
+    const p = spot(0.9); if (!p) continue; const r = 0.32 + rnd() * 0.4;
+    blossom(geo, p[0], y0 + r * 0.55, p[1], r, rnd() < (garden ? 0.3 : 0.45) ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
+  }
+  const nTrees = garden ? (rec.area > 140 ? 1 + ((rnd() * 3) | 0) : rnd() < 0.5 ? 1 : 0) : (rnd() < 0.5 ? 1 : 0);
+  for (let k = 0; k < nTrees; k++) {                                     // small trees in tubs
+    const p = spot(1.3); if (!p) continue; const f = at(p[0], p[1]), h = 1.3 + rnd() * 0.9;
+    boxW(geo, f, -0.45, 0.45, -0.45, 0.45, y0, y0 + 0.45, PLANTER); boxW(geo, f, -0.07, 0.07, -0.07, 0.07, y0 + 0.45, y0 + 0.45 + h, WOOD);
+    blossom(geo, p[0], y0 + 0.45 + h + 0.5, p[1], 0.85 + rnd() * 0.4, rnd() < 0.25 ? BLOOMS[(rnd() * BLOOMS.length) | 0] : GREENS[(rnd() * GREENS.length) | 0]);
+  }
+  if (!garden || rnd() < 0.3) {                                          // pergola with a table and chairs
+    const p = spot(2.2); if (p) {
+      const f = at(p[0], p[1]), w = 1.7, d = 1.3, h = 2.35;
+      for (const [sx, sz] of [[-w, -d], [w, -d], [-w, d], [w, d]]) boxW(geo, f, sx - 0.05, sx + 0.05, sz - 0.05, sz + 0.05, y0, y0 + h, WOOD);
+      for (const sz of [-d, d]) boxW(geo, f, -w - 0.15, w + 0.15, sz - 0.07, sz + 0.07, y0 + h, y0 + h + 0.12, WOOD);
+      for (let t = -w; t <= w + 0.01; t += 0.42) boxW(geo, f, t - 0.04, t + 0.04, -d - 0.15, d + 0.15, y0 + h + 0.12, y0 + h + 0.2, WOOD_L);
+      blossom(geo, p[0] + 0.9, y0 + h + 0.45, p[1], 0.5, GREENS[(rnd() * GREENS.length) | 0]);
+      boxW(geo, f, -0.6, 0.6, -0.4, 0.4, y0 + 0.72, y0 + 0.78, WOOD_L);
+      for (const [lx, lz] of [[-0.5, -0.32], [0.5, -0.32], [-0.5, 0.32], [0.5, 0.32]]) boxW(geo, f, lx - 0.03, lx + 0.03, lz - 0.03, lz + 0.03, y0, y0 + 0.72, IRON);
+      for (const sz of [-0.75, 0.75]) { boxW(geo, f, -0.3, 0.3, sz - 0.22, sz + 0.22, y0 + 0.42, y0 + 0.47, WOOD); boxW(geo, f, -0.3, 0.3, sz - 0.22 * Math.sign(sz) * 1.0, sz - 0.2 * Math.sign(sz), y0 + 0.47, y0 + 0.95, WOOD); }
+    }
+  }
+  const nPar = rnd() < 0.6 ? 1 + ((rnd() * 2) | 0) : 0;
+  for (let k = 0; k < nPar; k++) {                                       // parasols and a lounger
+    const p = spot(1.4); if (!p) continue; const f = at(p[0], p[1]), c = PARASOL[(rnd() * PARASOL.length) | 0];
+    boxW(geo, f, -0.03, 0.03, -0.03, 0.03, y0, y0 + 2.3, IRON); boxW(geo, f, -1.1, 1.1, -1.1, 1.1, y0 + 2.2, y0 + 2.28, c); boxW(geo, f, -0.6, 0.6, -0.6, 0.6, y0 + 2.28, y0 + 2.36, c);
+    boxW(geo, f, -0.35, 0.35, 1.2, 1.3, y0, y0 + 0.4, WOOD_L); boxW(geo, f, -0.35, 0.35, 1.3, 2.0, y0 + 0.28, y0 + 0.36, WOOD_L);
+  }
+}
 function roofClutter(geo, rec, s, top, pitched, ridge) {
   const rnd = mulberry(rec.seed ^ 0x2c1b3c6d), f0 = longestEdge(rec), dx = (f0.bx - f0.ax) / f0.L, dz = (f0.bz - f0.az) / f0.L;
   const at = (x, z) => ({ ax: x, az: z, bx: x + dx, bz: z + dz, L: 1, nx: f0.nx, nz: f0.nz });
@@ -1281,6 +1320,7 @@ function roofClutter(geo, rec, s, top, pitched, ridge) {
   }
   if (rec.area < 30) return;
   _cK.copy(linear(s.wall));
+  if (rec.roofKind) { roofGarden(geo, rec, top, rnd, spot, at); if (rnd() < 0.3) { const p = spot(1.8); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -1.1, 1.1, -1.1, 1.1, top, top + 2.4, _cK); boxW(geo, f, -1.25, 1.25, -1.25, 1.25, top + 2.4, top + 2.55, _cP.copy(_cK).lerp(WHITE_LIME, 0.6)); } } return; }
   if (rnd() < 0.45) { const p = spot(1.8); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -1.1, 1.1, -1.1, 1.1, top, top + 2.4, _cK); boxW(geo, f, -1.25, 1.25, -1.25, 1.25, top + 2.4, top + 2.55, _cP.copy(_cK).lerp(WHITE_LIME, 0.6)); } }
   if (rnd() < 0.35) { const p = spot(1.2); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -0.6, 0.6, -0.6, 0.6, top, top + 0.5, IRON); boxW(geo, f, -0.55, 0.55, -0.55, 0.55, top + 0.5, top + 1.6, rnd() < 0.5 ? TANK : _cP.set(0.85, 0.86, 0.84)); } }
   if (rnd() < 0.4) { const p = spot(0.6); if (p) { const f = at(p[0], p[1]); boxW(geo, f, -0.03, 0.03, -0.03, 0.03, top, top + 3.2, IRON); boxW(geo, f, -0.7, 0.7, -0.02, 0.02, top + 2.7, top + 2.74, IRON); boxW(geo, f, -0.5, 0.5, -0.02, 0.02, top + 3.0, top + 3.04, IRON); } }
@@ -1336,6 +1376,19 @@ function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
     }
   }
 }
+// the footprint pulled in by d metres (for a lawn or deck inside the parapet); null when the shape is too fiddly to inset cleanly
+function insetFootprint(r, d, area) {
+  const n = r.length / 2, sgn = ringArea(r) > 0 ? 1 : -1, off = ringOffsets({ pts: r, nrm: new Array(n).fill(null), sgn }), pts = [];
+  for (let k = 0; k < n; k++) { const x = r[k * 2] - off[k][0] * d, z = r[k * 2 + 1] - off[k][1] * d; const m = pts.length; if (m && Math.hypot(x - pts[m - 2], z - pts[m - 1]) < 0.35) continue; pts.push(x, z); }
+  if (pts.length >= 6 && Math.hypot(pts[0] - pts[pts.length - 2], pts[1] - pts[pts.length - 1]) < 0.35) pts.length -= 2;
+  if (pts.length < 6) return null;
+  for (let i = 0; i < pts.length; i += 2) if (!pointInRings(pts[i], pts[i + 1], [r])) return null;
+  const pa = Math.abs(ringArea(pts)); if (pa < area * 0.3) return null;
+  const loop = []; for (let i = 0; i < pts.length; i += 2) loop.push(new THREE.Vector2(pts[i], pts[i + 1]));
+  const tris = THREE.ShapeUtils.triangulateShape(loop, []); let cover = 0;
+  for (const t of tris) { const A = loop[t[0]], B = loop[t[1]], C = loop[t[2]]; cover += Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2; }
+  return cover > pa * 0.97 ? pts : null;   // a triangulation that misses part of the shape means the inset folded over itself
+}
 function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes (separate, distance-culled meshes)
   const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0], RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
@@ -1367,7 +1420,7 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
       }
     }
   }
-  let ridge = null;
+  let ridge = null; rec.roofKind = null;
   if (pitched) {
     // terracotta with real eaves: true hips where the footprint allows, otherwise a low tiled roof over the whole footprint
     _cR.copy(linear(s.roof || s.tileRoof)).multiplyScalar(0.9 + ((rec.seed >>> 3) % 20) / 100);
@@ -1391,6 +1444,16 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     // roof terraces: lime-wash or terracotta pavers, tinted toward the façade colour
     if (s.roof) _cR.copy(linear(s.roof)); else _cR.copy(linear(s.flatRoof)).lerp(cWall, 0.3);
     polyFlat(geo, RR.map((R) => R.pts), top, _cR, [0, 0, -5, 0]);
+    // roof gardens and timber terraces on plenty of flat roofs (never over a roof colour somebody chose for that building)
+    rec.roofKind = null;
+    if (!s.roof && !neo && rings.length === 1 && area > 55) {
+      const pick = ((rec.seed >>> 7) % 1000) / 10, kind = pick < 34 ? 'garden' : pick < 54 ? 'deck' : null;
+      if (kind) {
+        const ins = insetFootprint(outer, 1.05, area);
+        const ok = !!ins;
+        if (ok) { rec.roofKind = kind; polyFlat(geo, [ins], top + 0.05, kind === 'garden' ? _cP.set('#5a9f3e') : _cP.set('#a9794b'), [0, 0, kind === 'garden' ? -8 : -9, 0]); }
+      }
+    }
   }
   roofClutter(dg, rec, s, top, pitched, ridge);
   // front doors: a stone stoop and a wrought-iron lantern over each
@@ -1690,6 +1753,13 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
         lantern = (1.0 - smoothstep(0.0, 9.0, v)) * step(0.0, v);                // warm wash from street lamps and doorways
         float dl = step(-0.5, doorBay) * step(abs(col - doorBay), 0.5);           // the door lantern's pool of light on the wall
         lantern += dl * 1.1 * exp(-(xm * xm * 0.6 + (v - 3.1) * (v - 3.1) * 0.5)) * ground;
+      } else if (vWall.z < -8.5) {                     // timber deck: boards with dark gaps
+        float bd = vWP.x / 0.17, gap = step(0.9, fract(bd));
+        diffuseColor.rgb *= (0.8 + 0.32 * h21(vec2(floor(bd), floor(vWP.z / 2.3)))) * (1.0 - 0.4 * gap);
+      } else if (vWall.z < -7.5) {                     // roof garden lawn with a scatter of flowers
+        float fl = h21(floor(vWP.xz * 4.0) + 7.0);
+        diffuseColor.rgb *= (camD < 300.0 ? 0.8 + 0.34 * vn2(vWP.xz * 1.6) + 0.12 * (vn2(vWP.xz * 9.0) - 0.5) : 0.95);
+        if (fl > 0.955) diffuseColor.rgb = mix(diffuseColor.rgb, fl > 0.98 ? vec3(0.95, 0.8, 0.2) : vec3(0.85, 0.3, 0.55), 0.85);
       } else if (vWall.z < -6.5) {                     // leaves and blossoms: dappled light and dark, with bright flecks
         float sp = h31(floor(vWP * 8.0)), sp2 = h31(floor(vWP * 17.0) + 3.0);
         diffuseColor.rgb *= 0.62 + 0.62 * sp;
@@ -4150,6 +4220,70 @@ function pick3D(sx, sy) {   // a building under the cursor, else the park, stree
   return f >= 0 ? world.features[f].id : null;
 }
 
+// ---- drag the Walk button onto a street (like Street View's little person) to start walking right there, facing along it
+function nearestRoad(x, z, maxD) {
+  let best = null; const cx = Math.floor(x / FGRID), cz = Math.floor(z / FGRID), seen = new Set();
+  for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (const idx of world.fGrid.get(gkey(cx + a + 2000, cz + b + 2000)) || []) {
+    if (seen.has(idx)) continue; seen.add(idx);
+    const f = world.features[idx]; if (f.kind !== 'street' && f.kind !== 'path') continue;
+    const P = f.pts;
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, L2 = dx * dx + dz * dz, len = Math.sqrt(L2); if (len < 0.01) continue;
+      const t = clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1), px = ax + dx * t, pz = az + dz * t, d = Math.hypot(x - px, z - pz);
+      if (d < maxD && (!best || d < best.d)) best = { f, x: px, z: pz, d, tx: dx / len, tz: dz / len };
+    }
+  }
+  return best;
+}
+function initPegman() {
+  const btn = $('mode-walk'), ghost = el('div', { id: 'peg', hidden: true }), ring = el('div', { id: 'peg-ring', hidden: true });
+  ghost.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="5.2" r="2.6" fill="#fff"/><path d="M12 9c-2.4 0-3.6 1.4-3.8 3.3l-.6 4.4h2.2l.5 5.3h3.4l.5-5.3h2.2l-.6-4.4C15.6 10.4 14.4 9 12 9z" fill="#fff"/></svg>';
+  document.body.append(ghost, ring);
+  btn.title = 'Walk — or drag me onto a street to start walking there';
+  let st = null, spot = null;
+  const over = (cx, cy) => { const e = document.elementFromPoint(cx, cy); return e === canvas || e === plan.canvas; };
+  const aim = (cx, cy) => {
+    if (!over(cx, cy)) return null;
+    let x, z, r;
+    if (player.mode === 'plan') { [x, z] = planWorld(cx, cy); r = clamp(26 / plan.scale, 6, 400); }
+    else { _ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera); if (!raycaster.ray.intersectPlane(_ground, _gp)) return null; x = _gp.x; z = _gp.z; r = clamp(camera.position.distanceTo(_gp) / 22, 10, 140); }
+    const road = nearestRoad(x, z, r);
+    if (road) return { x: road.x, z: road.z, road };
+    return H(x, z) > 0.4 ? { x, z, road: null } : null;
+  };
+  const end = () => { st = null; spot = null; ghost.hidden = ring.hidden = true; document.body.classList.remove('pegging'); setFeatureFx('drop', null); };
+  btn.addEventListener('pointerdown', (e) => { if (e.button === 0) st = { id: e.pointerId, x: e.clientX, y: e.clientY, drag: false }; });
+  addEventListener('pointermove', (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    if (!st.drag) { if (Math.hypot(e.clientX - st.x, e.clientY - st.y) < 8) return; st.drag = true; ghost.hidden = false; document.body.classList.add('pegging'); setHover(null); }
+    ghost.style.transform = `translate(${e.clientX - 19}px, ${e.clientY - 19}px)`;
+    spot = aim(e.clientX, e.clientY);
+    setFeatureFx('drop', spot && spot.road ? spot.road.f : null);
+    if (spot) {
+      let sx, sy; if (player.mode === 'plan') { sx = (spot.x - plan.cx) * plan.scale + innerWidth / 2; sy = (spot.z - plan.cz) * plan.scale + innerHeight / 2; }
+      else { _proj.set(spot.x, H(spot.x, spot.z) + 0.3, spot.z).project(camera); sx = (_proj.x + 1) / 2 * innerWidth; sy = (1 - _proj.y) / 2 * innerHeight; }
+      ring.hidden = false; ring.style.transform = `translate(${Math.round(sx) - 15}px, ${Math.round(sy) - 15}px)`;
+    } else ring.hidden = true;
+  });
+  const up = (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    const was = st; const where = spot; end();
+    if (!was.drag) return;
+    suppress = true; setTimeout(() => { suppress = false; }, 0);
+    if (!where) { toast('Drop me on land, or right onto a street.'); return; }
+    let yaw = player.yaw;
+    if (where.road) {
+      const fw = camera.getWorldDirection(_move); const fx = player.mode === 'plan' ? 0 : fw.x, fz = player.mode === 'plan' ? -1 : fw.z, s = where.road.tx * fx + where.road.tz * fz >= 0 ? 1 : -1;
+      yaw = Math.atan2(where.road.tx * s, where.road.tz * s);
+    }
+    dropIn(where.x, where.z); player.yaw = yaw; cam.yaw = yaw; cam.pitch = 0.3;
+    toast(where.road ? `Walking ${nameOf(where.road.f.id).toLowerCase()}.` : 'Dropped in.');
+  };
+  let suppress = false;
+  addEventListener('pointerup', up); addEventListener('pointercancel', () => end());
+  btn.addEventListener('click', (e) => { if (suppress) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && st && st.drag) { end(); e.stopPropagation(); } }, true);
+}
 function initControls() {
   controls = new MapControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = 0.08; controls.screenSpacePanning = false;
@@ -4182,7 +4316,7 @@ function initControls() {
       if (player.mode !== 'map') { player.yaw -= (e.clientX - drag.x) * 0.005; cam.pitch = clamp(cam.pitch + (e.clientY - drag.y) * 0.004, -0.2, 1.45); drag.x = e.clientX; drag.y = e.clientY; }
       return;
     }
-    const run = () => { lastPick = performance.now(); setHover(pick3D(e.clientX, e.clientY)); };
+    const run = () => { lastPick = performance.now(); if (document.body.classList.contains('pegging')) return; setHover(pick3D(e.clientX, e.clientY)); };
     clearTimeout(pickTimer); if (performance.now() - lastPick > 50) run(); else pickTimer = setTimeout(run, 50);
   });
   canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) select(pick3D(e.clientX, e.clientY)); drag = null; });
@@ -4201,7 +4335,7 @@ function initControls() {
   }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
-  initLayers(); initSearch();
+  initLayers(); initSearch(); initPegman();
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
