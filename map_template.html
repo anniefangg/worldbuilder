@@ -5377,14 +5377,26 @@ function initBoats() {
       const gx = H(x + 3, z) - H(x - 3, z), gz = H(x, z + 3) - H(x, z - 3), gl = Math.hypot(gx, gz); if (gl < 0.02) continue;
       const ci = featureAt(x, z, 14); if (ci >= 0 && world.features[ci].kind === 'canal') continue;
       const nx = gx / gl, nz = gz / gl;                                             // points toward the land; the boat lies along the shore
-      cand.push({ x, z, yaw: Math.atan2(-nx, -nz), pri: rnd() });
+      cand.push({ x, z, nx, nz, dmin, pri: rnd() });
     }
-    cand.sort((a, b) => a.pri - b.pri); const grid = new Map(), cell = 17; let placed = 0;
+    // marinas: boats nose-in to the quay, side by side, then more rows stepping out into the water
+    cand.sort((a, b) => a.pri - b.pri);
+    const centres = []; for (const c of cand) { if (centres.length >= 30) break; if (centres.every((m) => Math.hypot(m.x - c.x, m.z - c.z) > 120)) centres.push(c); }
+    const occ = new Set(), okey = (x, z) => (Math.floor(x / 1.5) + 20000) * 40000 + Math.floor(z / 1.5) + 20000, anchors = new Map(); let placed = 0;
+    const rectCells = (cx, cz, ax, az, L, W) => { const out = []; for (let u = -L / 2; u <= L / 2; u += 1.4) for (let v = -W / 2; v <= W / 2; v += 1.1) out.push(okey(cx + ax * u - az * v, cz + az * u + ax * v)); return out; };
     for (const c of cand) {
-      if (placed >= 700) break; const kx = Math.floor(c.x / cell), kz = Math.floor(c.z / cell); let clash = false;
-      for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1 && !clash; b++) for (const t of grid.get((kx + a) + ',' + (kz + b)) || []) if (Math.hypot(t.x - c.x, t.z - c.z) < 16.5) { clash = true; break; }
-      if (clash) continue; const key = kx + ',' + kz; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(c); placed++;
-      boats.push({ kind: 'moored', x: c.x, z: c.z, yaw: c.yaw + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true });
+      if (placed >= 850) break; if (!centres.some((m) => Math.hypot(m.x - c.x, m.z - c.z) < 34)) continue;
+      const kx = Math.floor(c.x / 3.8), kz = Math.floor(c.z / 3.8); let clash = false;
+      for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1; b++) for (const t of anchors.get((kx + a) + ',' + (kz + b)) || []) if (Math.hypot(t.x - c.x, t.z - c.z) < 3.7) { clash = true; break; }
+      if (clash || rnd() < 0.1) continue; const key = kx + ',' + kz; if (!anchors.has(key)) anchors.set(key, []); anchors.get(key).push(c);
+      const ex = c.x + c.nx * c.dmin, ez = c.z + c.nz * c.dmin, lenK = 0.92 + rnd() * 0.1, Lb = 14 * lenK, yaw = Math.atan2(-c.nz, c.nx);   // the quay edge in front of this boat; the bow points at it
+      for (let r = 0; r < 4; r++) {
+        const d = 0.8 + Lb / 2 + r * (Lb + 2.6), bx = ex - c.nx * d, bz = ez - c.nz * d; let water = true;
+        for (const [du, dv] of [[0, 0], [-Lb / 2, 0], [0, 1.4], [0, -1.4], [-Lb / 2, -1.2], [Lb / 2 - 1.5, 0.9]]) if (H(bx + c.nx * du - c.nz * dv, bz + c.nz * du + c.nx * dv) > -0.1) { water = false; break; }   // afloat all along, the bow just touching the quay
+        if (!water) break;
+        const cells = rectCells(bx, bz, c.nx, c.nz, Lb, 2.3); if (cells.some((k) => occ.has(k))) break; cells.forEach((k) => occ.add(k));
+        boats.push({ kind: 'moored', x: bx, z: bz, yaw, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: lenK, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); placed++;
+      }
     } }
   boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
   const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n)); m.frustumCulled = false; m.renderOrder = 6; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
