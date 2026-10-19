@@ -4812,7 +4812,7 @@ function thunder(delay) {
   sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 // ─────────────────────────── ambience that follows the place ───────────────────────────
-// Birdsong, rustling trees, fountains and canals, rain on roofs, fog muffling and a foghorn, owls, a distant song, a fire, a dawn rooster,
+// Birdsong, rustling trees, fountains and canals, rain on roofs, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
 // reverb that depends on how enclosed the street is, a muffled underwater world, and wind and whooshes while flying.
 function ambienceInit(C) {
   const bus = (g) => { const n = C.createGain(); n.gain.value = g; return n; };
@@ -4838,7 +4838,7 @@ function ambienceInit(C) {
   AUD.roar = bus(0); AUD.roarBP = filt('bandpass', 320, 0.6); chain(loop(AUD.pink), [AUD.roarBP], AUD.roar); AUD.roar.connect(AUD.sfxBus);
   // fog: a low-pass on the whole sound bed, and a foghorn with its own long echoes
   AUD.horn = bus(1); { const d = C.createDelay(3); d.delayTime.value = 1.15; const fb = bus(0.42), lp = filt('lowpass', 520, 0.5); AUD.horn.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(AUD.sfxBus); AUD.horn.connect(AUD.sfxBus); AUD.horn.connect(AUD.verbIn); }
-  AUD.nx = { bird: 0, clack: 0, lap: 0, drip: 0, ping: 0, horn: 0, owl: 0, song: 0, fire: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
+  AUD.nx = { bird: 0, clack: 0, lap: 0, drip: 0, ping: 0, horn: 0, owl: 0, song: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
 }
 function tone(C, t0, f0, f1, dur, gain, o = {}) {
   const osc = C.createOscillator(), g = C.createGain(); osc.type = o.type || 'sine';
@@ -4869,7 +4869,6 @@ function rooster(C, t0, pan, gain) {
 }
 function owl(C, t0, pan, gain) { const n = 3 + ((Math.random() * 2) | 0); for (let i = 0; i < n; i++) tone(C, t0 + (i ? 0.7 + i * 0.5 : 0), 345, 295, i === n - 1 ? 0.9 : 0.4, gain, { pan, lp: 600, wet: 0.6, vib: 6, vibDepth: 0.008, att: 0.07, tau: 0.35 }); }
 function distantSong(C, t0, pan, gain) { const sc = [293.7, 349.2, 392, 440, 523.3, 587.3]; let t = t0; const n = 6 + ((Math.random() * 4) | 0); for (let i = 0; i < n; i++) { const f = sc[(Math.random() * sc.length) | 0]; tone(C, t, f, f * 0.995, 1.4, gain, { type: 'triangle', lp: 1300, pan, wet: 0.7, hold: 0.05, tau: 0.5, att: 0.01 }); t += rndR(0.45, 0.95); } }
-function fireCrackle(C, t0, gain) { const n = 24 + ((Math.random() * 30) | 0), len = rndR(6, 12); for (let i = 0; i < n; i++) clickBurst(C, t0 + Math.pow(Math.random(), 0.8) * len, rndR(1800, 5200), 1.2, rndR(0.01, 0.04), gain * rndR(0.3, 1), AUD.eco); }
 function foghorn(C, t0, gain) {
   const g = C.createGain(), lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.6;
   g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.7); g.gain.setValueAtTime(gain, t0 + 2.9); g.gain.setTargetAtTime(0.0001, t0 + 2.9, 0.5);
@@ -4940,7 +4939,6 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   if (night && !ctx.rain && gf > 0.3) {
     if (now > N.owl) { owl(C, now + 0.1, rndR(-0.8, 0.8), 0.03); N.owl = now + rndR(70, 170); }
     if (now > N.song && E.narrow > 0.05) { distantSong(C, now + 0.1, rndR(-0.8, 0.8), 0.018); N.song = now + rndR(150, 320); }
-    if (now > N.fire && E.nearWall < 14) { fireCrackle(C, now + 0.1, 0.05); N.fire = now + rndR(110, 240); }
   }
   if (dawn && !ctx.rain && gf > 0.3 && now > N.rooster) { rooster(C, now + 0.1, rndR(-0.9, 0.9), 0.04); N.rooster = now + rndR(70, 170); }
 }
@@ -5359,27 +5357,35 @@ function initBoats() {
     const clearOfBridges = (s0, s1) => { for (let s = s0; s <= s1; s += 6) { const [x, z, tx, tz] = at(s); for (const d of [-8, 0, 8]) if (bridgeNear(x + tx * d, z + tz * d)) return false; } return true; };
     for (const side of [1, -1]) for (let s = 14 + rnd() * 20; s < Ltot - 14; s += 15.5 + rnd() * 8) {   // a moored boat every 15-24 m along both banks
       if (rnd() < 0.08 || !straight(s) || !clearOfBridges(s - 9, s + 9)) continue;
-      const [x, z, tx, tz] = at(s), off = (f.w / 2 - 2.4) * side;
+      const [x, z, tx, tz] = at(s), off = (f.w / 2 - 1.5) * side;
       boats.push({ kind: 'moored', x: x - tz * off, z: z + tx * off, yaw: Math.atan2(-tz, tx) + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.34, ph: rnd() * 6.28, smoke: rnd() < 0.55, pri: rnd() });
     }
-    for (const dir of [1, -1]) for (let s0 = 8 + rnd() * 30; s0 < Ltot - 90;) {   // cruisers share the canal: one stretch each, so none run into one another
-      const span = 60 + rnd() * 55; if (s0 + span > Ltot - 8) break;
-      if (clearOfBridges(s0, s0 + span)) boats.push({ kind: 'cruise', at, s: s0 + rnd() * span, s0, s1: s0 + span, dir, w: f.w, sp: 0.7 + rnd() * 0.8, turn: 0, yawFrom: 0, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.85 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.7, pri: rnd() });
-      s0 += span + 2 + rnd() * 10;
-    }
   }
-  // inlets along the south coast: narrow stretches of sea with land close on both sides
-  { const S = 30, cand = [], landD = (x, z, dx, dz) => { for (let d = S; d <= 150; d += S) if (H(x + dx * d, z + dz * d) > 0.4) return d; return 0; };
-    for (let z = 1500; z < 5900; z += S) for (let x = -5600; x < 5200; x += S) {
+  // inlets along the south coast: boats lined up bow to stern along the water's edge, a few metres out from the quay
+  { const S = 30, narrow = new Set(), landD = (x, z, dx, dz) => { for (let d = S; d <= 150; d += S) if (H(x + dx * d, z + dz * d) > 0.4) return d; return 0; };
+    for (let z = 1500; z < 5900; z += S) for (let x = -5600; x < 5200; x += S) {   // find the narrow stretches of sea, then work along their shores
       if (H(x, z) > -1.0) continue; const e = landD(x, z, 1, 0), w = landD(x, z, -1, 0), n = landD(x, z, 0, -1), s2 = landD(x, z, 0, 1);
-      if (!((e && w) || (n && s2))) continue; if (e && w && n && s2) continue;
-      const ci = featureAt(x, z, 14); if (ci >= 0 && world.features[ci].kind === 'canal') continue;
-      let best = 0, ba = 0; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 8, dx = Math.cos(a), dz = Math.sin(a); let f1 = 0, f2 = 0; for (let d = 4; d <= 40; d += 4) { if (H(x + dx * d, z + dz * d) > -0.2) break; f1 = d; } for (let d = 4; d <= 40; d += 4) { if (H(x - dx * d, z - dz * d) > -0.2) break; f2 = d; } const sp = Math.min(f1, f2); if (sp > best) { best = sp; ba = a; } }
-      if (best >= 16) cand.push({ x, z, a: ba, pri: rnd() });
+      if (((e && w) || (n && s2)) && !(e && w && n && s2)) narrow.add(Math.round(x / 90) + ',' + Math.round(z / 90));
     }
-    cand.sort((a, b) => a.pri - b.pri); const taken = [];
-    for (const c of cand) { if (taken.length >= 520) break; if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 21)) continue; taken.push(c);
-      boats.push({ kind: rnd() < 0.5 ? 'drift' : 'moored', x: c.x, z: c.z, yaw: -c.a + (rnd() < 0.5 ? 0 : Math.PI), ax: Math.cos(c.a), az: Math.sin(c.a), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.8 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); } }
+    const cand = [];
+    for (let z = 1500; z < 5900; z += 8) for (let x = -5600; x < 5200; x += 8) {
+      if (H(x, z) > -0.5) continue; const kx = Math.round(x / 90), kz = Math.round(z / 90); let ok = false;
+      for (let a = -1; a <= 1 && !ok; a++) for (let b = -1; b <= 1; b++) if (narrow.has((kx + a) + ',' + (kz + b))) { ok = true; break; }
+      if (!ok) continue;
+      let dmin = 99; for (let k = 0; k < 12 && dmin > 5; k++) { const an = k * Math.PI / 6, cx = Math.cos(an), cz = Math.sin(an); for (let d = 2; d <= 12; d += 2) if (H(x + cx * d, z + cz * d) > 0.3) { dmin = Math.min(dmin, d); break; } }
+      if (dmin < 5 || dmin > 9) continue;                                           // sitting 5-9 m off the edge
+      const gx = H(x + 3, z) - H(x - 3, z), gz = H(x, z + 3) - H(x, z - 3), gl = Math.hypot(gx, gz); if (gl < 0.02) continue;
+      const ci = featureAt(x, z, 14); if (ci >= 0 && world.features[ci].kind === 'canal') continue;
+      const nx = gx / gl, nz = gz / gl;                                             // points toward the land; the boat lies along the shore
+      cand.push({ x, z, yaw: Math.atan2(-nx, -nz), pri: rnd() });
+    }
+    cand.sort((a, b) => a.pri - b.pri); const grid = new Map(), cell = 17; let placed = 0;
+    for (const c of cand) {
+      if (placed >= 700) break; const kx = Math.floor(c.x / cell), kz = Math.floor(c.z / cell); let clash = false;
+      for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1 && !clash; b++) for (const t of grid.get((kx + a) + ',' + (kz + b)) || []) if (Math.hypot(t.x - c.x, t.z - c.z) < 16.5) { clash = true; break; }
+      if (clash) continue; const key = kx + ',' + kz; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(c); placed++;
+      boats.push({ kind: 'moored', x: c.x, z: c.z, yaw: c.yaw + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true });
+    } }
   boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
   const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n)); m.frustumCulled = false; m.renderOrder = 6; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
   const body = mk(G.body, matBody, N); body.castShadow = true; body.receiveShadow = true;
