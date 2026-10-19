@@ -2330,9 +2330,10 @@ function polyOverlay(items, uvScale) {
   return geo;
 }
 function ribbonOverlay(items) {
-  const geo = new Geo(), c = new THREE.Color();
+  const geo = new Geo([['aFade', 1]]), c = new THREE.Color();
+  const V = (x, y, z, col, u, w, fade) => { const i = geo.v(x, y, z, 0, 1, 0, col, u, w); geo.extra.aFade.push(fade); return i; };   // aFade: 1 opaque, 0 clear
   const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
-  for (const { pts, w, color, blend } of items) {
+  for (const { pts, w, color, blend, free } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
     const P = []; // densify so ribbons follow the terrain
     for (let i = 0; i < pts.length - 2; i += 2) {
@@ -2343,6 +2344,8 @@ function ribbonOverlay(items) {
     // UVs run with the street (v) and across it (u), so rows of setts cross the carriageway
     let along = 0, total = 0;
     for (let i = 0; i < P.length - 2; i += 2) total += Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]);
+    // an end that runs into nothing (a plaza, a quay, open paving) fades out over its last few metres so it doesn't stop in a hard rounded cap
+    const FL = Math.min(7, total * 0.35), fadeAt = (d) => { let a = 1; if (free && free[0]) a *= smooth(0, FL, d); if (free && free[1]) a *= smooth(0, FL, total - d); return a; };
     // where this ribbon runs into another surface its colour eases into that surface's colour over the last few metres (blend: [{end: 0|1, color, half}])
     const BL = 9, tintAt = (d) => { cE.copy(c); for (const b of blend || []) { const e = b.end ? total - d : d, k = 1 - smooth(b.half * 0.6, b.half + BL, e); if (k > 0) { cB.copy(linear(b.color)); cE.lerp(cB, k); } } return cE; };
     for (let i = 0; i < P.length - 2; i += 2) {
@@ -2351,26 +2354,31 @@ function ribbonOverlay(items) {
       const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ha = H(ax, az) + LIFT, hb = H(bx, bz) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
       const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
-      const a0 = geo.v(ax + nx, ha, az + nz, 0, 1, 0, ca, u0, v0), a1 = geo.v(ax - nx, ha, az - nz, 0, 1, 0, ca, -u0, v0);
-      const b0 = geo.v(bx + nx, hb, bz + nz, 0, 1, 0, cb, u0, v1), b1 = geo.v(bx - nx, hb, bz - nz, 0, 1, 0, cb, -u0, v1);
+      const fa = fadeAt(along - len), fb = fadeAt(along);
+      const a0 = V(ax + nx, ha, az + nz, ca, u0, v0, fa), a1 = V(ax - nx, ha, az - nz, ca, -u0, v0, fa);
+      const b0 = V(bx + nx, hb, bz + nz, cb, u0, v1, fb), b1 = V(bx - nx, hb, bz - nz, cb, -u0, v1, fb);
       geo.triUp(a0, a1, b0); geo.triUp(a1, b1, b0);
     }
+    let acc = 0;
     if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints
-      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, ctr = geo.v(x, h, z, 0, 1, 0, c, x / 4, z / 4), first = geo.count;
-      for (let s = 0; s < 8; s++) { const a = s / 8 * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; geo.v(px, h, pz, 0, 1, 0, c, px / 4, pz / 4); }
+      if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
+      const fd = fadeAt(acc); if (fd < 0.02) continue;
+      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, ctr = V(x, h, z, c, x / 4, z / 4, fd), first = geo.count;
+      for (let s = 0; s < 8; s++) { const a = s / 8 * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, h, pz, c, px / 4, pz / 4, fd); }
       for (let s = 0; s < 8; s++) geo.triUp(ctr, first + s, first + (s + 1) % 8);
     }
   }
   return geo;
 }
-function overlayMesh(geo, tex, order, dim = null) {
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
-  mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
+function overlayMesh(geo, tex, order, dim = null, fade = false) {
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false, transparent: fade });
+  mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : fade ? 'overlay-fade' : 'overlay');
   if (dim) world.parkCanopy = world.parkCanopy || { value: 0 };
   mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns deepen to a rich green once the trees that shade them are no longer drawn
+    if (fade) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aFade; varying float vFade;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = aFade;');
     sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uDeep = world.parkCanopy; }
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim; uniform float uDeep;' : ''))
-      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.07, 0.3, 0.1) * (0.7 + lum), uDeep * 0.92); }' : ''))
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (fade ? '\nvarying float vFade;' : '') + (dim ? '\nuniform vec3 uDim; uniform float uDeep;' : ''))
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (fade ? '\ndiffuseColor.a *= vFade;' : '') + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.07, 0.3, 0.1) * (0.7 + lum), uDeep * 0.92); }' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
   };
   const m = new THREE.Mesh(geo.build(), mat);
@@ -2393,9 +2401,11 @@ function pathBlend(f) {
       return best;
     });
   }
+  f.free = f.joins.map((g) => !g);
   const out = []; f.joins.forEach((g, end) => { if (g) out.push({ end, color: g.kind === 'street' ? darken(featureStyle(g).tint, streetDark(g)) : featureStyle(g).tint, half: g.w / 2 }); });
   return out.length ? out : null;
 }
+const freeEnds = (f) => { pathBlend(f); return f.free; };
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -2406,10 +2416,10 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f) });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f) });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
-  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null));
+  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
