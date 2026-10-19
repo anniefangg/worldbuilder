@@ -27,7 +27,9 @@ if "--source" in sys.argv or "--reparse" in sys.argv or not os.path.exists(DATA)
 
 tpl = open(os.path.join(ROOT, "map_template.html")).read()
 data = open(DATA).read().replace("<", "\\u003c")
-html = tpl.replace("__MAP_DATA__", data)
+import base64
+char = base64.b64encode(open(os.path.join(ROOT, "data", "character", "barbossa.glb"), "rb").read()).decode() if os.path.exists(os.path.join(ROOT, "data", "character", "barbossa.glb")) else ""
+html = tpl.replace("__MAP_DATA__", data).replace("__CHAR_GLB__", char)
 open(os.path.join(ROOT, "map.html"), "w").write(html)
 print("wrote map.html (%.2f MB)" % (len(html.encode()) / 1e6))
 
