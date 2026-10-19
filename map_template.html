@@ -118,7 +118,7 @@ body {
   background: var(--azulejo); color: var(--azulejo-ink); box-shadow: 0 6px 18px rgba(18, 50, 63, 0.28);
 }
 #edits-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(70px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(112px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
 }
 #edits-btn .count { background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 2px 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -241,7 +241,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 #s-status button { border: 0; background: none; color: var(--azulejo); font: 600 12px/1 var(--font-ui); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
 #s-status button:hover { background: rgba(31, 87, 168, 0.08); }
 #layers-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(112px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(70px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
 }
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
@@ -258,7 +258,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
 #measure-label { position: fixed; left: 0; top: 0; z-index: 10; pointer-events: none; padding: 7px 11px; font: 600 14px/1.2 var(--font-ui); color: var(--ink); text-align: center; white-space: nowrap; }
 #measure-label small { display: block; font: 400 11px/1.3 var(--font-ui); color: var(--ink-soft); margin-top: 2px; }
 body.measuring #scene, body.measuring #plan { cursor: crosshair; }
-#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(152px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
+#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(112px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
 #layers-menu[hidden] { display: none; }
 #layers-menu h4 { margin: 0 4px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
 #layers-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font: 500 13px/1.2 var(--font-ui); color: var(--ink); }
@@ -280,13 +280,13 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 @media (max-width: 640px) {
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
-  #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
+  #edits-btn { top: calc(108px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
   #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
-  #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  #layers-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
   #measure-btn { top: calc(144px + env(safe-area-inset-top, 0px)); }
   #undo-box { top: calc(144px + env(safe-area-inset-top, 0px)); }
   #search { top: calc(66px + env(safe-area-inset-top, 0px)); width: min(260px, calc(100vw - 32px)); }
-  #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #layers-menu { top: calc(108px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
   #modes { right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); }
