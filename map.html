@@ -2316,7 +2316,7 @@ function overlayMesh(geo, tex, order, dim = null) {
   mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns deepen to a rich green once the trees that shade them are no longer drawn
     sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uDeep = world.parkCanopy; }
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim; uniform float uDeep;' : ''))
-      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.04, 0.2, 0.07) * (0.7 + lum), uDeep * 0.92); }' : ''))
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.07, 0.3, 0.1) * (0.7 + lum), uDeep * 0.92); }' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
   };
   const m = new THREE.Mesh(geo.build(), mat);
