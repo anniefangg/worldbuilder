@@ -409,6 +409,7 @@ const linear = (hex) => new THREE.Color(hex); // THREE.Color stores linear compo
 // ─────────────────────────── map data decode ───────────────────────────
 const RAW = JSON.parse($('map-data').textContent);
 const EXT = RAW.meta.extentM;           // artboard width in metres (3500pt × 5m)
+const GROUND_SKIN = 0.25;              // the visible ground mesh sits this far above the terrain height H
 const LAND_Y = 1.2;                     // land surface height above sea level (m)
 function bytes(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; }
 const arr = (b64, T) => new T(bytes(b64));
@@ -3359,7 +3360,7 @@ async function loadCaptain() {
   });
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false })); blob.position.y = 0.06; blob.renderOrder = 8; g.add(blob);
   const dummy = () => new THREE.Object3D();
-  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 0.78, lift: 0.08, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
+  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 0.78, lift: 0.07, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
   return g;
 }
 
@@ -4812,6 +4813,7 @@ function update(dt, t) {
     // animate the character
     const u = character.userData;
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
+    if (player.mode === 'walk' && player.pos.y - H(player.pos.x, player.pos.z) < 0.05) character.position.y += GROUND_SKIN;   // the drawn street sits above the terrain height
     player.walkPhase += dt * hv * 2.1;
     poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: hv });
     character.rotation.z = 0;
