@@ -4716,7 +4716,7 @@ function setMode(mode) {
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
   plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
-  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = $('minimap').hidden; mm.last = 0; placeMinimap();
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = mode !== 'fly'; mm.last = 0; placeMinimap();
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -5164,7 +5164,7 @@ function drawMinimap(now) {
   const up = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z) - GROUND_SKIN);
   const box = $('alt-box'), mr = $('minimap').getBoundingClientRect();
   $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
-  box.hidden = false; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
+  box.hidden = player.mode !== 'fly'; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
   const maxPx = clamp(W * 0.38, 40, 110); let nice = 0.1; for (let e = -1; e < 7; e++) for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v * s <= maxPx) nice = v; }   // the longest round length (…10, 20, 50, 100, 200, 500 m, 1, 2, 5 km…) that fits
   const bar = $('mm-bar'); bar.firstChild.style.width = Math.max(4, Math.round(nice * s)) + 'px'; bar.lastChild.textContent = nice >= 1000 ? `${nice / 1000} km` : `${nice < 1 ? nice.toFixed(1) : nice} m`;
 }
