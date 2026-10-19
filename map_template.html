@@ -47,6 +47,7 @@ body {
   font: 600 13px/1 var(--font-ui); color: var(--ink); background: transparent; border: 0; border-radius: 8px;
   padding: 9px 12px; cursor: pointer; display: flex; gap: 6px; align-items: center;
 }
+#modes button.drop svg { display: block; }
 #modes button.drop::after { content: ''; width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg) translate(-1px, -1px); opacity: 0.6; margin-left: 2px; }
 #modes button.drop[aria-expanded="true"] { background: rgba(31, 87, 168, 0.12); }
 #opt-menu { position: fixed; z-index: 14; min-width: 168px; padding: 6px; display: grid; gap: 1px; }
@@ -322,7 +323,7 @@ body.pegging, body.pegging canvas, body.pegging #modes button { cursor: grabbing
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
-    <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, fog</dd>
+    <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, misty, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
@@ -631,18 +632,36 @@ function setTimeOfDay(name) {
   applyPost(t.post);
   applyWeather();
   const b = $('tod'), next = TOD_ORDER[(TOD_ORDER.indexOf(name) + 1) % TOD_ORDER.length], cap = (x) => x[0].toUpperCase() + x.slice(1);
-  if (b) { b.textContent = cap(name); b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${next}`); b.title = `Time of day: ${cap(name)}. Click (or T) for ${next}.`; }
+  if (b) { b.innerHTML = ICONS[name]; b.setAttribute('aria-label', `Time of day: ${name}. Switch to ${next}`); b.title = `Time of day: ${cap(name)}. Click (or T) for ${next}.`; }
 }
 
+// Icons for the top-bar dropdowns (the menu entries stay as text)
+const ICON_SVG = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', CLOUD = '<path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.2 4.2 0 0 1 0 8.5z"/>';
+const ICONS = {
+  dawn: ICON_SVG('<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5 10l1.8 1.8M19 10l-1.8 1.8M8 5l4-3 4 3"/>'),
+  day: ICON_SVG(SUN), dusk: ICON_SVG('<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 4v4M5 10l1.8 1.8M19 10l-1.8 1.8M9 6l3 3 3-3"/>'),
+  night: ICON_SVG('<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>'),
+  sunny: ICON_SVG(SUN), clear: ICON_SVG('<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/><path d="M17 4v3M15.5 5.5h3"/>'),
+  cloudy: ICON_SVG(CLOUD), rain: ICON_SVG('<path d="M7 15a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 6.5 4.2 4.2 0 0 1 17 15z"/><path d="M8 18l-1 2M12 18l-1 2M16 18l-1 2"/>'),
+  storm: ICON_SVG('<path d="M7 14a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 5.5 4.2 4.2 0 0 1 17 14"/><path d="M12.5 11l-2.5 4h3.5l-2 4.5"/>'),
+  misty: ICON_SVG('<path d="M5 9h10M9 13h10M5 17h8" opacity="0.9"/><circle cx="17" cy="7" r="2.4" opacity="0.6"/>'),
+  fog: ICON_SVG(CLOUD.replace('M7 18','M7 14').replace('5.5 5.5 0 0 1 17 9.5a4.2 4.2 0 0 1 0 8.5z','5.5 5.5 0 0 1 17 5.5a4.2 4.2 0 0 1 0 8.5z') + '<path d="M4 17h16M7 20.5h10"/>'),
+  auto: ICON_SVG('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>'),
+  low: ICON_SVG('<path d="M6 19v-4" stroke-width="3"/><path d="M12 19V12M18 19V6" opacity="0.3" stroke-width="3"/>'),
+  medium: ICON_SVG('<path d="M6 19v-4M12 19v-7" stroke-width="3"/><path d="M18 19V6" opacity="0.3" stroke-width="3"/>'),
+  high: ICON_SVG('<path d="M6 19v-4M12 19v-7M18 19V6" stroke-width="3"/>'),
+};
 // Weather, layered over the time of day
 const WEATHER = {
   sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
   cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 8, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
   rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
   storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
+  misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0 },
   fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
 };
-const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'fog'];
+const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'misty', 'fog'];
 const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
 function applyWeather() {
   const t = TOD[todState.name], w = WEATHER[wx.name], u = camera.userData.sky && camera.userData.sky.material.uniforms;
@@ -651,7 +670,7 @@ function applyWeather() {
   bounce.color.set(t.bounce[0]); bounce.intensity = t.bounce[1] * (0.45 + 0.55 * w.hemiK) * (0.6 + 0.4 * w.sunK);
   const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
-  u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, fog: 0.55 }[wx.name];
+  u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, misty: 0.6, fog: 0.55 }[wx.name];
   if (world.cloudMat) {
     world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
@@ -661,7 +680,7 @@ function applyWeather() {
   if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
   const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
   const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
-  if (b) { b.textContent = label; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
+  if (b) { b.innerHTML = ICONS[wx.name === 'sunny' && t.night > 0.6 ? 'clear' : wx.name]; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
 }
 function setWeather(name) { wx.name = WEATHER[name] ? name : 'sunny'; wx.nextFlash = 0; applyWeather(); }
 function toggleWeather() { const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
@@ -4779,7 +4798,7 @@ function applyQuality() {
   if (camera.userData.sky) { const m = camera.userData.sky.material; if (!!m.defines.SKY_LOW !== !t.sky) { if (t.sky) delete m.defines.SKY_LOW; else m.defines.SKY_LOW = ''; m.needsUpdate = true; } }
   if (typeof applyWeather === 'function' && world.clouds) applyWeather();
   clearGrass();
-  const b = $('qual'); if (b) { b.textContent = Q.mode === 'auto' ? `Auto · ${t.name}` : t.name; b.title = `Graphics quality: ${Q.mode === 'auto' ? 'Auto (currently ' + t.name + ')' : t.name}. Click to change.`; }
+  const b = $('qual'); if (b) { b.innerHTML = ICONS[Q.mode === 'auto' ? 'auto' : Q.mode]; b.setAttribute('aria-label', `Graphics quality: ${Q.mode}`); b.title = `Graphics quality: ${Q.mode === 'auto' ? 'Auto (currently ' + t.name + ')' : t.name}. Click to change.`; }
 }
 function setTier(n, why) {
   n = clamp(n, 0, 2); if (n === Q.tier) return;
