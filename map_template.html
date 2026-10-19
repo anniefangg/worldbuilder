@@ -4820,7 +4820,7 @@ function thunder(delay) {
   sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 // ─────────────────────────── ambience that follows the place ───────────────────────────
-// Birdsong, rustling trees, fountains and canals, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
+// Birdsong, rustling trees, canals, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
 // reverb that depends on how enclosed the street is, a muffled underwater world, and wind and whooshes while flying.
 function ambienceInit(C) {
   const bus = (g) => { const n = C.createGain(); n.gain.value = g; return n; };
@@ -4831,11 +4831,6 @@ function ambienceInit(C) {
   AUD.sfxVerb = bus(0.05); AUD.sfxBus.connect(AUD.sfxVerb); AUD.sfxVerb.connect(AUD.verbIn);
   // leaves and palm fronds
   AUD.rustle = bus(0); { const g = bus(0.5), l = C.createOscillator(), lg = bus(0.35); l.frequency.value = 0.21; l.connect(lg); lg.connect(g.gain); l.start(); chain(loop(AUD.noise), [filt('bandpass', 3400, 0.5), filt('highpass', 1800, 0.5)], g); g.connect(AUD.rustle); AUD.rustle.connect(AUD.eco); }
-  // fountain trickle: bright droplets over a soft splash
-  AUD.fountain = bus(0);
-  { const sr = C.sampleRate, len = Math.round(sr * 6), b = C.createBuffer(2, len, sr);
-    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let k = 0; k < 6 * 140; k++) { const st = Math.floor(Math.random() * (len - 2400)), f = rndR(1500, 4200), amp = rndR(0.15, 0.7), dur = Math.round(sr * rndR(0.006, 0.02)); for (let i = 0; i < dur; i++) d[st + i] += amp * Math.sin(6.2832 * f * i / sr * (1 + 0.5 * i / dur)) * Math.exp(-i / (dur * 0.35)); } }
-    chain(loop(b), [filt('highpass', 900, 0.5)], AUD.fountain); const sp = bus(0.3); chain(loop(AUD.noise), [filt('bandpass', 1500, 0.4)], sp); sp.connect(AUD.fountain); AUD.fountain.connect(AUD.eco); }
   // canals: a soft low lap, with the occasional slap added by events
   AUD.canal = bus(0); chain(loop(AUD.pink), [filt('lowpass', 520, 0.6)], AUD.canal); AUD.canal.connect(AUD.eco);
   // underwater: a low bubbling rumble
@@ -4844,7 +4839,7 @@ function ambienceInit(C) {
   AUD.roar = bus(0); AUD.roarBP = filt('bandpass', 320, 0.6); chain(loop(AUD.pink), [AUD.roarBP], AUD.roar); AUD.roar.connect(AUD.sfxBus);
   // fog: a low-pass on the whole sound bed, and a foghorn with its own long echoes
   AUD.horn = bus(1); { const d = C.createDelay(3); d.delayTime.value = 1.15; const fb = bus(0.42), lp = filt('lowpass', 520, 0.5); AUD.horn.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(AUD.sfxBus); AUD.horn.connect(AUD.sfxBus); AUD.horn.connect(AUD.verbIn); }
-  AUD.nx = { bird: 0, clack: 0, lap: 0, horn: 0, owl: 0, song: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
+  AUD.nx = { fire: 0, bird: 0, clack: 0, lap: 0, horn: 0, owl: 0, song: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
 }
 function tone(C, t0, f0, f1, dur, gain, o = {}) {
   const osc = C.createOscillator(), g = C.createGain(); osc.type = o.type || 'sine';
@@ -4875,6 +4870,7 @@ function rooster(C, t0, pan, gain) {
 }
 function owl(C, t0, pan, gain) { const n = 3 + ((Math.random() * 2) | 0); for (let i = 0; i < n; i++) tone(C, t0 + (i ? 0.7 + i * 0.5 : 0), 345, 295, i === n - 1 ? 0.9 : 0.4, gain, { pan, lp: 600, wet: 0.6, vib: 6, vibDepth: 0.008, att: 0.07, tau: 0.35 }); }
 function distantSong(C, t0, pan, gain) { const sc = [293.7, 349.2, 392, 440, 523.3, 587.3]; let t = t0; const n = 6 + ((Math.random() * 4) | 0); for (let i = 0; i < n; i++) { const f = sc[(Math.random() * sc.length) | 0]; tone(C, t, f, f * 0.995, 1.4, gain, { type: 'triangle', lp: 1300, pan, wet: 0.7, hold: 0.05, tau: 0.5, att: 0.01 }); t += rndR(0.45, 0.95); } }
+function fireCrackle(C, t0, gain) { const n = 14 + ((Math.random() * 18) | 0), len = rndR(6, 11); for (let i = 0; i < n; i++) clickBurst(C, t0 + Math.pow(Math.random(), 0.8) * len, rndR(1200, 3200), 0.9, rndR(0.012, 0.04), gain * rndR(0.25, 1), AUD.eco); }   // soft pops and snaps, nothing sharp
 function foghorn(C, t0, gain) {
   const g = C.createGain(), lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.6;
   g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.7); g.gain.setValueAtTime(gain, t0 + 2.9); g.gain.setTargetAtTime(0.0001, t0 + 2.9, 0.5);
@@ -4890,14 +4886,12 @@ function whoosh(C, t0, gain) {
   g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.3); g.gain.setTargetAtTime(0.0001, t0 + 0.38, 0.22); s.connect(bp); bp.connect(g); g.connect(AUD.sfxBus); s.start(t0, Math.random() * 3); s.stop(t0 + 1.8);
 }
 function audioEnvSample() {
-  const p = player.pos, x = p.x, z = p.z, E = AUD.env || (AUD.env = { canopy: 0, canal: 0, fountain: 0, narrow: 0, nearWall: 40, swim: false });
+  const p = player.pos, x = p.x, z = p.z, E = AUD.env || (AUD.env = { canopy: 0, canal: 0, narrow: 0, nearWall: 40, swim: false });
   const featAt = (px, pz) => { const i = featureAt(px, pz, 0); return i >= 0 ? world.features[i] : null; };
   let park = 0, canalD = 400, treeStreet = 0, ring = 0;
   const c = featAt(x, z); if (c) { if (c.kind === 'park') park = 1; else if (c.kind === 'canal') canalD = 0; else if ((c.kind === 'street' || c.kind === 'path') && featureStyle(c).canopy > 40) treeStreet = 0.55; }
   for (let k = 0; k < 8; k++) { const a = k / 8 * 6.2832, dx = Math.cos(a), dz = Math.sin(a); for (const r of [4, 9, 17, 28]) { if (r >= canalD) break; const f = featAt(x + dx * r, z + dz * r); if (f && f.kind === 'canal') { canalD = r; break; } } const f2 = featAt(x + dx * 18, z + dz * 18); if (f2 && f2.kind === 'park') ring++; }
   E.canopy = Math.max(park, treeStreet, ring / 8 * 0.7); E.canal = smooth(34, 3, canalD);
-  if (!AUD.fountains) AUD.fountains = world.features.filter((f) => f.kind === 'plaza' && f.size > 1400).map((f) => [f.cx, f.cz]);
-  let fd = 1e9; for (const [fx, fz] of AUD.fountains) fd = Math.min(fd, Math.hypot(fx - x, fz - z)); E.fountain = smooth(80, 7, fd);
   let hit = 0, nearW = 40; for (let k = 0; k < 8; k++) { const a = k / 8 * 6.2832 + 0.2, dx = Math.cos(a), dz = Math.sin(a); for (const r of [2.5, 5, 9, 14, 21, 30]) { if (buildingAt(x + dx * r, z + dz * r) >= 0) { hit++; nearW = Math.min(nearW, r); break; } } }
   E.narrow = clamp(hit / 8 * 1.9, 0, 1); E.nearWall = nearW; E.swim = player.mode === 'walk' && H(x, z) < -0.4;
   return E;
@@ -4912,7 +4906,7 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   // wind in the trees
   set(AUD.rustle, mx('trees') * canopy * (0.035 + ctx.wind * 0.55) * gf);
   // fountains and canals, and the water-side fauna
-  set(AUD.fountain, mx('fountains') * E.fountain * 0.17 * gf); set(AUD.canal, mx('canals') * E.canal * 0.14 * gf);
+  set(AUD.canal, mx('canals') * E.canal * 0.14 * gf);
   // fog: a muffled world
   AUD.fogLP.frequency.setTargetAtTime(w === 'fog' ? 1700 : w === 'misty' ? 4200 : 22000, now, 1.2);
   // reverb: narrow streets echo, open squares are dry
@@ -4939,6 +4933,7 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
     if (mx('night') && now > N.owl) { owl(C, now + 0.1, rndR(-0.8, 0.8), 0.03); N.owl = now + rndR(70, 170); }
     if (mx('night') && now > N.song && E.narrow > 0.05) { distantSong(C, now + 0.1, rndR(-0.8, 0.8), 0.018); N.song = now + rndR(150, 320); }
   }
+  if (mx('fire') && (night || dusk) && !ctx.rain && gf > 0.3 && E.nearWall < 6 && now > N.fire) { fireCrackle(C, now + 0.1, 0.022); N.fire = now + rndR(35, 85); }   // a hearth glowing behind the wall right beside you
   if (mx('dawn') && dawn && !ctx.rain && gf > 0.3 && now > N.rooster) { rooster(C, now + 0.1, rndR(-0.9, 0.9), 0.04); N.rooster = now + rndR(70, 170); }
 }
 function audioTick() {
@@ -4993,7 +4988,7 @@ function musicTick(C, now) {
   }
 }
 
-const MIX = [['breeze', 'Breeze'], ['birds', 'Birds'], ['trees', 'Leaves and palms'], ['gulls', 'Gulls'], ['waves', 'Waves'], ['fountains', 'Fountains'], ['canals', 'Canals'], ['rain', 'Rain'], ['thunder', 'Thunder'], ['fog', 'Foghorn'], ['night', 'Owl and distant song'], ['dawn', 'Dawn rooster'], ['flying', 'Wind and whooshes when flying'], ['swim', 'Swimming'], ['reverb', 'Street echo']];
+const MIX = [['breeze', 'Breeze'], ['birds', 'Birds'], ['trees', 'Leaves and palms'], ['gulls', 'Gulls'], ['waves', 'Waves'], ['canals', 'Canals'], ['rain', 'Rain'], ['thunder', 'Thunder'], ['fog', 'Foghorn'], ['night', 'Owl and distant song'], ['fire', 'Fire crackle'], ['dawn', 'Dawn rooster'], ['flying', 'Wind and whooshes when flying'], ['swim', 'Swimming'], ['reverb', 'Street echo']];
 function initMixer() {
   AUD.mute = {}; try { AUD.mute = JSON.parse(localStorage.getItem('amparacan-map-mixoff') || '{}') || {}; } catch (e) {}
   const panel = $('mix-panel'), btn = $('mix');
