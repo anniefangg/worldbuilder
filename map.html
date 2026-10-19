@@ -138,7 +138,7 @@ body {
 .sep { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
 .status { font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-soft); min-height: 1em; }
 #tray {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(250px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
   width: min(380px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
   display: grid; gap: 12px; z-index: 5;
 }
@@ -183,19 +183,13 @@ body.tray-open #info { display: none; }
 #info input.canopy { width: 100%; accent-color: #2f7f4f; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 #info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
-#select-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
-  font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink);
-}
-#select-btn[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
-#select-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
 #layers-btn {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
 }
 #layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
 #layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
-#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(250px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
+#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
 #layers-menu[hidden] { display: none; }
 #layers-menu h4 { margin: 0 4px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
 #layers-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font: 500 13px/1.2 var(--font-ui); color: var(--ink); }
@@ -215,10 +209,9 @@ body.tray-open #info { display: none; }
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
-  #tray { top: calc(192px + env(safe-area-inset-top, 0px)); }
-  #select-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
-  #layers-btn { top: calc(150px + env(safe-area-inset-top, 0px)); }
-  #layers-menu { top: calc(192px + env(safe-area-inset-top, 0px)); }
+  #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
   #modes { right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); }
@@ -248,7 +241,6 @@ body.tray-open #info { display: none; }
   <button id="qual" type="button" title="Graphics quality">Auto</button>
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
-<button id="select-btn" class="plaque" type="button" aria-pressed="false" title="Select an area (B), or hold Shift and drag">Select area</button>
 <button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
 <div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
@@ -3042,7 +3034,12 @@ const COLLECTIONS = ['buildings', 'features', 'prompts', 'changes'];
 let DB = null, SAMPLE;
 const LOCAL_KEY = 'amparacan-map-edits';
 const pending = new Map(); // "col/id" → { body, timer, inflight }
-const blankDoc = () => ({ name: '', address: '', tags: [], history: '', details: '', attrs: {}, style: {} });
+const blankDoc = () => ({ name: '', address: '', tags: [], history: '', details: '', attrs: {}, style: {}, auto: {} });
+// A look set on one item by itself is its own: a general request (a group edit over a whole selection) works around it.
+// `auto` lists the style fields a group edit wrote, which a later group edit may change again. Docs from before this rule have no `auto`, so all their style fields count as their own.
+const isOwn = (d, f) => !!d.style && f in d.style && !(d.auto && d.auto[f]);
+const markOwn = (d, fields) => { if (d.auto) { d.auto = { ...d.auto }; for (const f of fields) delete d.auto[f]; } };
+const markAuto = (d, fields) => { d.auto = { ...(d.auto || {}) }; for (const f of fields) d.auto[f] = true; };
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
 const isBuildingId = (id) => world.byId && world.byId.has(id);
 const colFor = (id) => (isBuildingId(id) || /^b[0-9a-f]{8}$/.test(id) ? 'buildings' : 'features');
@@ -3235,6 +3232,7 @@ async function applyPrompt(pid) {
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
     const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
+    markOwn(after, Object.keys(style));
     saveTarget(t.id, after, 0);
     const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || 'Applied').slice(0, 300);
     patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
@@ -3402,7 +3400,7 @@ function initLayers() {
   applyLayers();
 }
 function toggleBoxTool(on = !ui.boxTool) {
-  ui.boxTool = on; $('select-btn').setAttribute('aria-pressed', String(on));
+  ui.boxTool = on;
   canvas.classList.toggle('boxing', on); plan.canvas.classList.toggle('boxing', on);
   if (on) toast('Drag across the map to select an area. Shift adds to the selection.');
 }
@@ -3435,7 +3433,9 @@ function logGroupChange({ ids, before, source, prompt = '', summary, category, t
 const groupFloors = { timer: 0, before: null, ids: null };
 function bulkFloors(delta, absolute) {
   const ids = [...multi].filter(isBuildingId); if (!ids.length) return;
-  const r = bulkUpdate(ids, (d, id) => { const t = targetOf(id), cur = styleFor(t).floors, next = clamp(absolute ? absolute : cur + delta, 1, 40); if (next === cur) return false; d.style = { ...d.style, floors: next }; return true; });
+  let held = 0;
+  const r = bulkUpdate(ids, (d, id) => { if (isOwn(d, 'floors')) { held++; return false; } const t = targetOf(id), cur = styleFor(t).floors, next = clamp(absolute ? absolute : cur + delta, 1, 40); if (next === cur) return false; d.style = { ...d.style, floors: next }; markAuto(d, ['floors']); return true; });
+  if (held) toast(`Left ${held} building${held === 1 ? '' : 's'} alone: they have their own floor count.`);
   if (!groupFloors.before) { groupFloors.before = r.before; groupFloors.ids = new Set(); } else for (const [k, v] of Object.entries(r.before)) if (!(k in groupFloors.before)) groupFloors.before[k] = v;
   r.changed.forEach((x) => groupFloors.ids.add(x));
   clearTimeout(groupFloors.timer);
@@ -3453,9 +3453,10 @@ function bulkTags(text) {
   toast(`Tagged ${r.changed.length} item${r.changed.length === 1 ? '' : 's'}.`); renderInfo();
 }
 function bulkReset() {
-  const r = bulkUpdate([...multi], (d) => { if (!Object.keys(d.style || {}).length) return false; d.style = {}; return true; });
-  logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Reset ${r.changed.length} items to their generated look`, category: 'Revert', fields: ['style'] });
-  toast(r.changed.length ? 'Back to the generated look.' : 'Nothing in the selection had been restyled.'); renderInfo();
+  let held = 0;
+  const r = bulkUpdate([...multi], (d) => { const keep = {}; let drop = 0; for (const [f, v] of Object.entries(d.style || {})) { if (isOwn(d, f)) { keep[f] = v; held++; } else drop++; } if (!drop) return false; d.style = keep; d.auto = {}; return true; });
+  logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Reset ${r.changed.length} items to their generated look` + (held ? ` (kept individual settings)` : ''), category: 'Revert', fields: ['style'] });
+  toast(r.changed.length ? (held ? 'Back to the generated look, apart from settings made on individual items.' : 'Back to the generated look.') : (held ? 'Only individual settings were left, so nothing changed.' : 'Nothing in the selection had been restyled.')); renderInfo();
 }
 function selectionCentre(ids) { let x = 0, z = 0, n = 0; for (const id of ids) { const t = targetOf(id); if (t) { x += t.cx; z += t.cz; n++; } } return n ? [x / n, z / n] : null; }
 function renderGroupInfo() {
@@ -3533,14 +3534,19 @@ Reply with only JSON: {"styles": {"building": {...}, "park": {...}}, "variants":
   const r = await SAMPLE.json(input, opts);
   const styles = (r && r.styles) || {}, variants = (r && r.variants) || {};
   const hash = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h; };
+  let kept = 0;   // items where something this request would change was already set on that item itself
   const res = bulkUpdate(ids, (d, id) => {
     const k = targetOf(id).kind, common = cleanStyleFor(k, styles[k]), vs = Array.isArray(variants[k]) ? variants[k].map((v) => cleanStyleFor(k, v)).filter((v) => Object.keys(v).length) : [];
-    const pick = vs.length ? vs[hash(id) % vs.length] : {}, next = { ...d.style, ...common, ...pick };
-    if (JSON.stringify(next) === JSON.stringify(d.style)) return false; d.style = next; return true;
+    const pick = vs.length ? vs[hash(id) % vs.length] : {}, want = { ...common, ...pick }, next = { ...d.style }, wrote = [];
+    let held = false;
+    for (const [f, v] of Object.entries(want)) { if (isOwn(d, f)) { if (next[f] !== v) held = true; continue; } if (next[f] !== v) { next[f] = v; wrote.push(f); } }
+    if (held) kept++;
+    if (!wrote.length) return false; d.style = next; markAuto(d, wrote); return true;
   });
   const fields = [...new Set(Object.values(styles).flatMap((o) => Object.keys(o || {})).concat(Object.values(variants).flatMap((a) => (Array.isArray(a) ? a.flatMap((o) => Object.keys(o || {})) : []))))];
-  const summary = String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 300), needs = String((r && r.needsCode) || '').trim();
+  const summary = (String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 280) + (kept ? ` (worked around the individual settings of ${kept} item${kept === 1 ? '' : 's'})` : '')), needs = String((r && r.needsCode) || '').trim();
   patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
+  if (kept) toast(`Kept the individual settings of ${kept} item${kept === 1 ? '' : 's'} and changed the rest.`);
   logGroupChange({ ids: res.changed, before: res.before, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], fields, images: p.images });
   if (needs) { const q = newPrompt(ids[0], `${p.text}\n\nStill needed: ${needs}`, 'queued'); patchPrompt(q, { bIds: ids, group: true }); if (p.images) patchPrompt(q, { images: p.images }); }
   return true;
@@ -3621,7 +3627,7 @@ function changeFloors(id, delta) {
   const cur = styleFor(t).floors, next = clamp(cur + delta, 1, 40); if (next === cur) return;
   const doc = docFor(id); let pend = floorEdits.get(id);
   if (!pend) floorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
-  doc.style = { ...doc.style, floors: next }; doc.updatedAt = new Date().toISOString();
+  doc.style = { ...doc.style, floors: next }; markOwn(doc, ['floors']); doc.updatedAt = new Date().toISOString();
   saveTarget(id, doc, 400);
   clearTimeout(pend.timer);
   pend.timer = setTimeout(() => {
@@ -3636,7 +3642,7 @@ function setCanopy(id, v) {
   const cur = featureStyle(t.f).canopy; if (v === cur) return;
   const doc = docFor(id); let pend = canopyEdits.get(id);
   if (!pend) canopyEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
-  doc.style = { ...doc.style, canopy: v }; delete doc.style.trees; doc.updatedAt = new Date().toISOString();
+  doc.style = { ...doc.style, canopy: v }; delete doc.style.trees; markOwn(doc, ['canopy', 'trees']); doc.updatedAt = new Date().toISOString();
   saveTarget(id, doc, 400);
   clearTimeout(pend.timer);
   pend.timer = setTimeout(() => {
@@ -3645,7 +3651,7 @@ function setCanopy(id, v) {
   }, 1500);
 }
 function resetLook(id) {
-  const before = docFor(id), after = { ...before, style: {}, updatedAt: new Date().toISOString() };
+  const before = docFor(id), after = { ...before, style: {}, auto: {}, updatedAt: new Date().toISOString() };
   saveTarget(id, after, 0); logChange({ id, source: 'manual', summary: 'Reset to the generated look', category: 'Revert', before, after }); toast('Back to the generated look.');
 }
 function editForm(t, title) {
@@ -4151,7 +4157,6 @@ function initControls() {
   }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
-  $('select-btn').addEventListener('click', () => toggleBoxTool());
   initLayers();
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
