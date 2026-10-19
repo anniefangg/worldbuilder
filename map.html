@@ -2427,6 +2427,12 @@ function canopyGeometry() {
   });
   return mergeGeometries(parts.map(stripUV));
 }
+// A pavement is only wide enough for a tree if there is clear ground between the kerb and the nearest wall
+const SIDEWALK_MIN = 2.0;
+function narrowWalk(cx, cz, nx, nz, side, hw) {
+  for (let d = hw + 0.25; d <= hw + SIDEWALK_MIN; d += 0.5) if (buildingAt(cx + nx * d * side, cz + nz * d * side) >= 0) return true;
+  return false;
+}
 // Trees along streets follow each street's style; rebuilt as a whole when one changes
 function rebuildStreetTrees() {
   dropVeg(world.streetTrees);
@@ -2446,6 +2452,7 @@ function rebuildStreetTrees() {
         for (const side of sides) {
           const x = cx + nx * off * side + (rnd() - 0.5) * 0.8, z = cz + nz * off * side + (rnd() - 0.5) * 0.8;
           if (buildingAt(x, z) >= 0 || H(x, z) < 0.6 || bridgeAt(x, z) > -Infinity) continue;
+          if (side !== 0 && narrowWalk(cx, cz, nx, nz, side, f.w / 2)) continue;   // no trees on narrow pavements
           const big = rnd() < shade;
           const scale = big ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) * (0.8 + 0.4 * c) : 0.85 + rnd() * 0.3;
           bucketAdd(buckets, big ? 'canopy' : 'palm', x, z, scale, rnd); n++;
