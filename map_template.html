@@ -930,7 +930,7 @@ function groundTexture(kind) {
     for (let k = 0; k < 46; k++) { const x = rnd() * N, y = rnd() * N, r = 12 + rnd() * 40, dark = rnd() < 0.7; each(() => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, dark ? 'rgba(40,36,34,0.13)' : 'rgba(255,248,230,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }); }
     g.lineCap = 'round';
     for (let k = 0; k < 26; k++) { let x = rnd() * N, y = rnd() * N, a = rnd() * 6.28; const pts = [[x, y]]; for (let m = 0; m < 5; m++) { a += (rnd() - 0.5) * 1.2; x += Math.cos(a) * (4 + rnd() * 9); y += Math.sin(a) * (4 + rnd() * 9); pts.push([x, y]); } each(() => { g.strokeStyle = 'rgba(30,28,30,0.35)'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(...pts[0]); for (const q of pts.slice(1)) g.lineTo(...q); g.stroke(); }); }
-    for (let k = 0; k < 420; k++) { const x = rnd() * N, y = rnd() * N, r = 1.2 + rnd() * 3; each(() => { g.fillStyle = `rgba(${60 + rnd() * 30 | 0},${100 + rnd() * 40 | 0},${40 + rnd() * 20 | 0},${0.28 + rnd() * 0.3})`; g.beginPath(); g.ellipse(x, y, r * 1.5, r, rnd() * 3, 0, 6.28); g.fill(); }); }
+    for (let k = 0; k < 160; k++) { const x = rnd() * N, y = rnd() * N, r = 1.2 + rnd() * 3; each(() => { g.fillStyle = `rgba(${60 + rnd() * 30 | 0},${100 + rnd() * 40 | 0},${40 + rnd() * 20 | 0},${0.28 + rnd() * 0.3})`; g.beginPath(); g.ellipse(x, y, r * 1.5, r, rnd() * 3, 0, 6.28); g.fill(); }); }
     for (let k = 0; k < 420; k++) { const x = rnd() * N, y = rnd() * N, w = 1 + rnd() * 3; each(() => { g.fillStyle = `rgba(${rnd() < 0.5 ? '25,22,22' : '255,250,240'},${0.08 + rnd() * 0.12})`; g.fillRect(x, y, w, w * (0.5 + rnd())); }); }
   }
   const t = new THREE.CanvasTexture(c), bt = new THREE.CanvasTexture(bc);
@@ -3241,8 +3241,8 @@ function makeCharacter() {
     const src = headGeo, P = src.attributes.position, I = src.index.array, keep = [];
     const inHair = (x, y, z) => { const hairline = 0.056 + 0.01 * Math.sin(x * 70) - 0.012 * gauss(x, 0, 0, 0, 0.03, 1); const sideDrop = -0.03 + 0.05 * sstep(0.04, 0.0, Math.abs(x)); const back = z < 0 ? y > -0.07 - 0.0 : false; const side = Math.abs(x) > 0.05 && z > -0.01 && z < 0.045 && y > 0.0 && y > 0.04 - (0.06 - Math.abs(x)) * 2; return (y > hairline && (z < 0.03 || y > 0.075)) || back || side || (z <= 0.0 && y > -0.07); };
     for (let t = 0; t < I.length; t += 3) { const a = I[t], b = I[t + 1], c = I[t + 2], cx = (P.getX(a) + P.getX(b) + P.getX(c)) / 3, cy = (P.getY(a) + P.getY(b) + P.getY(c)) / 3, cz = (P.getZ(a) + P.getZ(b) + P.getZ(c)) / 3; if (inHair(cx, cy, cz) && !(cz > 0.05 && cy < 0.075)) keep.push(a, b, c); }
-    const geo = new THREE.BufferGeometry(); const pos = new Float32Array(P.count * 3), col = new Float32Array(P.count * 3); const hc = new THREE.Color('#b9b5b0');
-    for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), l = Math.hypot(x / (hw * hw), y / (hh * hh), z / (hd * hd)) || 1; const o = 0.0055; pos[i * 3] = x + x / (hw * hw) / l * o; pos[i * 3 + 1] = y + y / (hh * hh) / l * o; pos[i * 3 + 2] = z + z / (hd * hd) / l * o; const az = Math.atan2(x, z), st = 0.78 + 0.4 * (0.5 + 0.5 * Math.sin(az * 46 + y * 40)) * (0.6 + 0.4 * Math.sin(az * 13 - y * 30)), gr = (Math.abs(x) > 0.05 && y > -0.01 && y < 0.085 && z > -0.04) ? 0.55 : 0, cc = hc.clone().lerp(new THREE.Color('#a29d97'), gr).multiplyScalar(st); col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b; }
+    const geo = new THREE.BufferGeometry(); const pos = new Float32Array(P.count * 3), col = new Float32Array(P.count * 3); const hc = new THREE.Color('#15110e');
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), l = Math.hypot(x / (hw * hw), y / (hh * hh), z / (hd * hd)) || 1; const o = 0.0055; pos[i * 3] = x + x / (hw * hw) / l * o; pos[i * 3 + 1] = y + y / (hh * hh) / l * o; pos[i * 3 + 2] = z + z / (hd * hd) / l * o; const az = Math.atan2(x, z), st = 0.78 + 0.4 * (0.5 + 0.5 * Math.sin(az * 46 + y * 40)) * (0.6 + 0.4 * Math.sin(az * 13 - y * 30)), gr = 0, cc = hc.clone().lerp(new THREE.Color('#a29d97'), gr).multiplyScalar(st); col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b; }
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(keep); geo.computeVertexNormals(); return geo;
   })();
   add(head, cap, M.hair, headC.x, headC.y, headC.z);
@@ -3253,18 +3253,18 @@ function makeCharacter() {
     for (let k = 0; k <= n; k++) { const t = k / n, wd = w * (1 - 0.7 * t), sd = new V3().crossVectors(pts[Math.min(k + 1, n)].clone().sub(pts[Math.max(k - 1, 0)]), new V3(0, 0, 1)).normalize().multiplyScalar(wd); if (!isFinite(sd.x)) sd.set(wd, 0, 0); for (const sgn of [-1, 1]) { const q = pts[k].clone().addScaledVector(sd, sgn); strandPts.push(q.x, q.y, q.z); const c = col.clone().multiplyScalar(0.78 + 0.5 * (1 - t)); strandCols.push(c.r, c.g, c.b); } }
     for (let k = 0; k < n; k++) { const a = sv + k * 2; strandIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } sv += (n + 1) * 2;
   };
-  const dk = new THREE.Color('#a49f9a'), gy = new THREE.Color('#d2cec9'), rr = mulberry(90210);
+  const dk = new THREE.Color('#1a1511'), gy = new THREE.Color('#2b241e'), rr = mulberry(90210);
   for (let k = 0; k < 150; k++) {   // short strands falling over the ears and nape, so the silhouette isn't a smooth cap
     const th = rr() * Math.PI * 2, el = 0.9 + rr() * 0.75;   // below the crown
     const x = Math.sin(el) * Math.sin(th) * hw, y = Math.cos(el) * hh, z = Math.sin(el) * Math.cos(th) * hd - 0.01;
     if (z > 0.0 || y > 0.05 || y < -0.075) continue;
-    const grey = (Math.abs(x) > 0.05 && rr() < 0.7) || rr() < 0.05;
+    const grey = rr() < 0.15;
     const p0 = new V3(headC.x + x * 1.04, headC.y + y * 1.0, headC.z + z * 1.04), out = new V3(x / hw, 0, z / hd).normalize();
-    strand(p0, new V3(out.x * 0.25, -1, out.z * 0.25 - 0.15), 0.05 + rr() * 0.09 + (z < 0 ? 0.08 : 0) + (Math.abs(x) > 0.05 ? 0.05 : 0), 0.005 + rr() * 0.003, grey ? gy : dk, rr() * 6);
+    strand(p0, new V3(out.x * 0.25, -1, out.z * 0.25 - 0.15), 0.015 + rr() * 0.03, 0.005 + rr() * 0.003, grey ? gy : dk, rr() * 6);
   }
   const strandGeo = new THREE.BufferGeometry(); strandGeo.setAttribute('position', new THREE.Float32BufferAttribute(strandPts, 3)); strandGeo.setAttribute('color', new THREE.Float32BufferAttribute(strandCols, 3)); strandGeo.setIndex(strandIdx); strandGeo.computeVertexNormals();
   add(head, strandGeo, M.hair);
-  const pony = grp(head, 0, 0.0, -0.095);   // the queue, tied at the nape
+  const pony = grp(head, 0, 0.0, -0.095); pony.visible = false;   // the queue, tied at the nape
   { const pp = [], pc = [], pi = []; let v0 = 0; const q = mulberry(404); for (let k = 0; k < 40; k++) { const a = q() * 6.28, r0 = q() * 0.05, p = []; for (let j = 0; j <= 8; j++) { const t = j / 8; p.push(new V3(Math.cos(a) * r0 * (1 - t * 0.5) + Math.sin(t * 5 + k) * 0.004, -t * 0.3 - 0.02, Math.sin(a) * r0 * 0.6 - t * 0.05)); }
       for (let j = 0; j <= 8; j++) { const w = 0.0075 * (1 - 0.6 * j / 8); for (const s of [-1, 1]) { pp.push(p[j].x + s * w, p[j].y, p[j].z); const c = k % 9 === 0 ? gy : dk; pc.push(c.r * (0.8 + 0.4 * q()), c.g * (0.8 + 0.4 * q()), c.b * (0.8 + 0.4 * q())); } } for (let j = 0; j < 8; j++) { const a2 = v0 + j * 2; pi.push(a2, a2 + 1, a2 + 2, a2 + 1, a2 + 3, a2 + 2); } v0 += 18; }
     const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3)); pg.setAttribute('color', new THREE.Float32BufferAttribute(pc, 3)); pg.setIndex(pi); pg.computeVertexNormals(); add(pony, pg, M.hair); }
