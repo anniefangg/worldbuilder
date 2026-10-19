@@ -138,7 +138,7 @@ body {
 .sep { border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
 .status { font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-soft); min-height: 1em; }
 #tray {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(250px + env(safe-area-inset-top, 0px));
   width: min(380px, calc(100vw - 32px)); max-height: calc(100% - 200px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
   display: grid; gap: 12px; z-index: 5;
 }
@@ -189,6 +189,25 @@ body.tray-open #info { display: none; }
 }
 #select-btn[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
 #select-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#layers-btn {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(208px + env(safe-area-inset-top, 0px));
+  font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
+}
+#layers-btn .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
+#layers-btn:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 2px; }
+#layers-menu { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(250px + env(safe-area-inset-top, 0px)); width: min(270px, calc(100vw - 32px)); padding: 10px 10px 8px; z-index: 12; display: grid; gap: 2px; }
+#layers-menu[hidden] { display: none; }
+#layers-menu h4 { margin: 0 4px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+#layers-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 7px; cursor: pointer; font: 500 13px/1.2 var(--font-ui); color: var(--ink); }
+#layers-menu label:hover { background: rgba(31, 87, 168, 0.08); }
+#layers-menu input { accent-color: var(--azulejo); width: 15px; height: 15px; margin: 0; }
+#layers-menu .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+#layers-menu .n { margin-left: auto; font: 500 10.5px/1 var(--font-mono); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+#layers-menu .only { border: 0; background: none; font: 600 10.5px/1 var(--font-ui); color: var(--azulejo); cursor: pointer; padding: 3px 4px; border-radius: 5px; opacity: 0; }
+#layers-menu label:hover .only, #layers-menu label:focus-within .only { opacity: 1; }
+#layers-menu .row { display: flex; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--edge); margin-top: 4px; }
+#layers-menu .row button { border: 0; background: none; font: 600 12px/1 var(--font-ui); color: var(--azulejo); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+#layers-menu .row button:hover { background: rgba(31, 87, 168, 0.08); }
 #selbox { position: fixed; z-index: 7; border: 1.5px dashed var(--azulejo); background: rgba(31, 87, 168, 0.1); pointer-events: none; border-radius: 3px; }
 #scene.boxing, #plan.boxing { cursor: crosshair; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
@@ -196,8 +215,10 @@ body.tray-open #info { display: none; }
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
-  #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #tray { top: calc(192px + env(safe-area-inset-top, 0px)); }
   #select-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  #layers-btn { top: calc(150px + env(safe-area-inset-top, 0px)); }
+  #layers-menu { top: calc(192px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
   #modes { right: auto; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); }
@@ -228,6 +249,8 @@ body.tray-open #info { display: none; }
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
 <button id="select-btn" class="plaque" type="button" aria-pressed="false" title="Select an area (B), or hold Shift and drag">Select area</button>
+<button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
+<div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
@@ -1914,11 +1937,12 @@ function distToLine(P, x, z) {
   return best;
 }
 // The ground feature under (x, z): canals and streets win over the plazas and parks they cross.
-function featureAt(x, z, tol = 1) {
+function featureAt(x, z, tol = 1, pickable = false) {   // pickable: only the layers switched on in the Layers menu
   const l = world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)); if (!l) return -1;
   let best = -1, bp = Infinity, bs = Infinity;
   for (const idx of l) {
     const f = world.features[idx], bb = f.bbox, K = KINDS[f.kind];
+    if (pickable && !layers[f.kind]) continue;
     if (x < bb[0] - tol || x > bb[2] + tol || z < bb[1] - tol || z > bb[3] + tol) continue;
     let hit = false, score = 0;
     if (K.geom === 'poly') { hit = pointInRings(x, z, f.rings); score = f.size; }
@@ -3227,6 +3251,11 @@ async function applyPrompt(pid) {
 }
 
 // ─────────────────────────── selection, hover, info panel ───────────────────────────
+// ---- layers: which kinds of thing a click (or a drag-box) can pick
+const LAYER_ORDER = ['building', 'street', 'path', 'plaza', 'park', 'canal', 'water', 'beach'];
+const LAYER_DOT = { building: '#c96a6e', street: '#8a96a3', path: '#c2a271', plaza: '#cfc6b3', park: '#6cbf55', canal: '#4aa3c4', water: '#2f86b8', beach: '#f0d79a' };
+const LKEY = 'amparacan-map-layers', layers = Object.fromEntries(LAYER_ORDER.map((k) => [k, true]));
+try { const sv = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (sv) for (const k of LAYER_ORDER) if (sv[k] === false) layers[k] = false; } catch (e) {}
 const ui = { hover: null, selected: null, editing: false, editSnapshot: null, trayOpen: false, trayTab: 'batch', hist: { kind: '', category: '', tag: '', source: '', q: '', only: false } };
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -3301,14 +3330,14 @@ function afterMulti() {
 function boxSelect3D(x0, y0, x1, y1) {
   const out = [], v = new THREE.Vector3(), inR = (sx, sy) => sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
   const toS = (x, y, z) => { v.set(x, y, z).project(camera); return v.z < 1 && v.z > -1 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null; };
-  for (const b of world.buildings) { if (isSunk(b.idx)) continue; const p = toS(b.cx, (b.base + b.top) / 2, b.cz); if (p && inR(p[0], p[1])) out.push(b.id); }
-  if (!out.length) for (const f of world.features) { const p = toS(f.cx, H(f.cx, f.cz) + 0.5, f.cz); if (p && inR(p[0], p[1])) out.push(f.id); }
+  if (layers.building) for (const b of world.buildings) { if (isSunk(b.idx)) continue; const p = toS(b.cx, (b.base + b.top) / 2, b.cz); if (p && inR(p[0], p[1])) out.push(b.id); }
+  if (!out.length) for (const f of world.features) { if (!layers[f.kind]) continue; const p = toS(f.cx, H(f.cx, f.cz) + 0.5, f.cz); if (p && inR(p[0], p[1])) out.push(f.id); }
   return out;
 }
 function boxSelect2D(x0, y0, x1, y1) {
   const [wx0, wz0] = planWorld(x0, y0), [wx1, wz1] = planWorld(x1, y1), out = [];
-  for (const b of world.buildings) if (b.cx >= wx0 && b.cx <= wx1 && b.cz >= wz0 && b.cz <= wz1) out.push(b.id);
-  if (!out.length) for (const f of world.features) if (f.cx >= wx0 && f.cx <= wx1 && f.cz >= wz0 && f.cz <= wz1) out.push(f.id);
+  if (layers.building) for (const b of world.buildings) if (b.cx >= wx0 && b.cx <= wx1 && b.cz >= wz0 && b.cz <= wz1) out.push(b.id);
+  if (!out.length) for (const f of world.features) if (layers[f.kind] && f.cx >= wx0 && f.cx <= wx1 && f.cz >= wz0 && f.cz <= wz1) out.push(f.id);
   return out;
 }
 // Shared pointer handling: Shift-drag (or the Select tool) draws a box; Shift-click toggles one item
@@ -3338,6 +3367,39 @@ function attachBoxSelect(el, pick, boxPick) {
       if (b.shift) toggleMulti(id); else select(id);
     }
   }, true);
+}
+// ---- the Layers menu
+function layerCount(k) { return k === 'building' ? world.buildings.length : world.features.filter((f) => f.kind === k).length; }
+const layerKindOf = (id) => { const t = targetOf(id); return t ? t.kind : null; };
+function applyLayers() {
+  try { localStorage.setItem(LKEY, JSON.stringify(layers)); } catch (e) {}
+  // let go of anything that's no longer pickable
+  if (ui.selected && !layers[layerKindOf(ui.selected)]) select(null);
+  if (multi.size) { const drop = [...multi].filter((id) => !layers[layerKindOf(id)]); if (drop.length) { for (const id of drop) { multiMark(id, false); multi.delete(id); } afterMulti(); } }
+  if (ui.hover && !layers[layerKindOf(ui.hover)]) setHover(null);
+  const off = LAYER_ORDER.filter((k) => !layers[k]).length, b = $('layers-btn');
+  b.replaceChildren('Layers', ...(off ? [el('span', { class: 'badge', title: `${off} hidden from selection` }, `${LAYER_ORDER.length - off}/${LAYER_ORDER.length}`)] : []));
+  renderLayersMenu();
+}
+function renderLayersMenu() {
+  const m = $('layers-menu'); if (m.hidden) return;
+  const row = (k) => {
+    const cb = el('input', { type: 'checkbox', checked: layers[k], onchange: () => { layers[k] = cb.checked; applyLayers(); } });
+    const only = el('button', { type: 'button', class: 'only', title: `Only ${KINDS[k].plural.toLowerCase()}`, onclick: (e) => { e.preventDefault(); for (const j of LAYER_ORDER) layers[j] = j === k; applyLayers(); } }, 'only');
+    return el('label', {}, cb, el('span', { class: 'dot', style: `background:${LAYER_DOT[k]}` }), KINDS[k].plural, el('span', { class: 'n' }, layerCount(k).toLocaleString()), only);
+  };
+  m.replaceChildren(el('h4', {}, 'Click to select'), ...LAYER_ORDER.map(row),
+    el('div', { class: 'row' }, el('button', { type: 'button', onclick: () => { for (const k of LAYER_ORDER) layers[k] = true; applyLayers(); } }, 'All'), el('button', { type: 'button', onclick: () => { for (const k of LAYER_ORDER) layers[k] = false; applyLayers(); } }, 'None')));
+}
+function toggleLayersMenu(on) {
+  const m = $('layers-menu'); on = on === undefined ? m.hidden : on; m.hidden = !on; $('layers-btn').setAttribute('aria-expanded', String(on)); if (on) renderLayersMenu();
+}
+function initLayers() {
+  $('layers-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleLayersMenu(); });
+  $('layers-menu').addEventListener('click', (e) => e.stopPropagation());
+  addEventListener('click', () => { if (!$('layers-menu').hidden) toggleLayersMenu(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('layers-menu').hidden) { toggleLayersMenu(false); e.stopPropagation(); } }, true);
+  applyLayers();
 }
 function toggleBoxTool(on = !ui.boxTool) {
   ui.boxTool = on; $('select-btn').setAttribute('aria-pressed', String(on));
@@ -3945,7 +4007,7 @@ function drawPlan() {
   plan.need = false;
 }
 const planWorld = (sx, sy) => [plan.cx + (sx - innerWidth / 2) / plan.scale, plan.cz + (sy - innerHeight / 2) / plan.scale];
-function pickAt(x, z, tol) { const b = buildingAt(x, z); if (b >= 0) return world.buildings[b].id; const f = featureAt(x, z, tol); return f >= 0 ? world.features[f].id : null; }
+function pickAt(x, z, tol) { const b = layers.building ? buildingAt(x, z) : -1; if (b >= 0) return world.buildings[b].id; const f = featureAt(x, z, tol, true); return f >= 0 ? world.features[f].id : null; }
 function initPlanInput() {
   const c = plan.canvas; let drag = null;
   attachBoxSelect(c, (sx, sy) => { const [x, z] = planWorld(sx, sy); return pickAt(x, z, 3 / plan.scale); }, boxSelect2D);
@@ -4032,9 +4094,9 @@ const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(LAND_Y + 0.25)), _
 function pick3D(sx, sy) {   // a building under the cursor, else the park, street, canal… on the ground
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   const hits = raycaster.intersectObjects([...world.tileMeshes.values()], false);
-  for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return world.buildings[idx].id; }
+  for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return layers.building ? world.buildings[idx].id : null; }   // a building you can't pick still blocks the click
   if (!raycaster.ray.intersectPlane(_ground, _gp)) return null;
-  const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol);
+  const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol, true);
   return f >= 0 ? world.features[f].id : null;
 }
 
@@ -4090,6 +4152,7 @@ function initControls() {
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
   $('select-btn').addEventListener('click', () => toggleBoxTool());
+  initLayers();
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
