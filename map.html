@@ -2323,7 +2323,8 @@ function polyOverlay(items, uvScale) {
 }
 function ribbonOverlay(items) {
   const geo = new Geo(), c = new THREE.Color();
-  for (const { pts, w, color } of items) {
+  const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
+  for (const { pts, w, color, blend } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
     const P = []; // densify so ribbons follow the terrain
     for (let i = 0; i < pts.length - 2; i += 2) {
@@ -2332,14 +2333,18 @@ function ribbonOverlay(items) {
     }
     P.push(pts[pts.length - 2], pts[pts.length - 1]);
     // UVs run with the street (v) and across it (u), so rows of setts cross the carriageway
-    let along = 0;
+    let along = 0, total = 0;
+    for (let i = 0; i < P.length - 2; i += 2) total += Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]);
+    // where this ribbon runs into another surface its colour eases into that surface's colour over the last few metres (blend: [{end: 0|1, color, half}])
+    const BL = 9, tintAt = (d) => { cE.copy(c); for (const b of blend || []) { const e = b.end ? total - d : d, k = 1 - smooth(b.half * 0.6, b.half + BL, e); if (k > 0) { cB.copy(linear(b.color)); cE.lerp(cB, k); } } return cE; };
     for (let i = 0; i < P.length - 2; i += 2) {
       const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], len = Math.hypot(bx - ax, bz - az);
       if (len < 0.01) continue;
       const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ha = H(ax, az) + LIFT, hb = H(bx, bz) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
-      const a0 = geo.v(ax + nx, ha, az + nz, 0, 1, 0, c, u0, v0), a1 = geo.v(ax - nx, ha, az - nz, 0, 1, 0, c, -u0, v0);
-      const b0 = geo.v(bx + nx, hb, bz + nz, 0, 1, 0, c, u0, v1), b1 = geo.v(bx - nx, hb, bz - nz, 0, 1, 0, c, -u0, v1);
+      const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
+      const a0 = geo.v(ax + nx, ha, az + nz, 0, 1, 0, ca, u0, v0), a1 = geo.v(ax - nx, ha, az - nz, 0, 1, 0, ca, -u0, v0);
+      const b0 = geo.v(bx + nx, hb, bz + nz, 0, 1, 0, cb, u0, v1), b1 = geo.v(bx - nx, hb, bz - nz, 0, 1, 0, cb, -u0, v1);
       geo.triUp(a0, a1, b0); geo.triUp(a1, b1, b0);
     }
     if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints
@@ -2368,6 +2373,21 @@ const ORDER = { beach: 1, plaza: 1, park: 2, path: 4, street: 5 };
 // Streets are laid dark: asphalt-grey setts and slate pavers. Each street gets its own depth (so the paving still varies) and keeps its tint.
 function darken(hex, k) { const n = parseInt(hex.slice(1), 16), ch = (v) => Math.round(clamp(v * k, 0, 255)).toString(16).padStart(2, '0'); return '#' + ch(n >> 16) + ch((n >> 8) & 255) + ch(n & 255); }   // multiply in sRGB, as the eye reads it
 const streetDark = (f) => 0.5 + 0.18 * ((f.seed >>> 5) % 100) / 100;
+// Where a street's or path's end runs into another street or path, it takes on that surface's colour over its last few metres so the two ease into each other
+function pathBlend(f) {
+  if (!f.joins) {
+    f.joins = [0, 1].map((end) => {
+      const x = f.pts[end ? f.pts.length - 2 : 0], z = f.pts[end ? f.pts.length - 1 : 1]; let best = null, bd = 1e9;
+      for (const g of world.features) {
+        if (g === f || (g.kind !== 'street' && g.kind !== 'path') || x < g.bbox[0] - 8 || x > g.bbox[2] + 8 || z < g.bbox[1] - 8 || z > g.bbox[3] + 8) continue;
+        const d = distToLine(g.pts, x, z) - g.w / 2; if (d < 4 && d < bd) { bd = d; best = g; }
+      }
+      return best;
+    });
+  }
+  const out = []; f.joins.forEach((g, end) => { if (g) out.push({ end, color: g.kind === 'street' ? darken(featureStyle(g).tint, streetDark(g)) : featureStyle(g).tint, half: g.w / 2 }); });
+  return out.length ? out : null;
+}
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -2378,7 +2398,7 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f) });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null));
@@ -5917,6 +5937,7 @@ store.on((what, ids) => {
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
+    if (kinds.has('street') || kinds.has('path')) { kinds.add('street'); kinds.add('path'); }
     for (const k of kinds) if (ORDER[k]) buildGround(k);
     if (kinds.has('park')) clearGrass();
     if (treeTiles.size) rebuildParkTrees(treeTiles);
