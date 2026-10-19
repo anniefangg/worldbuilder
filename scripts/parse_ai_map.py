@@ -17,6 +17,7 @@ import colorsys
 import hashlib
 import json
 import math
+import os
 import re
 import struct
 import sys
@@ -529,6 +530,91 @@ def match_ids(final, previous):
             "removed": len(old_free) - len(used_old)}
 
 
+def _shape(ring):
+    """Translation-, rotation- and mirror-invariant description of a footprint: area, perimeter and the
+    cyclic sequence of (edge length, turn angle). Two footprints that are the same shape in different
+    places (or turned round) share it."""
+    n = len(ring)
+    if n < 3:
+        return None
+    seq = []
+    for i in range(n):
+        a, b, c = ring[i], ring[(i + 1) % n], ring[(i + 2) % n]
+        l1 = math.dist(a, b)
+        t = math.atan2(c[1] - b[1], c[0] - b[0]) - math.atan2(b[1] - a[1], b[0] - a[0])
+        t = (t + math.pi) % (2 * math.pi) - math.pi
+        seq.append((l1, t))
+    return {"n": n, "area": abs(area(ring)), "perim": sum(l for l, _ in seq), "seq": seq}
+
+
+def _same_shape(a, b, tol_len=0.4, tol_ang=0.11):
+    if a is None or b is None or a["n"] != b["n"]:
+        return False
+    if abs(a["area"] - b["area"]) > 0.025 * max(a["area"], 1e-6) or abs(a["perim"] - b["perim"]) > 0.025 * max(a["perim"], 1e-6):
+        return False
+    n, sa = a["n"], a["seq"]
+    sq = b["seq"]
+    variants = (
+        sq,                                                                    # as drawn
+        [(l, -t) for l, t in sq],                                              # mirrored, same vertex order
+        [(sq[j][0], -sq[(j - 1) % n][1]) for j in range(n - 1, -1, -1)],       # the same shape traced the other way round
+        [(sq[j][0], sq[(j - 1) % n][1]) for j in range(n - 1, -1, -1)],        # mirrored and traced the other way round
+    )
+    for sb in variants:
+        for off in range(n):
+            ok = True
+            for i in range(n):
+                l1, t1 = sa[i]
+                l2, t2 = sb[(i + off) % n]
+                if abs(l1 - l2) > tol_len or abs(t1 - t2) > tol_ang:
+                    ok = False
+                    break
+            if ok:
+                return True
+    return False
+
+
+def find_moves(final, previous, out_dir):
+    """After id matching: old footprints that vanished but whose exact shape reappears elsewhere are probably
+    buildings that were moved in Illustrator. Writes data/map/reimport_moves.json for the author to confirm
+    (a design is never moved silently), listing every candidate when several share the shape."""
+    kept_old = {f[1] for f in final if f[1] in previous}
+    removed = {k: v for k, v in previous.items() if k not in kept_old}
+    fresh = [f for f in final if f[1] not in previous]
+    if not removed or not fresh:
+        return {"candidates": 0}
+    by_n = {}
+    for f in fresh:
+        sh = _shape(f[3])
+        if sh:
+            by_n.setdefault(sh["n"], []).append((f, sh))
+    moves = []
+    for k, (ring, _) in removed.items():
+        sh = _shape(ring)
+        if not sh:
+            continue
+        ox = sum(p[0] for p in ring) / len(ring)
+        oy = sum(p[1] for p in ring) / len(ring)
+        found = []
+        for f, fs in by_n.get(sh["n"], []):
+            if _same_shape(sh, fs):
+                nx = sum(p[0] for p in f[3]) / len(f[3])
+                ny = sum(p[1] for p in f[3]) / len(f[3])
+                found.append({"id": f[1], "at": [round(nx, 1), round(ny, 1)], "distance": round(math.hypot(nx - ox, ny - oy), 1)})
+        if found:
+            moves.append({"old": k, "was_at": [round(ox, 1), round(oy, 1)], "area": round(sh["area"], 1), "candidates": found})
+    claims = {}
+    for m in moves:
+        for c in m["candidates"]:
+            claims[c["id"]] = claims.get(c["id"], 0) + 1
+    for m in moves:
+        m["unambiguous"] = len(m["candidates"]) == 1 and claims[m["candidates"][0]["id"]] == 1
+    path = os.path.join(out_dir, "reimport_moves.json")
+    json.dump({"note": "Old building ids that no longer exist, with new footprints of the same shape. Check which old ids have edits, then confirm each pair with the author before moving a design.",
+               "moves": moves}, open(path, "w"), indent=1)
+    return {"candidates": len(moves), "unambiguous": sum(1 for m in moves if m["unambiguous"]), "file": path}
+
+
 def decode_features(path, key):
     """{id: (centroid, size)} for one feature layer of a previous build, or None."""
     try:
@@ -674,6 +760,11 @@ def build(src, out):
     if previous:
         report = match_ids(final, previous)
         print("re-import buildings: %(kept)d kept, %(remapped)d remapped, %(new)d new, %(removed)d removed" % report)
+        mv = find_moves(final, previous, os.path.dirname(out) or ".")
+        if mv["candidates"]:
+            print("re-import: %(candidates)d removed footprints have a look-alike among the new ones (%(unambiguous)d unambiguous): %(file)s" % mv)
+        else:
+            print("re-import: no removed footprint reappears elsewhere, so no moved buildings to confirm")
         for key, fset in (("parks", parks), ("pavement", pave), ("water", water), ("streets", streets),
                           ("paths", paths), ("canals", canals), ("beaches", beaches)):
             rep = match_feature_ids(fset, decode_features(out, key))
