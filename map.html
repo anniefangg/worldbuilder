@@ -183,6 +183,36 @@ body.tray-open #info { display: none; }
 #info input.canopy { width: 100%; accent-color: #2f7f4f; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 #info .stepper .btn { width: 32px; padding: 6px 0; font-size: 15px; }
+#search { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(14px + env(safe-area-inset-top, 0px)); width: min(300px, calc(100vw - 32px)); padding: 7px; box-sizing: border-box; z-index: 9; display: grid; gap: 6px; }
+#search .sbox { display: flex; align-items: center; gap: 4px; }
+#search input[type=search] { flex: 1; min-width: 0; font: 400 13.5px/1.2 var(--font-ui); color: var(--ink); background: var(--plaster-solid); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 28px 8px 10px; -webkit-appearance: none; appearance: none; }
+#search input[type=search]::-webkit-search-cancel-button { display: none; }
+#search input:focus-visible { outline: 2px solid var(--azulejo); outline-offset: 1px; }
+#search .sbox .wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+#search #s-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--ink-soft); font-size: 17px; line-height: 1; cursor: pointer; padding: 3px 6px; border-radius: 6px; }
+#search #s-cats { border: 1px solid var(--edge); background: var(--plaster-solid); color: var(--ink); border-radius: 8px; padding: 8px 9px; font: 600 12px/1 var(--font-ui); cursor: pointer; white-space: nowrap; display: flex; gap: 5px; align-items: center; }
+#search #s-cats[aria-expanded="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
+#search .badge { font: 600 10px/1 var(--font-mono); background: var(--azulejo); color: var(--azulejo-ink); border-radius: 999px; padding: 3px 6px; }
+#search #s-cats[aria-expanded="true"] .badge { background: var(--azulejo-ink); color: var(--azulejo); }
+#s-list { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 380px); overflow: auto; display: grid; gap: 1px; }
+#s-list[hidden], #s-cat-panel[hidden], #s-status[hidden] { display: none; }
+#s-list li { padding: 7px 9px; border-radius: 8px; cursor: pointer; display: grid; gap: 2px; }
+#s-list li[aria-selected="true"], #s-list li:hover { background: rgba(31, 87, 168, 0.1); }
+#s-list .t { font: 600 13px/1.25 var(--font-ui); color: var(--ink); display: flex; gap: 6px; align-items: baseline; }
+#s-list .k { font: 600 9.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+#s-list .s { font: 400 11.5px/1.3 var(--font-ui); color: var(--ink-soft); }
+#s-list mark { background: rgba(233, 180, 76, 0.45); color: inherit; border-radius: 2px; }
+#s-empty { padding: 8px 9px 6px; font: 400 12px/1.4 var(--font-ui); color: var(--ink-soft); }
+#s-cat-panel { display: grid; gap: 7px; padding: 2px 2px 4px; }
+#s-cat-panel .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#s-cat-panel .chip { border: 1px solid var(--edge); background: var(--plaster-solid); color: var(--ink); border-radius: 999px; padding: 5px 9px; font: 500 12px/1 var(--font-ui); cursor: pointer; display: inline-flex; gap: 5px; align-items: baseline; }
+#s-cat-panel .chip .n { font: 500 10px/1 var(--font-mono); color: var(--ink-soft); }
+#s-cat-panel .chip[aria-pressed="true"] { background: #e9b44c; border-color: #c8921f; color: #3b2a05; }
+#s-cat-panel .chip[aria-pressed="true"] .n { color: #6b4a10; }
+#s-cat-panel .hint { font: 400 11.5px/1.4 var(--font-ui); color: var(--ink-soft); }
+#s-status { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 2px 4px 0; font: 500 12px/1.2 var(--font-ui); color: var(--ink); }
+#s-status button { border: 0; background: none; color: var(--azulejo); font: 600 12px/1 var(--font-ui); cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+#s-status button:hover { background: rgba(31, 87, 168, 0.08); }
 #layers-btn {
   position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(166px + env(safe-area-inset-top, 0px));
   font: 600 12.5px/1 var(--font-ui); padding: 9px 12px; cursor: pointer; color: var(--ink); display: flex; gap: 6px; align-items: center;
@@ -205,12 +235,16 @@ body.tray-open #info { display: none; }
 #selbox { position: fixed; z-index: 7; border: 1.5px dashed var(--azulejo); background: rgba(31, 87, 168, 0.1); pointer-events: none; border-radius: 3px; }
 #scene.boxing, #plan.boxing { cursor: crosshair; }
 #toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 9px 14px; font-size: 13px; z-index: 20; }
+@media (max-width: 860px) {
+  #search { top: calc(66px + env(safe-area-inset-top, 0px)); }
+}
 @media (max-width: 640px) {
   #minimap { width: 128px; height: 128px; top: calc(66px + env(safe-area-inset-top, 0px)); }
   #info { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 55%; }
   #edits-btn { top: calc(66px + env(safe-area-inset-top, 0px)); right: max(70px, env(safe-area-inset-right, 0px)); }
   #tray { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #layers-btn { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  #search { top: calc(66px + env(safe-area-inset-top, 0px)); width: min(260px, calc(100vw - 32px)); }
   #layers-menu { top: calc(150px + env(safe-area-inset-top, 0px)); }
   #modes button kbd, #help { display: none; }
   #brand h1 { font-size: 20px; }
@@ -241,6 +275,15 @@ body.tray-open #info { display: none; }
   <button id="qual" type="button" title="Graphics quality">Auto</button>
 </div>
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
+<div id="search" class="plaque" role="search">
+  <div class="sbox">
+    <div class="wrap"><input id="q" type="search" placeholder="Search names, addresses, categories" autocomplete="off" spellcheck="false" aria-label="Search the map" role="combobox" aria-expanded="false" aria-controls="s-list" aria-autocomplete="list"><button id="s-clear" type="button" aria-label="Clear search" hidden>×</button></div>
+    <button id="s-cats" type="button" aria-expanded="false" aria-controls="s-cat-panel" title="Light up every building in a category">Categories</button>
+  </div>
+  <div id="s-cat-panel" hidden></div>
+  <ul id="s-list" role="listbox" hidden></ul>
+  <div id="s-status" hidden></div>
+</div>
 <button id="layers-btn" class="plaque" type="button" aria-expanded="false" aria-haspopup="true" title="Choose what a click can select">Layers</button>
 <div id="layers-menu" class="plaque" role="group" aria-label="Selectable layers" hidden></div>
 <div id="selbox" hidden></div>
@@ -267,6 +310,7 @@ body.tray-open #info { display: none; }
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
+    <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
     <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area</dd>
@@ -4157,7 +4201,7 @@ function initControls() {
   }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
-  initLayers();
+  initLayers(); initSearch();
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
@@ -4421,7 +4465,7 @@ function drawMinimap(now) {
   // a scale bar label: the map's width in metres
   const span = W * px; $('mm-scale').textContent = span >= 1000 ? `${(span / 1000).toFixed(1)} km` : `${Math.round(span / 10) * 10} m`;
 }
-function placeMinimap() { const b = $('brand'); $('minimap').style.top = b.hidden ? '' : Math.round(b.getBoundingClientRect().bottom + 10) + 'px'; }
+function placeMinimap() { const sb = document.querySelector('#search .sbox'); if (sb) $('minimap').style.top = Math.round(sb.getBoundingClientRect().bottom + 7 + 10) + 'px'; }
 function initMinimap() {
   addEventListener('resize', placeMinimap);
   const c = $('mm'), box = $('minimap'), home = $('mm-home');
@@ -4476,6 +4520,128 @@ function placePill() {
 let marked = [];
 function highlight(ids) { clearHighlight(); for (const id of ids) { const r = world.byId.get(id); if (r) { animOf(r.idx).wantMark = 1; marked.push(r.idx); } } plan.invalidate(); return marked.length; }
 function clearHighlight() { for (const i of marked) animOf(i).wantMark = 0; marked = []; plan.invalidate(); }
+// ─────────────────────────── search ───────────────────────────
+// Type a name, street address, tag or id to fly to it; or switch on categories (tags such as “hospital” or “school”) to light up every building in them.
+const SEARCH = { q: '', cats: new Set(), results: [], active: -1, lit: [] };
+const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+const stem = (w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);           // hospitals → hospital
+const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function* allDocs() { for (const [id, d] of store.buildings) yield [id, d, 'building']; for (const [id, d] of store.features) { const t = targetOf(id); if (t) yield [id, d, t.kind]; } }
+function categoryMap() {   // tag → { label, ids } over the buildings
+  const m = new Map();
+  for (const [id, d] of store.buildings) for (const tg of d.tags || []) { const k = norm(tg); if (!k) continue; let e = m.get(k); if (!e) m.set(k, e = { key: k, label: tg.trim(), ids: [] }); e.ids.push(id); }
+  return [...m.values()].sort((a, b) => b.ids.length - a.ids.length || a.label.localeCompare(b.label));
+}
+const hasCat = (d) => { if (!SEARCH.cats.size) return true; const ts = (d.tags || []).map(norm); return ts.some((t) => SEARCH.cats.has(t)); };
+function runSearch(q) {
+  const toks = norm(q).split(/\s+/).filter(Boolean).map(stem); if (!toks.length) return [];
+  const out = [], seen = new Set();
+  for (const [id, d, kind] of allDocs()) {
+    if (SEARCH.cats.size && (kind !== 'building' || !hasCat(d))) continue;
+    const name = norm(d.name), addr = norm(d.address), tags = (d.tags || []).map(norm), other = norm([d.details, d.history, ...Object.values(d.attrs || {})].join(' '));
+    const all = `${name} ${addr} ${tags.join(' ')} ${other} ${id.toLowerCase()}`;
+    if (!toks.every((t) => all.includes(t))) continue;
+    const full = toks.join(' '); let score = 10;
+    if (name === norm(q)) score = 120; else if (name.startsWith(full)) score = 100; else if (name.includes(full)) score = 85; else if (toks.every((t) => name.includes(t))) score = 70;
+    else if (addr.includes(full)) score = 65; else if (toks.every((t) => addr.includes(t))) score = 55; else if (tags.some((t) => toks.every((k) => t.includes(k)))) score = 45; else if (toks.every((t) => tags.join(' ').includes(t) || name.includes(t) || addr.includes(t))) score = 40;
+    out.push({ id, kind, score, d }); seen.add(id);
+  }
+  if (/^[a-z]{1,2}[0-9a-f]{3,}$/i.test(q.trim())) for (const [id] of world.byId) { if (!seen.has(id) && id.startsWith(q.trim().toLowerCase())) { out.push({ id, kind: 'building', score: 30, d: docFor(id) }); if (out.length > 60) break; } }
+  return out.sort((a, b) => b.score - a.score || (a.d.name || '').localeCompare(b.d.name || '')).slice(0, 60);
+}
+function hl(text, q) {   // bold the matching words
+  let h = esc(text); for (const t of norm(q).split(/\s+/).filter(Boolean)) { const re = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'); h = h.replace(re, '<mark>$1</mark>'); } return h;
+}
+// tall soft columns of light over lit-up buildings, so they can be found from anywhere on the island
+function setBeacons(ids) {
+  if (!world.beacon) {
+    const g = new THREE.CylinderGeometry(1.1, 1.1, 1, 8, 1, true).translate(0, 0.5, 0);
+    const m = new THREE.MeshBasicMaterial({ color: '#ffd36b', transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    m.customProgramCacheKey = () => 'beacon';
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vH;').replace('#include <project_vertex>', `
+        vH = position.y;
+        vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0);
+        vec4 root = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        float dist = distance(cameraPosition, (modelMatrix * root).xyz);
+        mvPosition.xz = root.xz + (mvPosition.xz - root.xz) * (1.0 + dist * 0.012);      // wider with distance, so it never vanishes
+        mvPosition.y = root.y + (mvPosition.y - root.y) * (1.0 + dist * 0.004);
+        mvPosition = modelViewMatrix * mvPosition;
+        gl_Position = projectionMatrix * mvPosition;`);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vH;').replace('#include <dithering_fragment>', '#include <dithering_fragment>\n gl_FragColor.a *= pow(1.0 - vH, 1.4) * 0.9 + 0.05;');
+    };
+    world.beacon = new THREE.InstancedMesh(g, m, 4000); world.beacon.frustumCulled = false; world.beacon.renderOrder = 14; world.beacon.count = 0; world.beacon.visible = false; scene.add(world.beacon);
+  }
+  const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 80, 1); let n = 0;
+  for (const id of ids) { const r = world.byId.get(id); if (!r) continue; if (n >= 4000) break; M4.compose(V.set(r.cx, r.top, r.cz), Q, S); world.beacon.setMatrixAt(n++, M4); }
+  world.beacon.count = n; world.beacon.instanceMatrix.needsUpdate = true; world.beacon.visible = n > 0;
+}
+function fitIds(ids) {
+  const rs = ids.map((id) => world.byId.get(id)).filter(Boolean); if (!rs.length) return;
+  if (rs.length === 1) return focusTarget(rs[0].id);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (const r of rs) { x0 = Math.min(x0, r.cx); x1 = Math.max(x1, r.cx); z0 = Math.min(z0, r.cz); z1 = Math.max(z1, r.cz); }
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0, 60);
+  if (player.mode === 'plan') { plan.cx = cx; plan.cz = cz; plan.scale = clamp(Math.min(innerWidth, innerHeight) / (span * 1.3), 0.03, 4); plan.invalidate(); return; }
+  if (player.mode !== 'map') setMode('map');
+  const h = clamp(span * 0.95 + 140, 160, 9000);
+  tweenCamera(new THREE.Vector3(cx + span * 0.1, h, cz + h * 0.8), new THREE.Vector3(cx, 0, cz), 1.6);
+}
+function initSearch() {
+  const q = $('q'), list = $('s-list'), clear = $('s-clear'), catsBtn = $('s-cats'), panel = $('s-cat-panel'), status = $('s-status');
+  const setOpen = (on) => { list.hidden = !on; q.setAttribute('aria-expanded', String(on)); };
+  const litIds = () => {
+    if (SEARCH.q.trim()) return SEARCH.results.filter((r) => r.kind === 'building').map((r) => r.id);
+    const s = new Set(); for (const c of categoryMap()) if (SEARCH.cats.has(c.key)) for (const id of c.ids) s.add(id); return [...s];
+  };
+  const refreshLit = () => {
+    const ids = litIds(); SEARCH.lit = ids; highlight(ids); setBeacons(ids);
+    status.replaceChildren();
+    if (ids.length) { status.hidden = false; status.append(el('span', {}, `${ids.length.toLocaleString()} building${ids.length === 1 ? '' : 's'} lit up`), el('span', {}, ids.length > 1 ? el('button', { type: 'button', onclick: () => fitIds(ids) }, 'Zoom to fit') : null, el('button', { type: 'button', onclick: () => { SEARCH.cats.clear(); q.value = ''; SEARCH.q = ''; SEARCH.results = []; draw(); } }, 'Clear'))); }
+    else status.hidden = true;
+    catsBtn.replaceChildren('Categories', ...(SEARCH.cats.size ? [el('span', { class: 'badge' }, String(SEARCH.cats.size))] : []));
+    placeMinimap();
+  };
+  const drawList = () => {
+    list.replaceChildren(); const rs = SEARCH.results;
+    if (!SEARCH.q.trim()) { setOpen(false); return; }
+    setOpen(true);
+    if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Names, addresses and tags come from each building’s Edit details.`)); return; }
+    rs.slice(0, 12).forEach((r, i) => {
+      const t = targetOf(r.id), label = t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
+      const li = el('li', { role: 'option', id: 's-opt-' + i, 'aria-selected': String(i === SEARCH.active) });
+      li.innerHTML = `<div class="t"><span>${hl(name, SEARCH.q)}</span><span class="k">${esc(label)}</span></div>${sub ? `<div class="s">${hl(sub, SEARCH.q)}</div>` : `<div class="s">${esc(r.id)}</div>`}`;
+      li.addEventListener('mousedown', (e) => e.preventDefault());
+      li.addEventListener('click', () => pick(i));
+      list.append(li);
+    });
+    if (rs.length > 12) list.append(el('li', { role: 'presentation', style: 'cursor:default;background:none', class: 'more' }, el('div', { class: 's' }, `+${rs.length - 12} more — all ${rs.filter((r) => r.kind === 'building').length} matching buildings are lit up on the map.`)));
+  };
+  const drawCats = () => {
+    const cs = categoryMap(); panel.replaceChildren();
+    if (!cs.length) { panel.append(el('div', { class: 'hint' }, 'No categories yet. Tag a building (for example “hospital” or “school”) in its Edit details, or tag a whole selection at once, and the tag appears here.')); return; }
+    panel.append(el('div', { class: 'chips' }, cs.map((c) => el('button', { type: 'button', class: 'chip', 'aria-pressed': String(SEARCH.cats.has(c.key)), onclick: () => { SEARCH.cats.has(c.key) ? SEARCH.cats.delete(c.key) : SEARCH.cats.add(c.key); draw(); } }, c.label, el('span', { class: 'n' }, String(c.ids.length))))), el('div', { class: 'hint' }, 'Switch categories on to light up every building in them. Add several to see them together.'));
+  };
+  const draw = () => { SEARCH.results = runSearch(SEARCH.q); SEARCH.active = SEARCH.results.length ? 0 : -1; clear.hidden = !SEARCH.q; drawList(); if (!panel.hidden) drawCats(); refreshLit(); };
+  const pick = (i) => { const r = SEARCH.results[i]; if (!r) return; setOpen(false); q.blur(); focusTarget(r.id); };
+  let timer = 0;
+  q.addEventListener('input', () => { SEARCH.q = q.value; clearTimeout(timer); timer = setTimeout(draw, 110); });
+  q.addEventListener('focus', () => { if (SEARCH.q.trim()) { SEARCH.results = runSearch(SEARCH.q); drawList(); } });
+  q.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    const n = Math.min(SEARCH.results.length, 12);
+    if (e.key === 'ArrowDown' && n) { e.preventDefault(); SEARCH.active = (SEARCH.active + 1) % n; drawList(); }
+    else if (e.key === 'ArrowUp' && n) { e.preventDefault(); SEARCH.active = (SEARCH.active - 1 + n) % n; drawList(); }
+    else if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); SEARCH.results = runSearch(q.value); SEARCH.q = q.value; pick(Math.max(SEARCH.active, 0)); refreshLit(); }
+    else if (e.key === 'Escape') { if (!list.hidden) setOpen(false); else if (q.value) { q.value = ''; SEARCH.q = ''; draw(); } else q.blur(); }
+  });
+  q.addEventListener('keyup', (e) => e.stopPropagation());
+  q.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== q) setOpen(false); }, 120));
+  clear.addEventListener('click', () => { q.value = ''; SEARCH.q = ''; draw(); q.focus(); });
+  catsBtn.addEventListener('click', () => { const on = panel.hidden; panel.hidden = !on; catsBtn.setAttribute('aria-expanded', String(on)); if (on) drawCats(); placeMinimap(); });
+  store.on((what) => { if (what === 'buildings' || what === 'features') { if (!panel.hidden) drawCats(); if (SEARCH.cats.size || SEARCH.q.trim()) { SEARCH.results = runSearch(SEARCH.q); refreshLit(); } } });
+  addEventListener('keydown', (e) => { if ((e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) && !(e.target.closest && e.target.closest('input, textarea, select, [contenteditable]'))) { e.preventDefault(); q.focus(); q.select(); } });
+  refreshLit();
+}
 window.amparacan = {
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
