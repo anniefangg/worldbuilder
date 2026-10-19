@@ -748,11 +748,11 @@ function addPetals() {
   const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
   const g = x.createRadialGradient(16, 16, 1, 16, 16, 14); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.7, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
   x.translate(16, 16); x.rotate(-0.6); x.scale(1, 0.55); x.translate(-16, -16); x.fillStyle = g; x.beginPath(); x.arc(16, 16, 14, 0, 6.2832); x.fill();
-  const N = world.petalN = 70, rnd = mulberry(55), pos = new Float32Array(N * 3), col = new Float32Array(N * 3), cols = ['#ffc2d4', '#ffd9e3', '#ffb0c4', '#fff0e6'];
+  const N = world.petalN = 240, rnd = mulberry(55), pos = new Float32Array(N * 3), col = new Float32Array(N * 3), cols = ['#c9a3ec', '#b58be0', '#d9b8f2', '#a678d6'];
   world.petals = [];
   for (let i = 0; i < N; i++) { const cc = new THREE.Color(cols[i % 4]); col.set([cc.r, cc.g, cc.b], i * 3); world.petals.push({ x: (rnd() - 0.5) * 80, z: (rnd() - 0.5) * 80, y: rnd() * 14, ph: rnd() * 6.28, f: 0.5 + rnd() * 0.9, v: 0.6 + rnd() * 0.8 }); }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const m = new THREE.Points(geo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(c), size: 0.34, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
+  const m = new THREE.Points(geo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(c), size: 0.4, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
   m.frustumCulled = false; m.renderOrder = 12; m.visible = false; scene.add(m); world.petalMesh = m;
 }
 function stepPetals(dt, t) {
