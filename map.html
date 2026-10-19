@@ -2302,34 +2302,14 @@ function ribbonOverlay(items) {
   }
   return geo;
 }
-const CANOPY_GLSL = `
-varying vec2 vWP; uniform float uCanopy; uniform vec2 uFade;
-float canopyAmt(vec3 wp) { return smoothstep(uFade.x, uFade.y, distance(wp, cameraPosition)); }   // 0 near the camera (real trees), 1 far away (solid forest)
-float ch(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float cn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(ch(i), ch(i + vec2(1, 0)), f.x), mix(ch(i + vec2(0, 1)), ch(i + vec2(1, 1)), f.x), f.y); }
-vec3 canopyColor(vec2 p) { return vec3(0.055, 0.215, 0.08); }   // one solid, deep green`;
-const CANOPY_H = 8;   // metres: the height the far-off canopy floats at, about the top of a park tree
-function canopyMaterial() {
-  world.parkFade = world.parkFade || { value: new THREE.Vector2(400, 700) };
-  const mat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
-  mat.customProgramCacheKey = () => 'park-canopy';
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uCanopy = { value: 1 }; sh.uniforms.uFade = world.parkFade;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>' + CANOPY_GLSL).replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = canopyColor(vWP); if (canopyAmt(vec3(vWP.x, 9.0, vWP.y)) < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;');   // dithered fade: no sorting problems
-  };
-  return mat;
-}
 function overlayMesh(geo, tex, order, dim = null) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false });
   mat.customProgramCacheKey = () => (dim ? 'overlay-dim' : 'overlay');
-  if (dim) { world.parkCanopy = world.parkCanopy || { value: 0 }; world.parkFade = world.parkFade || { value: new THREE.Vector2(400, 700) }; }
-  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns turn into a mottled tree canopy once the real trees stop being drawn
-    sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uCanopy = world.parkCanopy; sh.uniforms.uFade = world.parkFade; }
-    if (dim) sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = position.xz;');
-    const canopyFn = CANOPY_GLSL;
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim;' + canopyFn : ''))
-      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\ndiffuseColor.rgb = mix(diffuseColor.rgb * uDim, canopyColor(vWP), canopyAmt(vec3(vWP.x, 2.0, vWP.y)));' : ''))
+  if (dim) world.parkCanopy = world.parkCanopy || { value: 0 };
+  mat.onBeforeCompile = (sh) => { // at dusk the paving picks up warm lamplight; far-off park lawns deepen to a rich green once the trees that shade them are no longer drawn
+    sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uDeep = world.parkCanopy; }
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (dim ? '\nuniform vec3 uDim; uniform float uDeep;' : ''))
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.04, 0.2, 0.07) * (0.7 + lum), uDeep * 0.92); }' : ''))
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
   };
   const m = new THREE.Mesh(geo.build(), mat);
@@ -2353,9 +2333,7 @@ function buildGround(kind) {
     g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
-  const parkCanopy = (list) => { for (const m of world.parkCanopyMeshes || []) { scene.remove(m); m.geometry.dispose(); } world.parkCanopyMat = world.parkCanopyMat || canopyMaterial(); world.parkCanopyMeshes = list.map((m) => { const g = m.geometry.clone(); g.translate(0, CANOPY_H, 0); const c = new THREE.Mesh(g, world.parkCanopyMat); c.renderOrder = 9; c.frustumCulled = false; scene.add(c); return c; }); };
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null));
-  if (kind === 'park') parkCanopy(world.ground[kind]);
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -2535,6 +2513,44 @@ function proxyGeometries() {
     cypress: m([blob(new THREE.ConeGeometry(1.0, 9.2, 5).translate(0, 4.8, 0), '#24502f')]),
   };
 }
+// Far-off groves and orchards: ruffled, leafy crowns at tree height that stand in for the real trees when the park is seen from a distance
+function groveGeometry() {
+  const trunkC = linear('#5a4430'), lo = linear('#245c2c'), hi = linear('#4f9a3a'), tmp = new THREE.Color(), rn = mulberry(808);
+  const crown = (r, sy, x, y, z, ph) => {
+    const g = new THREE.IcosahedronGeometry(r, 3).scale(1, sy, 1), P = g.attributes.position, col = new Float32Array(P.count * 3);
+    for (let i = 0; i < P.count; i++) {
+      const vx = P.getX(i) / r, vy = P.getY(i) / (r * sy), vz = P.getZ(i) / r;
+      const ruffle = 1 + 0.15 * Math.sin(vx * 9 + ph) * Math.cos(vz * 8 - ph) + 0.09 * Math.sin((vx + vy + vz) * 17 + ph * 2) + 0.05 * Math.sin(vy * 21 + vx * 13);   // lobes and leaf-clump ruffles
+      P.setXYZ(i, P.getX(i) * ruffle + x, P.getY(i) * (0.94 + 0.06 * ruffle) + y, P.getZ(i) * ruffle + z);
+      tmp.copy(lo).lerp(hi, clamp(0.5 + vy * 0.55 + 0.25 * Math.sin(vx * 11 + vz * 7 + ph), 0, 1)).multiplyScalar(0.9 + rn() * 0.2);
+      col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g.toNonIndexed();
+  };
+  const parts = [colorize(new THREE.CylinderGeometry(0.3, 0.45, 5.2, 5).translate(0, 2.6, 0).toNonIndexed(), trunkC)];
+  parts.push(crown(3.4, 0.78, 0, 6.6, 0, 0.3), crown(2.4, 0.74, 2.2, 5.9, 0.8, 1.7), crown(2.3, 0.74, -2.0, 6.0, -0.9, 2.9), crown(2.0, 0.7, 0.3, 7.9, -0.4, 4.1));
+  for (const g of parts) { g.deleteAttribute('uv'); if (!g.attributes.normal) g.computeVertexNormals(); }
+  return mergeGeometries(parts);
+}
+function groveMeshes(items) {   // items: [x, y, z, s, rot, hue] per tree, bucketed by 250 m tile
+  world.groveGeo = world.groveGeo || groveGeometry();
+  world.groveMat = world.groveMat || new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  world.veg = world.veg || new Set();
+  const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), by = new Map();
+  for (let i = 0; i < items.length; i += 6) { const tk = treeTile(items[i], items[i + 2]); if (!by.has(tk)) by.set(tk, []); by.get(tk).push(...items.slice(i, i + 6)); }
+  for (const [tk, l] of by) {
+    const n = l.length / 6, mesh = new THREE.InstancedMesh(world.groveGeo, world.groveMat, n);
+    for (let i = 0; i < n; i++) {
+      const [x, y, z, sc, rot, hue] = l.slice(i * 6, i * 6 + 6);
+      M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(sc, sc * (0.9 + hue * 0.25), sc)); mesh.setMatrixAt(i, M4);
+      tint.setHSL(0.3 + (hue - 0.5) * 0.05, 0.3, 0.62 + hue * 0.18).lerp(new THREE.Color(1, 1, 1), 0.35); mesh.setColorAt(i, tint);
+    }
+    const cx = (Math.floor(tk / 1000) - TREE_TN / 2 + 0.5) * TREE_TILE, cz = ((tk % 1000) - TREE_TN / 2 + 0.5) * TREE_TILE;
+    mesh.castShadow = false; mesh.receiveShadow = false; mesh.renderOrder = 10; mesh.computeBoundingSphere(); mesh.matrixAutoUpdate = false; mesh.visible = false;
+    mesh.userData = { cx, cz, role: 'grove', small: false }; scene.add(mesh); out.push(mesh); world.veg.add(mesh);
+  }
+  return out;
+}
 function dropVeg(list) { for (const m of list || []) { scene.remove(m); m.dispose(); world.veg.delete(m); } }
 function treeMeshes(buckets) {
   world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry(), bush: bushGeometry(false), flowerBush: bushGeometry(true) };
@@ -2569,7 +2585,7 @@ function updateVeg(p, alt) {
   for (const m of world.veg) {
     const u = m.userData, d = Math.hypot(u.cx - p.x, u.cz - p.z);
     const near = d < (u.small ? t.nearR * 0.8 : t.nearR), far = !near && d < t.farR;
-    const vis = !high && (u.role === 'near' ? near : far && !u.small);
+    const vis = u.role === 'grove' ? (high || d > t.farR * 0.6) : !high && (u.role === 'near' ? near : far && !u.small);
     if (m.visible !== vis) m.visible = vis;
     if (u.role === 'near' && m.castShadow !== t.treeShadow) m.castShadow = t.treeShadow;
   }
@@ -2585,12 +2601,29 @@ function rebuildParkTrees(onlyTiles) {
   let count = 0;
   for (const tk of tiles) {
     dropVeg(world.parkTrees.get(tk));
-    const buckets = { palm: new Map(), broad: new Map() };
+    const buckets = { palm: new Map(), broad: new Map() }, groves = [];
     for (const f of world.features) {
       if (f.kind !== 'park' || treeTile(f.cx, f.cz) !== tk || f.rings[0].length < 6) continue;
       const s = featureStyle(f), per = { none: 0, sparse: 0.5, normal: 1.5, dense: 3 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5 }[s.treeType];
       if (!per) continue;
       const rnd = mulberry(f.seed ^ 0x9e3779b9), { pts, tris } = triangulate(f.rings);
+      let area = 0; for (const t of tris) { const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]]; area += Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2; }
+      // a few groves or orchards for when the park is seen from far away: either a loose cluster or tidy rows of ruffled crowns
+      const gr = mulberry(f.seed ^ 0x51ed270b); let ng = Math.min(3, Math.floor(area / 5000) + (gr() < 0.5 ? 1 : 0)); if (area < 900) ng = 0;
+      for (let tries = 0; ng > 0 && tries < 40; tries++) {
+        let r = gr() * area, pick = tris[0]; for (const t of tris) { const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]], a = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2; if ((r -= a) <= 0) { pick = t; break; } }
+        const A = pts[pick[0]], B = pts[pick[1]], C = pts[pick[2]]; let u = gr(), v = gr(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
+        const gx = A.x + u * (B.x - A.x) + v * (C.x - A.x), gz = A.y + u * (B.y - A.y) + v * (C.y - A.y), orchard = gr() < 0.45, spacing = orchard ? 8 : 6, cols = orchard ? 3 + ((gr() * 3) | 0) : 0, count = orchard ? cols * 3 : 6 + ((gr() * 7) | 0), ang = gr() * 3.14;
+        let placed = 0;
+        for (let k = 0; k < count; k++) {
+          let ox, oz;
+          if (orchard) { const ci = k % cols, ri = (k / cols) | 0; ox = (ci - (cols - 1) / 2) * spacing; oz = (ri - 1) * spacing; } else { const a2 = gr() * 6.283, rad = 3 + gr() * 11; ox = Math.cos(a2) * rad; oz = Math.sin(a2) * rad; }
+          const x = gx + ox * Math.cos(ang) - oz * Math.sin(ang), z = gz + ox * Math.sin(ang) + oz * Math.cos(ang);
+          if (occParkAt(x, z) > 0.5 || hardAt(x, z, 2.2) || !pointInRings(x, z, f.rings)) continue;
+          groves.push(x, H(x, z) - 0.1, z, 1.1 + gr() * 0.5, gr() * 6.283, gr()); placed++;
+        }
+        if (placed >= 3) ng--;
+      }
       for (const t of tris) {
         const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]];
         let n = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 80 * per; n = Math.floor(n) + (rnd() < n % 1 ? 1 : 0);
@@ -2611,7 +2644,7 @@ function rebuildParkTrees(onlyTiles) {
         }
       }
     }
-    world.parkTrees.set(tk, treeMeshes(buckets));
+    world.parkTrees.set(tk, [...treeMeshes(buckets), ...groveMeshes(groves)]);
   }
   return count;
 }
@@ -5024,7 +5057,7 @@ function updateCull(dt) {
   if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
   updateDetail(); updateVeg(p, alt);
   // from far away (or on Low, where the trees vanish early) a park is just its lawn: take the lime out of it, as the trees would
-  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkFade) world.parkFade.value.set(Q.t.farR * 0.5, Q.t.farR * 0.95); }   // lawns become tree canopy as the real trees drop out
+  if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkCanopy) world.parkCanopy.value = k; }   // lawns deepen to a rich green as the real trees drop out
 }
 // ─────────────────────────── minimap (walk and fly) ───────────────────────────
 // North-up, centred on the character; zooms out with altitude. Scroll to zoom, click to teleport there.
@@ -5258,7 +5291,7 @@ window.amparacan = {
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
