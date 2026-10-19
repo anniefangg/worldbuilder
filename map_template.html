@@ -4812,7 +4812,7 @@ function thunder(delay) {
   sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.5 * soft, t0 + 0.5); sg.gain.setTargetAtTime(0.0001, t0 + 0.9, 1.6); sub.connect(sg); sg.connect(AUD.sfxBus); sub.start(t0); sub.stop(t0 + 9);
 }
 // ─────────────────────────── ambience that follows the place ───────────────────────────
-// Birdsong, rustling trees, fountains and canals, rain on roofs, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
+// Birdsong, rustling trees, fountains and canals, fog muffling and a foghorn, owls, a distant song, a dawn rooster,
 // reverb that depends on how enclosed the street is, a muffled underwater world, and wind and whooshes while flying.
 function ambienceInit(C) {
   const bus = (g) => { const n = C.createGain(); n.gain.value = g; return n; };
@@ -4830,15 +4830,13 @@ function ambienceInit(C) {
     chain(loop(b), [filt('highpass', 900, 0.5)], AUD.fountain); const sp = bus(0.3); chain(loop(AUD.noise), [filt('bandpass', 1500, 0.4)], sp); sp.connect(AUD.fountain); AUD.fountain.connect(AUD.eco); }
   // canals: a soft low lap, with the occasional slap added by events
   AUD.canal = bus(0); chain(loop(AUD.pink), [filt('lowpass', 520, 0.6)], AUD.canal); AUD.canal.connect(AUD.eco);
-  // gutters running in the rain
-  AUD.gutter = bus(0); chain(loop(AUD.noise), [filt('bandpass', 1350, 1.2), filt('lowpass', 3200, 0.5)], AUD.gutter); AUD.gutter.connect(AUD.eco);
   // underwater: a low bubbling rumble
   AUD.under = bus(0); chain(loop(AUD.pink), [filt('lowpass', 260, 0.7)], AUD.under); AUD.under.connect(AUD.sfxBus);
   // wind roar while flying
   AUD.roar = bus(0); AUD.roarBP = filt('bandpass', 320, 0.6); chain(loop(AUD.pink), [AUD.roarBP], AUD.roar); AUD.roar.connect(AUD.sfxBus);
   // fog: a low-pass on the whole sound bed, and a foghorn with its own long echoes
   AUD.horn = bus(1); { const d = C.createDelay(3); d.delayTime.value = 1.15; const fb = bus(0.42), lp = filt('lowpass', 520, 0.5); AUD.horn.connect(d); d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(AUD.sfxBus); AUD.horn.connect(AUD.sfxBus); AUD.horn.connect(AUD.verbIn); }
-  AUD.nx = { bird: 0, clack: 0, lap: 0, drip: 0, ping: 0, horn: 0, owl: 0, song: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
+  AUD.nx = { bird: 0, clack: 0, lap: 0, horn: 0, owl: 0, song: 0, rooster: 0, whoosh: 0, bubble: 0, dawnAt: 0, todName: '', swim: false, nextEnv: 0 };
 }
 function tone(C, t0, f0, f1, dur, gain, o = {}) {
   const osc = C.createOscillator(), g = C.createGain(); osc.type = o.type || 'sine';
@@ -4907,9 +4905,6 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   set(AUD.rustle, canopy * (0.035 + ctx.wind * 0.55) * gf);
   // fountains and canals, and the water-side fauna
   set(AUD.fountain, E.fountain * 0.17 * gf); set(AUD.canal, E.canal * 0.14 * gf);
-  // rain on roofs and in gutters
-  const nearRoof = smooth(14, 3, E.nearWall) * (E.narrow > 0.1 ? 1 : 0.3);
-  set(AUD.gutter, ctx.rain ? nearRoof * (ctx.storm ? 0.12 : 0.07) : 0);
   // fog: a muffled world
   AUD.fogLP.frequency.setTargetAtTime(w === 'fog' ? 1700 : w === 'misty' ? 4200 : 22000, now, 1.2);
   // reverb: narrow streets echo, open squares are dry
@@ -4931,10 +4926,6 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   }
   if (canopy > 0.25 && ctx.wind > 0.1 && now > N.clack) { clickBurst(C, now, rndR(900, 1700), 2, 0.05, 0.03 * canopy * gf, AUD.eco); N.clack = now + rndR(0.4, 2.2) / (0.4 + ctx.wind * 4); }
   if (E.canal > 0.12 && now > N.lap) { tone(C, now, rndR(220, 340), rndR(110, 170), 0.16, 0.05 * E.canal * gf, { att: 0.01, tau: 0.35, pan: rndR(-0.6, 0.6) }); N.lap = now + rndR(0.5, 1.9); }
-  if (ctx.rain && nearRoof > 0.3) {
-    if (now > N.drip) { tone(C, now, rndR(1100, 1800), rndR(600, 900), 0.06, 0.03 * nearRoof, { att: 0.003, pan: rndR(-0.5, 0.5), wet: 0.3 }); N.drip = now + rndR(0.18, 0.75) / (ctx.storm ? 2 : 1); }
-    if (now > N.ping) { tone(C, now, rndR(2300, 3900), rndR(2200, 3600), 0.14, 0.022 * nearRoof, { att: 0.002, tau: 0.3, pan: rndR(-0.7, 0.7), wet: 0.2 }); N.ping = now + rndR(0.15, 0.9) / (ctx.storm ? 2.5 : 1); }
-  }
   if (fogAmt && now > N.horn) { foghorn(C, now + 0.1, 0.16 * (fogAmt > 0.9 ? 1 : 0.6)); N.horn = now + (fogAmt > 0.9 ? rndR(28, 55) : rndR(80, 150)); }
   if (night && !ctx.rain && gf > 0.3) {
     if (now > N.owl) { owl(C, now + 0.1, rndR(-0.8, 0.8), 0.03); N.owl = now + rndR(70, 170); }
@@ -5381,21 +5372,26 @@ function initBoats() {
     }
     // marinas: boats nose-in to the quay, side by side, then more rows stepping out into the water
     cand.sort((a, b) => a.pri - b.pri);
-    const centres = []; for (const c of cand) { if (centres.length >= 30) break; if (centres.every((m) => Math.hypot(m.x - c.x, m.z - c.z) > 120)) centres.push(c); }
-    const occ = new Set(), okey = (x, z) => (Math.floor(x / 1.5) + 20000) * 40000 + Math.floor(z / 1.5) + 20000, anchors = new Map(); let placed = 0;
-    const rectCells = (cx, cz, ax, az, L, W) => { const out = []; for (let u = -L / 2; u <= L / 2; u += 1.4) for (let v = -W / 2; v <= W / 2; v += 1.1) out.push(okey(cx + ax * u - az * v, cz + az * u + ax * v)); return out; };
-    for (const c of cand) {
-      if (placed >= 850) break; if (!centres.some((m) => Math.hypot(m.x - c.x, m.z - c.z) < 34)) continue;
-      const kx = Math.floor(c.x / 3.8), kz = Math.floor(c.z / 3.8); let clash = false;
-      for (let a = -1; a <= 1 && !clash; a++) for (let b = -1; b <= 1; b++) for (const t of anchors.get((kx + a) + ',' + (kz + b)) || []) if (Math.hypot(t.x - c.x, t.z - c.z) < 3.7) { clash = true; break; }
-      if (clash || rnd() < 0.1) continue; const key = kx + ',' + kz; if (!anchors.has(key)) anchors.set(key, []); anchors.get(key).push(c);
-      const ex = c.x + c.nx * c.dmin, ez = c.z + c.nz * c.dmin, lenK = 0.92 + rnd() * 0.1, Lb = 14 * lenK, yaw = Math.atan2(-c.nz, c.nx);   // the quay edge in front of this boat; the bow points at it
-      for (let r = 0; r < 4; r++) {
-        const d = 0.8 + Lb / 2 + r * (Lb + 2.6), bx = ex - c.nx * d, bz = ez - c.nz * d; let water = true;
-        for (const [du, dv] of [[0, 0], [-Lb / 2, 0], [0, 1.4], [0, -1.4], [-Lb / 2, -1.2], [Lb / 2 - 1.5, 0.9]]) if (H(bx + c.nx * du - c.nz * dv, bz + c.nz * du + c.nx * dv) > -0.1) { water = false; break; }   // afloat all along, the bow just touching the quay
-        if (!water) break;
-        const cells = rectCells(bx, bz, c.nx, c.nz, Lb, 2.3); if (cells.some((k) => occ.has(k))) break; cells.forEach((k) => occ.add(k));
-        boats.push({ kind: 'moored', x: bx, z: bz, yaw, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: lenK, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); placed++;
+    const centres = []; for (const c of cand) { if (centres.length >= 48) break; if (centres.every((m) => Math.hypot(m.x - c.x, m.z - c.z) > 150)) centres.push(c); }
+    const occ = new Set(), okey = (x, z) => (Math.floor(x / 1.0) + 30000) * 60000 + Math.floor(z / 1.0) + 30000; let placed = 0;
+    const rectCells = (cx, cz, ax, az, L, W) => { const out = []; for (let u = -L / 2; u <= L / 2; u += 1.0) for (let v = -W / 2; v <= W / 2; v += 0.9) out.push(okey(cx + ax * u - az * v, cz + az * u + ax * v)); return out; };
+    const normalAt = (x, z) => { const gx = H(x + 3, z) - H(x - 3, z), gz = H(x, z + 3) - H(x, z - 3), gl = Math.hypot(gx, gz); return gl < 0.02 ? null : [gx / gl, gz / gl]; };   // points toward the land
+    for (const c0 of centres) {   // walk along the quay each way from the middle of the marina, dropping a boat every 3 m, all with their bows to the quay
+      for (const dir of [1, -1]) {
+        let px = c0.x, pz = c0.z, nrm = [c0.nx, c0.nz];
+        for (let k = 0; k < (dir === 1 ? 15 : 14) && placed < 720; k++) {
+          if (!(dir === 1 && k === 0)) { px += -nrm[1] * dir * 3.0; pz += nrm[0] * dir * 3.0; const n2 = normalAt(px, pz); if (!n2) break; nrm = n2; }
+          else { /* the first boat sits right at the centre cell */ }
+          let ed = -1; for (let d = 0; d <= 18; d += 0.5) if (H(px + nrm[0] * d, pz + nrm[1] * d) > 0.3) { ed = d; break; }   // march to the edge of the quay
+          if (ed < 0) break;
+          const ex = px + nrm[0] * ed, ez = pz + nrm[1] * ed; px = ex - nrm[0] * 7; pz = ez - nrm[1] * 7;                   // slide back to a steady 7 m from the edge
+          const lenK = 0.92 + rnd() * 0.1, Lb = 14 * lenK, bx = ex - nrm[0] * (0.8 + Lb / 2), bz = ez - nrm[1] * (0.8 + Lb / 2); let water = true;
+          for (const [du, dv] of [[0, 0], [-Lb / 2, 0], [0, 1.4], [0, -1.4], [-Lb / 2, -1.2], [Lb / 2 - 1.5, 0.9]]) if (H(bx + nrm[0] * du - nrm[1] * dv, bz + nrm[1] * du + nrm[0] * dv) > -0.1) { water = false; break; }
+          if (!water || rnd() < 0.05) continue;
+          const ci = featureAt(bx, bz, 12); if (ci >= 0 && world.features[ci].kind === 'canal') continue;
+          const cells = rectCells(bx, bz, nrm[0], nrm[1], Lb, 1.8); if (cells.some((q) => occ.has(q))) continue; cells.forEach((q) => occ.add(q));
+          boats.push({ kind: 'moored', x: bx, z: bz, yaw: Math.atan2(-nrm[1], nrm[0]), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: lenK, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); placed++;
+        }
       }
     } }
   boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
