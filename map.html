@@ -5357,20 +5357,19 @@ function initBoats() {
     const at = (s) => { s = clamp(s, 0, Ltot); let i = 1; while (i < cum.length - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), ax = P[(i - 1) * 2], az = P[(i - 1) * 2 + 1], bx = P[i * 2], bz = P[i * 2 + 1], L = Math.hypot(bx - ax, bz - az) || 1; return [ax + (bx - ax) * t, az + (bz - az) * t, (bx - ax) / L, (bz - az) / L]; };
     const straight = (s) => { const a = at(s - 8), b = at(s + 8); return a[2] * b[2] + a[3] * b[3] > 0.985; };
     const clearOfBridges = (s0, s1) => { for (let s = s0; s <= s1; s += 6) { const [x, z, tx, tz] = at(s); for (const d of [-8, 0, 8]) if (bridgeNear(x + tx * d, z + tz * d)) return false; } return true; };
-    for (let s = 24 + rnd() * 50; s < Ltot - 24; s += 55 + rnd() * 110) {
-      if (!straight(s) || !clearOfBridges(s - 9, s + 9)) continue;
-      const [x, z, tx, tz] = at(s), side = rnd() < 0.5 ? 1 : -1, off = (f.w / 2 - 2.4) * side;
+    for (const side of [1, -1]) for (let s = 14 + rnd() * 20; s < Ltot - 14; s += 15.5 + rnd() * 8) {   // a moored boat every 15-24 m along both banks
+      if (rnd() < 0.08 || !straight(s) || !clearOfBridges(s - 9, s + 9)) continue;
+      const [x, z, tx, tz] = at(s), off = (f.w / 2 - 2.4) * side;
       boats.push({ kind: 'moored', x: x - tz * off, z: z + tx * off, yaw: Math.atan2(-tz, tx) + (rnd() < 0.5 ? 0 : Math.PI), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.82 + rnd() * 0.34, ph: rnd() * 6.28, smoke: rnd() < 0.55, pri: rnd() });
     }
-    const nCruise = Math.min(4, Math.floor(Ltot / 480) + (Ltot > 240 ? 1 : 0));
-    for (let k = 0; k < nCruise; k++) for (let tries = 0; tries < 10; tries++) {
-      const span = 140 + rnd() * 140; if (Ltot < span + 20) break; const s0 = 10 + rnd() * (Ltot - span - 20);
-      if (!clearOfBridges(s0, s0 + span)) continue;
-      boats.push({ kind: 'cruise', at, s: s0 + rnd() * span, s0, s1: s0 + span, dir: rnd() < 0.5 ? 1 : -1, w: f.w, sp: 0.8 + rnd() * 0.7, turn: 0, yawFrom: 0, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.85 + rnd() * 0.3, ph: rnd() * 6.28, smoke: true, pri: rnd() }); break;
+    for (const dir of [1, -1]) for (let s0 = 8 + rnd() * 30; s0 < Ltot - 90;) {   // cruisers share the canal: one stretch each, so none run into one another
+      const span = 60 + rnd() * 55; if (s0 + span > Ltot - 8) break;
+      if (clearOfBridges(s0, s0 + span)) boats.push({ kind: 'cruise', at, s: s0 + rnd() * span, s0, s1: s0 + span, dir, w: f.w, sp: 0.7 + rnd() * 0.8, turn: 0, yawFrom: 0, v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.85 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.7, pri: rnd() });
+      s0 += span + 2 + rnd() * 10;
     }
   }
   // inlets along the south coast: narrow stretches of sea with land close on both sides
-  { const S = 30, cand = [], landD = (x, z, dx, dz) => { for (let d = S; d <= 110; d += S) if (H(x + dx * d, z + dz * d) > 0.4) return d; return 0; };
+  { const S = 30, cand = [], landD = (x, z, dx, dz) => { for (let d = S; d <= 150; d += S) if (H(x + dx * d, z + dz * d) > 0.4) return d; return 0; };
     for (let z = 1500; z < 5900; z += S) for (let x = -5600; x < 5200; x += S) {
       if (H(x, z) > -1.0) continue; const e = landD(x, z, 1, 0), w = landD(x, z, -1, 0), n = landD(x, z, 0, -1), s2 = landD(x, z, 0, 1);
       if (!((e && w) || (n && s2))) continue; if (e && w && n && s2) continue;
@@ -5379,7 +5378,7 @@ function initBoats() {
       if (best >= 16) cand.push({ x, z, a: ba, pri: rnd() });
     }
     cand.sort((a, b) => a.pri - b.pri); const taken = [];
-    for (const c of cand) { if (taken.length >= 40) break; if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 46)) continue; taken.push(c);
+    for (const c of cand) { if (taken.length >= 520) break; if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 21)) continue; taken.push(c);
       boats.push({ kind: rnd() < 0.5 ? 'drift' : 'moored', x: c.x, z: c.z, yaw: -c.a + (rnd() < 0.5 ? 0 : Math.PI), ax: Math.cos(c.a), az: Math.sin(c.a), v: (rnd() * 3) | 0, tint: PAL[(rnd() * PAL.length) | 0], len: 0.8 + rnd() * 0.3, ph: rnd() * 6.28, smoke: rnd() < 0.5, pri: rnd(), inlet: true }); } }
   boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
   const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n)); m.frustumCulled = false; m.renderOrder = 6; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
@@ -5398,7 +5397,7 @@ function initBoats() {
 function stepBoats(dt, t) {
   if (world.boats === undefined) { try { initBoats(); } catch (e) { console.warn('boats failed', e); world.boats = null; } }
   const W = world.boats; if (!W) return;
-  const cp = camera.position, frac = Q.t.name === 'Low' ? 0.5 : Q.t.name === 'Medium' ? 0.75 : 1, reach = Q.t.name === 'Low' ? 900 : 1800, nShow = Math.ceil(W.list.length * frac);
+  const cp = camera.position, frac = Q.t.name === 'Low' ? 0.25 : Q.t.name === 'Medium' ? 0.55 : 1, reach = Q.t.name === 'Low' ? 700 : Q.t.name === 'Medium' ? 1200 : 1800, nShow = Math.ceil(W.list.length * frac);
   const m = W._m, q = W._q, e = W._e, p = W._p, sc = W._s, water = 0.06 + (world.sea ? world.sea.position.y : 0);
   const lerpA = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
   let sk = 0;
@@ -5843,7 +5842,7 @@ window.amparacan = {
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
