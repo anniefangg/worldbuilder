@@ -717,6 +717,7 @@ function applyWeather() {
   const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
   u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, misty: 0.6, fog: 0.55 }[wx.name];
+  u.uVapour.value = (todState.name === 'dawn' || todState.name === 'dusk') && w.rain === 0 && wx.name !== 'fog' ? (wx.name === 'misty' ? 0.6 : 1) : 0; u.uVap.value.set(t.glow).lerp(new THREE.Color('#c9a3ec'), 0.35);
   if (world.cloudMat) {
     world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
@@ -750,7 +751,6 @@ function addMist() {
     world.mist.push({ sp, x: rnd() * 700 - 350, z: rnd() * 700 - 350, h: 2 + rnd() * 30, s: 60 + rnd() * 110, ph: rnd() * 6.28, sp2: 0.15 + rnd() * 0.25, v: 0.6 + rnd() * 0.8 });
   }
 }
-const _dreamCol = new THREE.Color();
 // Petals: a few blossom petals wafting on the dawn and dusk air around the camera
 function addPetals() {
   const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
@@ -779,11 +779,11 @@ function stepPetals(dt, t) {
   m.geometry.attributes.position.needsUpdate = true;
 }
 function stepMist(dt, t) {
-  const w = WEATHER[wx.name], tn = todState.name, dream = (tn === 'dawn' || tn === 'dusk') && w.rain === 0 ? (wx.name === 'cloudy' ? 0.5 : 0.7) : 0, amt = Math.max(wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : 0, dream * 0.55), c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
+  const w = WEATHER[wx.name], amt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : 0, c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
   const alt = c.y - gy, vis = amt > 0 && alt < 500, fade = clamp(1 - (alt - 250) / 250, 0, 1);
-  const wxAmt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : 0, col = wxAmt >= dream * 0.55 ? scene.fog.color : _dreamCol.set(TOD[tn].glow).lerp(scene.fog.color, 0.35);   // dawn/dusk vapour is tinted by the sky glow
+  const col = scene.fog.color;
   for (let i = 0; i < world.mist.length; i++) {
-    const m = world.mist[i], on = vis && i < (amt >= 1 ? 90 : amt > 0.4 ? 45 : 36);
+    const m = world.mist[i], on = vis && i < (amt === 1 ? 90 : 45);
     m.sp.visible = on; if (!on) continue;
     m.x += 2.2 * m.v * dt; m.z += 0.9 * m.v * dt;                                    // drift downwind
     if (m.x > B / 2) m.x -= B; if (m.z > B / 2) m.z -= B;
@@ -823,9 +823,9 @@ function stepWeather(dt, t) {
 {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(80000, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 }, uTime: { value: 0 }, uCover: { value: 0.5 }, uClLit: { value: new THREE.Color('#fff') }, uClShade: { value: new THREE.Color('#889') } },
+    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 }, uTime: { value: 0 }, uCover: { value: 0.5 }, uVapour: { value: 0 }, uVap: { value: new THREE.Color() }, uClLit: { value: new THREE.Color('#fff') }, uClShade: { value: new THREE.Color('#889') } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w * 0.9999; }`,
-    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver, uClLit, uClShade; uniform float uNight, uMilky, uOvercast, uFlash, uTime, uCover; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver, uClLit, uClShade; uniform float uNight, uMilky, uOvercast, uFlash, uTime, uCover, uVapour; uniform vec3 uVap; varying vec3 vDir;
       float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
@@ -864,6 +864,17 @@ function stepWeather(dt, t) {
           c = mix(c, cc, dens * fade * (1.0 - uOvercast * 0.6));
         }
         #endif
+        // dawn/dusk vapour: slow, sinuous waves of luminous haze drifting across the sky (sky only: nothing blurs the view)
+        if (uVapour > 0.0) {
+          float az = atan(d.z, d.x), v = 0.0;
+          for (int k = 0; k < 3; k++) {
+            float fk = float(k), e = 0.09 + 0.15 * fk + 0.035 * sin(az * (2.0 + fk) + uTime * (0.045 + 0.02 * fk) + fk * 2.1) + 0.02 * sin(az * 6.0 - uTime * 0.07 + fk);
+            float band = exp(-pow((d.y - e) / (0.055 + 0.02 * fk), 2.0));
+            float m = smoothstep(0.3, 0.78, fbm(vec3(d.x * 3.2 + uTime * 0.012 * (fk + 1.0), d.y * 8.0 + fk * 5.0, d.z * 3.2 - uTime * 0.008)));
+            v += band * m * (0.9 - 0.2 * fk);
+          }
+          c += mix(uVap, vec3(1.0), 0.18) * v * uVapour * 0.75 * (0.55 + 0.9 * pow(s, 1.5)) * smoothstep(0.0, 0.03, d.y) * (1.0 - uOvercast);
+        }
         // overcast: a low grey ceiling hides the sun, stars and Milky Way; lightning lights it up
         c = mix(c, uOver * (0.9 + 0.25 * h) * (0.9 + 0.2 * fbm(d * 5.0 + 1.0)), uOvercast * 0.94) + vec3(0.75, 0.8, 0.95) * uFlash * (0.4 + 0.6 * h);
         gl_FragColor = vec4(c, 1.0);
