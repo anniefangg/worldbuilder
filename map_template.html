@@ -4940,7 +4940,7 @@ function ambienceTick(C, now, ctx) {   // ctx: { alt, gf, hv, w, rain, storm, ni
   // flight
   const fly = player.mode === 'fly';
   set(AUD.roar, fly ? mx('flying') * smooth(8, 130, ctx.hv) * 0.38 : 0, 0.4); AUD.roarBP.frequency.setTargetAtTime(240 + Math.min(ctx.hv, 400) * 3.2, now, 0.4);
-  if (mx('flying') && fly && ctx.hv > 18 && E.nearWall < 9 && now > N.whoosh) { whoosh(C, now, 0.12 * smooth(18, 120, ctx.hv)); N.whoosh = now + 1.6; }
+  if (mx('flying') && fly && ctx.hv > 18 && E.nearWall < 9 && now > N.whoosh) { whoosh(C, now, 0.075 * smooth(18, 120, ctx.hv)); N.whoosh = now + 1.6; }
   // events
   const birdAct = (dawn ? clamp((now - N.dawnAt) / 90, 0.1, 1) : dusk ? 0.75 : day ? 0.32 : 0) * (0.12 + canopy * 0.88) * (ctx.rain ? 0.1 : 1) * (1 - fogAmt * 0.3) * gf;
   if (mx('birds') && birdAct > 0.07 && now > N.bird) {
