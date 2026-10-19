@@ -47,7 +47,9 @@ body {
   font: 600 13px/1 var(--font-ui); color: var(--ink); background: transparent; border: 0; border-radius: 8px;
   padding: 9px 12px; cursor: pointer; display: flex; gap: 6px; align-items: center;
 }
-#modes button.drop svg { display: block; }
+#modes button.drop svg, #modes button.tog svg { display: block; }
+#modes button.tog[aria-pressed="true"] .slash { display: none; }
+#modes button.tog { padding: 9px 9px; }
 #modes button.drop::after { content: ''; width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg) translate(-1px, -1px); opacity: 0.6; margin-left: 2px; }
 #modes button.drop[aria-expanded="true"] { background: rgba(31, 87, 168, 0.12); }
 #opt-menu { position: fixed; z-index: 14; min-width: 168px; padding: 6px; display: grid; gap: 1px; }
@@ -310,6 +312,8 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   <button id="mode-fly" type="button" aria-pressed="false">Fly <kbd>F</kbd></button>
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
+  <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, gulls, bells, waves and weather" aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
+  <button id="mus" class="tog" type="button" aria-pressed="false" title="Music: dreamlike ambient" aria-label="Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="tod" class="drop" type="button" title="Time of day (T)" aria-haspopup="menu" aria-expanded="false">Dusk</button>
   <button id="wx" class="drop" type="button" title="Weather (R)" aria-haspopup="menu" aria-expanded="false">Sunny</button>
   <button id="qual" class="drop" type="button" title="Graphics quality" aria-haspopup="menu" aria-expanded="false">Auto</button>
@@ -771,7 +775,7 @@ function stepWeather(dt, t) {
   }
   const u = camera.userData.sky.material.uniforms;
   if (w.storm) {                                                  // lightning: a bright double flash every few seconds
-    if (t > wx.nextFlash) { wx.flash = 1; wx.flicker = t + 0.12; wx.nextFlash = t + 4 + Math.random() * 9; }
+    if (t > wx.nextFlash) { wx.flash = 1; wx.flicker = t + 0.12; wx.nextFlash = t + 4 + Math.random() * 9; if (typeof thunder === 'function') thunder(0.4 + Math.random() * 3.2); }
     if (wx.flicker && t > wx.flicker) { wx.flash = Math.max(wx.flash, 0.8); wx.flicker = 0; }
     wx.flash *= Math.exp(-dt * 10);
   } else wx.flash = 0;
@@ -4660,6 +4664,164 @@ function initPlanInput() {
   c.addEventListener('dblclick', (e) => { const [x, z] = planWorld(e.clientX, e.clientY); dropIn(x, z); });
 }
 
+// ─────────────────────────── sound and music ───────────────────────────
+// Everything is synthesised with the Web Audio API (no files): a bed of breeze, gulls, church bells, waves near the shore and rain/thunder for the weather;
+// and, separately, a slow generative ambient piece (pads, a deep drone and glassy notes through a long reverb and an echo).
+const AUD = { ctx: null, sfx: false, mus: false, started: false, nextGull: 0, nextBell: 0, bellsLeft: 0, nextStrike: 0, bellF: 262, shore: 400, tick: 0, mNext: 0, aNext: 0, chord: 0, suspendT: 0 };
+const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12), rndR = (a, b) => a + Math.random() * (b - a);
+function noiseBuf(C, sec, pink) {
+  const b = C.createBuffer(2, Math.round(C.sampleRate * sec), C.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); let b0 = 0, b1 = 0, b2 = 0; for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; if (pink) { b0 = 0.99765 * b0 + w * 0.099046; b1 = 0.963 * b1 + w * 0.2965164; b2 = 0.57 * b2 + w * 1.0526913; d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2; } else d[i] = w; } }
+  return b;
+}
+function audioInit() {
+  if (AUD.ctx) return AUD.ctx;
+  const C = AUD.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const bus = (g) => { const n = C.createGain(); n.gain.value = g; return n; };
+  AUD.master = bus(0.9); AUD.master.connect(C.destination); AUD.an = C.createAnalyser(); AUD.an.fftSize = 2048; AUD.master.connect(AUD.an);
+  AUD.sfxBus = bus(0); AUD.sfxBus.connect(AUD.master); AUD.musBus = bus(0); AUD.musBus.connect(AUD.master);
+  // a long, soft reverb shared by the bells and the music
+  const ir = C.createBuffer(2, Math.round(C.sampleRate * 4.2), C.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.6); }
+  AUD.verb = C.createConvolver(); AUD.verb.buffer = ir; AUD.verbIn = bus(1); AUD.verbIn.connect(AUD.verb); AUD.verb.connect(AUD.master);
+  const white = noiseBuf(C, 5, false), pink = noiseBuf(C, 6, true);
+  const loop = (buf) => { const s = C.createBufferSource(); s.buffer = buf; s.loop = true; s.start(0, Math.random() * 3); return s; };
+  const chain = (src, nodes, dest) => { let p = src; for (const n of nodes) { p.connect(n); p = n; } p.connect(dest); return p; };
+  const filt = (type, f, q = 0.7) => { const n = C.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; return n; };
+  // breeze: a low body and a softer whoosh, both slowly breathing
+  AUD.breezeLo = bus(0); chain(loop(pink), [filt('lowpass', 420, 0.5)], AUD.breezeLo); AUD.breezeLo.connect(AUD.sfxBus);
+  AUD.breezeHi = bus(0); AUD.breezeBP = filt('bandpass', 900, 0.8); chain(loop(white), [AUD.breezeBP], AUD.breezeHi); AUD.breezeHi.connect(AUD.sfxBus);
+  // waves: a rolling swell of low noise plus a hiss on each crest
+  AUD.waveLo = bus(0); AUD.waveLoG = bus(0.5); chain(loop(pink), [filt('lowpass', 650, 0.6)], AUD.waveLoG); AUD.waveLoG.connect(AUD.waveLo); AUD.waveLo.connect(AUD.sfxBus);
+  AUD.waveHi = bus(0); AUD.waveHiG = bus(0.3); chain(loop(white), [filt('highpass', 1800, 0.5), filt('lowpass', 7000, 0.5)], AUD.waveHiG); AUD.waveHiG.connect(AUD.waveHi); AUD.waveHi.connect(AUD.sfxBus);
+  for (const [f, depth, node] of [[0.105, 0.38, AUD.waveLoG], [0.16, 0.22, AUD.waveLoG], [0.105, 0.25, AUD.waveHiG], [0.13, 0.16, AUD.waveHiG]]) { const o = C.createOscillator(); o.frequency.value = f; const g = bus(depth); o.connect(g); g.connect(node.gain); o.start(); }
+  // rain: a hiss, with a lower patter under it
+  AUD.rainHi = bus(0); chain(loop(white), [filt('highpass', 1500, 0.4), filt('lowpass', 9000, 0.4)], AUD.rainHi); AUD.rainHi.connect(AUD.sfxBus);
+  AUD.rainLo = bus(0); chain(loop(pink), [filt('bandpass', 380, 0.6)], AUD.rainLo); AUD.rainLo.connect(AUD.sfxBus);
+  AUD.noise = white; AUD.pink = pink;
+  // music: a slow echo and the pad bus
+  AUD.echo = C.createDelay(2); AUD.echo.delayTime.value = 0.68; const fb = bus(0.45), lp = filt('lowpass', 2600, 0.5); AUD.echo.connect(lp); lp.connect(fb); fb.connect(AUD.echo); lp.connect(AUD.musBus);
+  AUD.padBus = bus(1); AUD.padBus.connect(AUD.musBus); const ps = bus(0.55); AUD.padBus.connect(ps); ps.connect(AUD.verbIn);
+  AUD.bellBus = bus(0.6); AUD.bellBus.connect(AUD.sfxBus); AUD.bellBus.connect(AUD.verbIn);
+  AUD.tick = setInterval(audioTick, 120);
+  return C;
+}
+function setAudio(kind, on) {
+  AUD[kind] = on; try { localStorage.setItem('amparacan-map-' + (kind === 'sfx' ? 'sound' : 'music'), on ? '1' : '0'); } catch (e) {}
+  $(kind === 'sfx' ? 'snd' : 'mus').setAttribute('aria-pressed', String(on));
+  if (!on && !AUD.sfx && !AUD.mus && !AUD.ctx) return;
+  const C = audioInit(), now = C.currentTime; clearTimeout(AUD.suspendT);
+  if (on) C.resume();
+  (kind === 'sfx' ? AUD.sfxBus : AUD.musBus).gain.setTargetAtTime(on ? (kind === 'sfx' ? 1 : 0.8) : 0, now, on ? 0.6 : 0.5);
+  if (kind === 'sfx' && on) { AUD.nextGull = now + rndR(4, 10); AUD.nextBell = now + rndR(14, 30); AUD.bellsLeft = 0; }
+  if (kind === 'mus' && on) { AUD.mNext = now + 0.2; AUD.aNext = now + 3; }
+  if (!AUD.sfx && !AUD.mus) AUD.suspendT = setTimeout(() => { if (!AUD.sfx && !AUD.mus && AUD.ctx) AUD.ctx.suspend(); }, 3000);
+}
+function shoreDistance(x, z) {   // how far to the nearest sea, in metres (capped)
+  if (H(x, z) < 0.2) return 0;
+  let best = 400;
+  for (let k = 0; k < 12; k++) { const a = k / 12 * 6.2832, dx = Math.cos(a), dz = Math.sin(a); for (const d of [8, 16, 30, 55, 90, 140, 210, 300]) { if (d >= best) break; if (H(x + dx * d, z + dz * d) < 0.2) { best = d; break; } } }
+  return best;
+}
+function gullCall(C, t0, pan, gain) {
+  const o = C.createOscillator(), o2 = C.createOscillator(), g = C.createGain(), bp = C.createBiquadFilter(), pn = C.createStereoPanner ? C.createStereoPanner() : null;
+  o.type = 'sawtooth'; o2.type = 'square'; bp.type = 'bandpass'; bp.frequency.value = 2300; bp.Q.value = 2.2;
+  const f0 = rndR(1500, 2100), len = rndR(0.38, 0.6);
+  for (const [osc, k] of [[o, 1], [o2, 1.005]]) { osc.frequency.setValueAtTime(f0 * 0.8 * k, t0); osc.frequency.linearRampToValueAtTime(f0 * 1.25 * k, t0 + 0.09); osc.frequency.exponentialRampToValueAtTime(f0 * 0.62 * k, t0 + len); }
+  g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.05); g.gain.setTargetAtTime(0.0001, t0 + len * 0.55, len * 0.18);
+  const mix = C.createGain(); mix.gain.value = 0.5; o2.connect(mix); o.connect(bp); mix.connect(bp); bp.connect(g);
+  if (pn) { pn.pan.value = pan; g.connect(pn); pn.connect(AUD.sfxBus); } else g.connect(AUD.sfxBus);
+  g.connect(AUD.verbIn); o.start(t0); o2.start(t0); o.stop(t0 + len + 0.4); o2.stop(t0 + len + 0.4);
+}
+function gulls() {
+  const C = AUD.ctx, now = C.currentTime, n = 2 + ((Math.random() * 3) | 0), pan = rndR(-0.8, 0.8), gain = rndR(0.04, 0.085);
+  for (let i = 0; i < n; i++) gullCall(C, now + i * rndR(0.5, 0.75), pan, gain * (1 - i * 0.12));
+}
+function bellStrike(C, t0, f0, gain) {
+  const parts = [[0.5, 0.5, 8], [1, 1, 7], [1.19, 0.55, 5], [1.5, 0.38, 4], [2, 0.34, 3.2], [2.5, 0.2, 2.4], [3.2, 0.14, 1.8], [4.2, 0.09, 1.2]];
+  const out = C.createGain(); out.gain.value = gain; const lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; out.connect(lp); lp.connect(AUD.bellBus);
+  for (const [r, a, d] of parts) {
+    const o = C.createOscillator(), g = C.createGain(); o.type = 'sine'; o.frequency.value = f0 * r * (1 + (Math.random() - 0.5) * 0.002);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(a, t0 + 0.006); g.gain.setTargetAtTime(0.0001, t0 + 0.01, d / 5);
+    o.connect(g); g.connect(out); o.start(t0); o.stop(t0 + d * 1.1 + 0.3);
+  }
+}
+function thunder(delay) {
+  if (!AUD.sfx || !AUD.ctx) return;
+  const C = AUD.ctx, t0 = C.currentTime + delay, far = clamp(delay / 3.5, 0, 1);
+  const mk = (start, len, f1, f2, gain) => {
+    const s = C.createBufferSource(); s.buffer = AUD.pink; s.loop = true; const lp = C.createBiquadFilter(), g = C.createGain(); lp.type = 'lowpass'; lp.Q.value = 0.8;
+    lp.frequency.setValueAtTime(f1, start); lp.frequency.exponentialRampToValueAtTime(f2, start + len);
+    g.gain.setValueAtTime(0.0001, start); g.gain.linearRampToValueAtTime(gain, start + Math.min(0.25, len * 0.25)); g.gain.setTargetAtTime(0.0001, start + len * 0.35, len * 0.3);
+    s.connect(lp); lp.connect(g); g.connect(AUD.sfxBus); s.start(start, Math.random() * 3); s.stop(start + len + 0.6);
+  };
+  if (far < 0.55) mk(t0, 0.7, 5200, 700, 1.1 * (1 - far));          // the crack, when it's close
+  let t = t0 + 0.05; const rolls = 4 + ((Math.random() * 4) | 0);       // then the rolling rumble
+  for (let i = 0; i < rolls; i++) { mk(t, rndR(1.4, 3.2), rndR(260, 420), rndR(55, 90), rndR(0.55, 1.0) * (1 - far * 0.45) * (1 - i * 0.07)); t += rndR(0.35, 1.1); }
+}
+function audioTick() {
+  const C = AUD.ctx; if (!C || C.state !== 'running') return;
+  const now = C.currentTime;
+  if (AUD.sfx) {
+    const p = player.pos, gy = Math.max(0, H(p.x, p.z)), alt = Math.max(0, camera.position.y - gy), w = WEATHER[wx.name], night = TOD[todState.name].night > 0.6;
+    const hv = Math.hypot(player.vel.x, player.vel.z), rain = w.rain || 0, storm = !!w.storm;
+    AUD.shoreT = (AUD.shoreT || 0) + 1; if (AUD.shoreT % 3 === 1) AUD.shore = shoreDistance(p.x, p.z);
+    const hi = smooth(0, 700, alt), wind = clamp(0.05 + 0.06 * hi + hv * (player.mode === 'fly' ? 0.0022 : 0.004) + (storm ? 0.1 : rain ? 0.04 : 0) + (wx.name === 'fog' || wx.name === 'misty' ? -0.015 : 0), 0.02, 0.4);
+    const sway = 0.7 + 0.3 * Math.sin(now * 0.31) * Math.sin(now * 0.13 + 1);
+    AUD.breezeLo.gain.setTargetAtTime(wind * 0.9 * sway, now, 0.4); AUD.breezeHi.gain.setTargetAtTime(wind * 0.5 * (0.6 + 0.4 * Math.sin(now * 0.47)), now, 0.4);
+    AUD.breezeBP.frequency.setTargetAtTime(500 + 900 * wind + 300 * Math.sin(now * 0.27), now, 0.5);
+    const dist = Math.hypot(AUD.shore, alt * 0.8), near = smooth(260, 12, dist) * (1 - 0.3 * smooth(300, 1500, alt));
+    const surf = 1 + (storm ? 0.7 : rain ? 0.2 : 0);
+    AUD.waveLo.gain.setTargetAtTime(near * 0.55 * surf, now, 0.6); AUD.waveHi.gain.setTargetAtTime(near * 0.34 * surf, now, 0.6);
+    const rv = rain ? (storm ? 0.46 : 0.15) * (1 - smooth(500, 1800, alt) * 0.7) : 0;
+    AUD.rainHi.gain.setTargetAtTime(rv, now, 0.8); AUD.rainLo.gain.setTargetAtTime(rv * 0.9, now, 0.8);
+    if (!night && !storm && !rain && now > AUD.nextGull) { if (alt < 900) gulls(); AUD.nextGull = now + rndR(9, 26); }
+    if (!storm && now > AUD.nextBell && !AUD.bellsLeft) { AUD.bellsLeft = 3 + ((Math.random() * 6) | 0); AUD.bellF = [196, 220, 246.9, 261.6][(Math.random() * 4) | 0]; AUD.nextStrike = now; AUD.nextBell = now + rndR(55, 120); }
+    while (AUD.bellsLeft && now >= AUD.nextStrike - 0.1) { bellStrike(C, Math.max(now, AUD.nextStrike), AUD.bellF, 0.2 * (1 - 0.3 * hi)); AUD.nextStrike += 2.7; AUD.bellsLeft--; }
+  }
+  if (AUD.mus) musicTick(C, now);
+}
+const CHORDS = [[38, 50, 57, 61, 64, 69], [35, 47, 54, 59, 62, 66], [31, 43, 55, 62, 66, 73], [33, 45, 52, 59, 64, 69], [38, 50, 54, 61, 64, 71], [36, 48, 55, 59, 64, 67]];
+const GLASS = [62, 64, 66, 69, 71, 74, 76, 78, 81, 83, 86, 88];
+function padNote(C, t0, hold, n, gain) {
+  const f = midiHz(n), g = C.createGain(), lp = C.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500 + (n % 12) * 40; lp.Q.value = 0.3;
+  const lfo = C.createOscillator(), lg = C.createGain(); lfo.frequency.value = rndR(0.05, 0.12); lg.gain.value = 260; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(t0); lfo.stop(t0 + hold + 7);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 4.2); g.gain.setValueAtTime(gain, t0 + hold); g.gain.setTargetAtTime(0.0001, t0 + hold, 2.2);
+  for (const [type, det, mul] of [['sawtooth', -7, 1], ['sawtooth', 8, 1], ['triangle', 0, 2]]) { const o = C.createOscillator(); o.type = type; o.frequency.value = f * mul; o.detune.value = det; o.connect(lp); o.start(t0); o.stop(t0 + hold + 11); }
+  lp.connect(g); g.connect(AUD.padBus);
+}
+function glassNote(C, t0, n, gain) {
+  const f = midiHz(n), g = C.createGain(), pn = C.createStereoPanner ? C.createStereoPanner() : null;
+  g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.03); g.gain.setTargetAtTime(0.0001, t0 + 0.05, 1.1);
+  for (const [m, a] of [[1, 1], [2, 0.3], [3.01, 0.1], [4.2, 0.04]]) { const o = C.createOscillator(), og = C.createGain(); o.type = 'sine'; o.frequency.value = f * m; og.gain.value = a; o.connect(og); og.connect(g); o.start(t0); o.stop(t0 + 6.5); }
+  const wet = C.createGain(); wet.gain.value = 0.7; g.connect(wet); wet.connect(AUD.echo); wet.connect(AUD.verbIn);
+  if (pn) { pn.pan.value = rndR(-0.6, 0.6); g.connect(pn); pn.connect(AUD.musBus); } else g.connect(AUD.musBus);
+}
+function musicTick(C, now) {
+  while (AUD.mNext < now + 1.5) {
+    const ch = CHORDS[AUD.chord % CHORDS.length], t0 = Math.max(AUD.mNext, now), hold = 15;
+    const sub = C.createOscillator(), sg = C.createGain(); sub.frequency.value = midiHz(ch[0]); sg.gain.setValueAtTime(0.0001, t0); sg.gain.linearRampToValueAtTime(0.11, t0 + 5); sg.gain.setValueAtTime(0.11, t0 + hold); sg.gain.setTargetAtTime(0.0001, t0 + hold, 2.4);
+    sub.connect(sg); sg.connect(AUD.padBus); sub.start(t0); sub.stop(t0 + hold + 12);
+    for (let i = 1; i < ch.length; i++) padNote(C, t0 + i * 0.35, hold, ch[i], 0.034 - i * 0.002);
+    AUD.chord++; AUD.mNext = t0 + 13.5;
+  }
+  while (AUD.aNext < now + 0.4) {
+    if (Math.random() < 0.82) { const ch = CHORDS[(AUD.chord + CHORDS.length - 1) % CHORDS.length], pool = Math.random() < 0.6 ? GLASS : ch.slice(2).map((n) => n + 24); glassNote(C, Math.max(AUD.aNext, now), pool[(Math.random() * pool.length) | 0], rndR(0.05, 0.1)); }
+    AUD.aNext += rndR(1.1, 3.4);
+  }
+}
+function initAudioUI() {
+  $('snd').addEventListener('click', (e) => { e.stopPropagation(); setAudio('sfx', !AUD.sfx); });
+  $('mus').addEventListener('click', (e) => { e.stopPropagation(); setAudio('mus', !AUD.mus); });
+  let want = { sfx: false, mus: false };
+  try { want = { sfx: localStorage.getItem('amparacan-map-sound') === '1', mus: localStorage.getItem('amparacan-map-music') === '1' }; } catch (e) {}
+  if (want.sfx || want.mus) {   // browsers only allow sound after a click or key press, so wait for the first one
+    for (const k of ['sfx', 'mus']) if (want[k]) $(k === 'sfx' ? 'snd' : 'mus').setAttribute('aria-pressed', 'true');
+    const go = () => { removeEventListener('pointerdown', go, true); removeEventListener('keydown', go, true); if (want.sfx && !AUD.sfx) setAudio('sfx', true); if (want.mus && !AUD.mus) setAudio('mus', true); };
+    addEventListener('pointerdown', go, true); addEventListener('keydown', go, true);
+  }
+}
+
 // ─────────────────────────── measuring tool ───────────────────────────
 const measure = { on: false, pts: [], cursor: null };
 function measurePointAt(sx, sy) { const p = measureRaw(sx, sy); if (p) p.ground = H(p.x, p.z); return p; }   // .ground is the terrain height under the point, for height differences
@@ -4902,7 +5064,7 @@ function initControls() {
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).addEventListener('click', () => { $('intro').hidden = true; setMode(m); });
   $('help-toggle').addEventListener('click', toggleHelp);
   $('help-min').addEventListener('click', () => { if ($('help').dataset.collapsed !== 'true') toggleHelp(); });
-  initDropdowns();
+  initDropdowns(); initAudioUI();
   $('compass').addEventListener('click', faceNorth);
   $('start-walk').addEventListener('click', () => startExploring('walk'));
   $('start-fly').addEventListener('click', () => startExploring('fly'));
@@ -5172,7 +5334,7 @@ function placeMinimap() { const sb = document.querySelector('#search .sbox'); if
 function initMinimap() {
   addEventListener('resize', placeMinimap);
   const c = $('mm'), box = $('minimap'), home = $('mm-home');
-  const setZoom = (z) => { mm.zoomT = clamp(z, 0.02, Math.min(10, ($('mm').clientWidth || 172) / 50 / 0.42));   // 50 m across is as close as it gets mm.last = 0; };
+  const setZoom = (z) => { mm.zoomT = clamp(z, 0.02, Math.min(10, ($('mm').clientWidth || 172) / 50 / 0.42)); mm.last = 0; };   // 50 m across is as close as it gets
   const panned = () => { const on = Math.abs(mm.px) + Math.abs(mm.pz) > 1; home.hidden = !on; box.classList.toggle('panned', on); };
   const recentre = () => { mm.px = mm.pz = 0; panned(); mm.last = 0; };
   c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); setZoom(mm.zoomT * Math.exp(-e.deltaY * 0.0045)); }, { passive: false });
@@ -5346,6 +5508,7 @@ function initSearch() {
   refreshLit();
 }
 window.amparacan = {
+  audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), bells: AUD.bellsLeft }; },
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
