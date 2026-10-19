@@ -3469,7 +3469,7 @@ async function loadCaptain() {
   });
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false })); blob.position.y = 0.06; blob.renderOrder = 8; g.add(blob);
   const dummy = () => new THREE.Object3D();
-  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 0.78, lift: 0.07, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
+  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 1, lift: 0.07, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
   return g;
 }
 
@@ -3492,24 +3492,24 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
   const breathe = Math.sin(t * 1.5) * 0.004, tPose = (mode === 'walk');
   if (tPose) {
     // ---- walking: leg phases half a cycle apart; hips, knees and ankles from a gait curve; pelvis keeps the lower foot on the ground
-    const amp = moving ? (0.28 + 0.2 * clamp(hv / 4.2, 0, 1) + 0.28 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // backing up takes shorter steps
+    const amp = moving ? (0.2 + 0.1 * clamp(hv / 4.2, 0, 1) + 0.2 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // an unhurried, measured stride   // backing up takes shorter steps
     P.clasp += ((moving ? 0 : 1) - P.clasp) * kf; P.lean += (0 - P.lean) * kf;
     let lowest = 0;
     u.legs.forEach((leg, i) => {
-      const φ = phase + i * Math.PI, hip = amp * Math.cos(φ) * 1.15 + 0.03 * (1 - w), swing = Math.max(0, Math.sin(φ - 0.15)), knee = (0.1 + (0.75 + 0.55 * P.run) * Math.pow(swing, 1.3)) * w + 0.02, ank = (0.3 * Math.sin(φ + 0.35) - 0.04) * w;
+      const φ = phase + i * Math.PI, hip = amp * Math.cos(φ) * 1.15 + 0.03 * (1 - w), swing = Math.max(0, Math.sin(φ - 0.15)), knee = (0.04 + (0.6 + 0.3 * P.run) * Math.pow(swing, 1.4)) * w + 0.02, ank = (0.22 * Math.sin(φ + 0.6) - 0.02) * w;   // legs nearly straight in stance, a smooth swing, heel then toe
       leg.thigh.rotation.set(hip, 0, 0); leg.knee.rotation.set(knee, 0, 0); leg.ankle.rotation.set(ank - (hip + knee) * 0.0, 0, 0);
       leg.ankle.rotation.x = clamp(-(hip + knee) * 0.0 + ank, -0.5, 0.6);
       lowest = Math.max(lowest, u.L1 * Math.cos(hip) + u.L2 * Math.cos(hip + knee));
     });
     rig.position.y = lowest + (u.ankleH ?? 0.103) + (u.lift ?? 0);
-    rig.rotation.set(0.04 + 0.16 * P.run * w - 0.13 * bk * w, Math.sin(phase) * 0.1 * w, Math.sin(phase) * 0.03 * w);   // leans back a touch when backing up
-    u.spine.rotation.set(0, -Math.sin(phase) * 0.14 * w, -Math.sin(phase) * 0.02 * w);
-    u.head.rotation.set(-0.04 - 0.14 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.05 * w, 0);
-    rig.position.x = Math.sin(phase) * 0.012 * w;
+    rig.rotation.set(0.015 + 0.08 * P.run * w - 0.1 * bk * w, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // leans back a touch when backing up
+    u.spine.rotation.set(-0.035, -Math.sin(phase) * 0.1 * w, -Math.sin(phase) * 0.012 * w);   // chest lifted, shoulders counter-turning against the hips
+    u.head.rotation.set(0.0 - 0.05 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady
+    rig.position.x = Math.sin(phase) * 0.008 * w;
     // arms swing against the legs; with no one to clasp, hands settle in front
     u.arms.forEach((arm, i) => {
-      const side = i === 0 ? -1 : 1, swing = Math.cos(phase + (i === 1 ? Math.PI : 0)) * (0.1 + 0.18 * P.run) * w * 2.1, lift = 0.12 + 0.3 * P.run;
-      const sw2 = swing * (1 - 0.55 * bk), free = _ikA2.set(side * (0.05 + 0.02) * (1 - 0.6 * bk), -0.52 + lift * 0.4 * Math.abs(sw2) * 2, sw2 * 1.1 * 0.3 + 0.03 + lift * 0.3 * (1 - 0.7 * bk));   // arms held closer, swinging less
+      const side = i === 0 ? -1 : 1, swing = Math.cos(phase + (i === 1 ? Math.PI : 0)) * (0.09 + 0.14 * P.run) * w * 2.1, lift = 0.08 + 0.2 * P.run;
+      const sw2 = swing * (1 - 0.55 * bk), free = _ikA2.set(side * 0.085 * (1 - 0.6 * bk), -0.485 + lift * 0.4 * Math.abs(sw2) * 2, sw2 * 0.3 + 0.025 + lift * 0.2 * (1 - 0.7 * bk));   // elbows softly bent, hands swinging low   // arms held closer, swinging less
       const idle = _ikB2.set(side * 0.07, -0.5, 0.02);
       free.lerp(idle, P.clasp);
       solveArm(arm, free, _pole.set(side * 0.55, -0.35, -0.75), u.A1, u.A2, 0.6);
@@ -5182,7 +5182,7 @@ function update(dt, t) {
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
     if (player.mode === 'walk' && player.pos.y - H(player.pos.x, player.pos.z) < 0.05) character.position.y += GROUND_SKIN;   // the drawn street sits above the terrain height
     const fwdV = player.vel.x * Math.sin(player.yaw) + player.vel.z * Math.cos(player.yaw);   // signed: positive forward, negative backwards
-    player.walkPhase += dt * hv * 2.1 * (fwdV < -0.3 ? -0.85 : 1);
+    player.walkPhase += dt * hv * 1.75 * (fwdV < -0.3 ? -0.85 : 1);
     poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: fwdV });
     character.rotation.z = 0;
     // chase camera behind the character, swinging round as it turns
