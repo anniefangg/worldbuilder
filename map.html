@@ -2400,7 +2400,7 @@ function sandStrip(geo, P, side) {
   flush();
   const hp = [], hi = [], base = new Map();
   rpos.forEach((rp, r) => { if (rp) { base.set(r, hp.length / 3); hp.push(...rp); } });
-  for (let r = 0; r < rpos.length - 1; r++) { const a = base.get(r), b = base.get(r + 1); if (a === undefined || b === undefined) continue; for (let k = 0; k < K; k++) hi.push(a + k, b + k, a + k + 1, a + k + 1, b + k, b + k + 1); }
+  for (let r = 0; r < rpos.length - 1; r++) { const a = base.get(r), b = base.get(r + 1); if (a === undefined || b === undefined) continue; for (let k = 0; k < K; k++) for (const [i0, i1, i2] of [[a + k, b + k, a + k + 1], [a + k + 1, b + k, b + k + 1]]) { const cy = (hp[i1 * 3] - hp[i0 * 3]) * (hp[i2 * 3 + 2] - hp[i0 * 3 + 2]) - (hp[i1 * 3 + 2] - hp[i0 * 3 + 2]) * (hp[i2 * 3] - hp[i0 * 3]); if (cy <= 0) hi.push(i0, i1, i2); else hi.push(i0, i2, i1); } }   // always facing up, whichever way the beach runs
   rings.hl = { pos: new Float32Array(hp), idx: hi }; return rings;
 }
 function buildBeaches(list) {
