@@ -3359,7 +3359,7 @@ async function loadCaptain() {
   });
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false })); blob.position.y = 0.06; blob.renderOrder = 8; g.add(blob);
   const dummy = () => new THREE.Object3D();
-  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 0.78, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
+  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 0.78, lift: 0.08, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
   return g;
 }
 
@@ -3390,7 +3390,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
       leg.ankle.rotation.x = clamp(-(hip + knee) * 0.0 + ank, -0.5, 0.6);
       lowest = Math.max(lowest, u.L1 * Math.cos(hip) + u.L2 * Math.cos(hip + knee));
     });
-    rig.position.y = lowest + (u.ankleH ?? 0.103);
+    rig.position.y = lowest + (u.ankleH ?? 0.103) + (u.lift ?? 0);
     rig.rotation.set(0.04 + 0.16 * P.run * w, Math.sin(phase) * 0.1 * w, Math.sin(phase) * 0.03 * w);
     u.spine.rotation.set(0, -Math.sin(phase) * 0.14 * w, -Math.sin(phase) * 0.02 * w);
     u.head.rotation.set(-0.04 - 0.14 * P.run * w, Math.sin(phase) * 0.05 * w, 0);
