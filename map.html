@@ -701,12 +701,12 @@ const ICONS = {
 };
 // Weather, layered over the time of day
 const WEATHER = {
-  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0 },
-  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 8, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0 },
-  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1 },
-  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true },
-  misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0 },
-  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0 },
+  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0, wind: 1 },
+  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 8, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0, wind: 1.4 },
+  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1, wind: 1.9 },
+  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true, wind: 3.4 },
+  misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0, wind: 0.7 },
+  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0, wind: 0.5 },
 };
 const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'misty', 'fog'];
 const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
@@ -724,7 +724,7 @@ function applyWeather() {
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
     world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds + (Q.t.sky ? 0 : 14); });
   }
-  if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; }
+  if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; world.water.uniforms.uRain.value = clamp(w.rain / 1.8, 0, 1); }
   if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
   const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
   const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
@@ -1092,7 +1092,7 @@ async function buildWorld() {
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
         uTime: { value: 0 }, uDepth: { value: null }, uExt: { value: EXT }, uSun: { value: SUN_DIR },
         uShallow: { value: linear('#1f93ab') }, uMid: { value: linear('#0d5b8c') }, uDeep: { value: linear('#062a55') }, uRough: { value: 0.15 },
-        uSky: { value: linear('#bfe6f4') }, uFoam: { value: linear('#f4fffb') }, uCanalT: { value: null }, uCanal: { value: linear('#1b5cae') },
+        uSky: { value: linear('#bfe6f4') }, uFoam: { value: linear('#f4fffb') }, uCanalT: { value: null }, uCanal: { value: linear('#1b5cae') }, uRain: { value: 0 },
       }]),
       vertexShader: `
         #include <common>
@@ -1107,7 +1107,7 @@ async function buildWorld() {
         #include <common>
         #include <fog_pars_fragment>
         #include <logdepthbuf_pars_fragment>
-        uniform float uTime, uExt, uNight, uDark, uRough; uniform sampler2D uDepth, uCanalT; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam, uCanal; varying vec3 vW;
+        uniform float uTime, uExt, uNight, uDark, uRough, uRain; uniform sampler2D uDepth, uCanalT; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam, uCanal; varying vec3 vW;
         float hsh(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
         float vno(vec2 q) { vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(hsh(i), hsh(i + vec2(1, 0)), f.x), mix(hsh(i + vec2(0, 1)), hsh(i + vec2(1, 1)), f.x), f.y); }
@@ -1144,6 +1144,17 @@ async function buildWorld() {
           float wr = (sin(aw * 0.62 - tm * 4.2 + 3.0 * vno(p * 0.04)) * 0.055 + sin(aw * 1.7 + ac * 0.4 - tm * 7.0) * 0.025) * rip * f1;   // wavelets running downwind
           n = normalize(n + vec3(Wd.x * wr, 0.0, Wd.y * wr) + vec3(Wp.x, 0.0, Wp.y) * sin(ac * 0.9 + aw * 0.3 - tm * 3.0) * 0.02 * rip * f1);
           n = normalize(n + vec3(shore.x, 0.0, shore.y) * (crest - trough) * 0.35 * shallows * amp * f2);
+          // rain: rings spreading from drops hitting the surface (two staggered layers of drops, near the camera only), seen in the reflections
+          float rainRing = 0.0;
+          if (uRain > 0.0 && dist < 140.0) {
+            vec2 rg = vec2(0.0); float nearR = 1.0 - smoothstep(40.0, 140.0, dist);
+            for (int k = 0; k < 2; k++) {
+              vec2 q = p * 1.6 + float(k) * 37.3, ci = floor(q), cf = fract(q) - 0.5, dpos = cf - (vec2(hsh(ci + 1.3), hsh(ci + 7.1)) - 0.5) * 0.6;
+              float life = fract(tm * (1.3 + 0.7 * hsh(ci + 3.3)) + hsh(ci + 9.7)), dd = length(dpos), ring = exp(-pow((dd - life * 0.45) * 24.0, 2.0)) * (1.0 - life) * step(hsh(ci + 5.5), uRain);
+              rg += dpos / max(dd, 1e-3) * ring; rainRing += ring;
+            }
+            n = normalize(n + vec3(rg.x, 0.0, rg.y) * 0.7 * nearR); rainRing *= nearR;
+          }
           vec3 V = normalize(cameraPosition - vW);
           float fres = pow(1.0 - max(dot(n, V), 0.0), 4.0);
           vec3 col = mix(uShallow, uMid, smoothstep(0.5, 6.0, d));
@@ -1164,6 +1175,7 @@ async function buildWorld() {
           float caps = uRough * smoothstep(0.8 - 0.15 * uRough, 0.95, fbm2(p * 0.02 + tm * vec2(0.03, 0.02))) * smoothstep(6.0, 14.0, d) * f2;   // whitecaps offshore
           float foam = clamp(max(max(breaking, swash), max(trail, caps)) + coast * 0.45, 0.0, 1.0) * (1.0 - canal);
           col = mix(col, uFoam * mix(1.0, 0.5, uNight) * uDark / max(uDark, 0.62), foam * 0.85);
+          col += vec3(0.05, 0.06, 0.07) * rainRing * mix(1.0, 0.4, uNight);   // the rings catch a little light
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -2190,15 +2202,15 @@ function buildingDepthMaterial() {
 }
 
 // ─────────────────────────── wind: swaying grass, shrubs and trees ───────────────────────────
-const WIND = { value: 0 };
+const WIND = { value: 0 }, WINDK = { value: 1 };   // sway time, and how hard the wind blows (per weather, eased: 1 fair, 3.4 storm)
 // trees between the camera and the character duck into the ground so the view of him stays clear (walk and fly modes)
 const DUCK = { a: { value: new THREE.Vector3() }, b: { value: new THREE.Vector3() }, on: { value: 0 } };
 // Adds a wind sway to a lit, instanced material. `hh` is a GLSL expression (0 at the roots → 1 at the tips); `amp` scales the push; `fade` shrinks far blades into the ground.
 function windPatch(mat, { hh, amp = 1, fade = null, duck = 0, duckH = 8 }) {   // duck: how close (m) a tree's root must be to the camera→character line to get out of the way (0 = never); duckH: its height, above which the line passes clear
   mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${!!fade}|${duck}|${duckH}`;   // each patch compiles its own program
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uWind = WIND; if (fade) sh.uniforms.uFade = fade; if (duck) { sh.uniforms.uDuckA = DUCK.a; sh.uniforms.uDuckB = DUCK.b; sh.uniforms.uDuck = DUCK.on; }
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;' + (fade ? '\nuniform vec2 uFade;' : '') + (duck ? '\nuniform vec3 uDuckA, uDuckB; uniform float uDuck;' : ''))
+    sh.uniforms.uWind = WIND; sh.uniforms.uWindK = WINDK; if (fade) sh.uniforms.uFade = fade; if (duck) { sh.uniforms.uDuckA = DUCK.a; sh.uniforms.uDuckB = DUCK.b; sh.uniforms.uDuck = DUCK.on; }
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind, uWindK;' + (fade ? '\nuniform vec2 uFade;' : '') + (duck ? '\nuniform vec3 uDuckA, uDuckB; uniform float uDuck;' : ''))
       .replace('#include <project_vertex>', `
         vec4 rootW = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         #ifdef USE_INSTANCING
@@ -2219,9 +2231,9 @@ function windPatch(mat, { hh, amp = 1, fade = null, duck = 0, duckH = 8 }) {   /
         vec2 W = vec2(0.82, 0.57);
         float gust = 0.5 + 0.5 * sin(dot(wpos.xz, W) * 0.05 - uWind * 0.9);
         float gust2 = sin(dot(wpos.xz, vec2(-0.5, 0.86)) * 0.13 - uWind * 1.7);
-        float flut = sin(uWind * 3.4 + wpos.x * 1.1 + wpos.z * 0.9);
+        float flut = sin(uWind * (3.4 + 1.2 * (uWindK - 1.0)) + wpos.x * 1.1 + wpos.z * 0.9);   // a storm flutters faster
         vec2 push = W * (0.12 + 0.5 * gust + 0.15 * gust2) + vec2(-W.y, W.x) * flut * 0.07;
-        float bend = hh * hh * ${amp.toFixed(3)} * isc;
+        float bend = hh * hh * ${amp.toFixed(3)} * isc * uWindK;
         wpos.xz += push * bend; wpos.y -= length(push) * bend * 0.25;
         ${fade ? 'float fd = 1.0 - smoothstep(uFade.x, uFade.y, distance(cameraPosition, rootW.xyz)); wpos.y = rootW.y + (wpos.y - rootW.y) * fd;' : ''}
         mvPosition = viewMatrix * wpos;
@@ -6209,7 +6221,7 @@ function update(dt, t) {
   const W0 = WEATHER[wx.name]; const br = (wx.name === 'fog' || wx.name === 'misty') ? 1 + 0.12 * Math.sin(t * 0.23) + 0.07 * Math.sin(t * 0.41 + 1.3) : 1;   // the mist breathes in and out
   scene.fog.near = (1800 + alt * 3) * W0.nearK * br; scene.fog.far = (24000 + alt * 6) * W0.fogK * br;
   stepWeather(dt, t); stepBoats(dt, t);
-  WIND.value = t;
+  WIND.value = t; WINDK.value += ((WEATHER[wx.name].wind || 1) - WINDK.value) * (1 - Math.exp(-dt * 0.5));   // the wind picks up or dies down over a few seconds
   DUCK.on.value = player.mode === 'walk' || player.mode === 'fly' ? 1 : 0; DUCK.a.value.set(player.pos.x, player.pos.y + 1.2, player.pos.z); DUCK.b.value.copy(camera.position);
   updateGrass(dt);
   updateCull(dt);
