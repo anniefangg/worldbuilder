@@ -2479,7 +2479,8 @@ const SPECIES = {
   pine:       { name: 'Pinus caribaea', common: 'Caribbean pine', form: 'conical', h: 25, o: { trunkH: 14, trunkR: 0.45, rad: 3.8, kind: 'pine', trunkC: '#7a4a32', greens: ['#3a6f3a', '#2f6030', '#4a7f3e'] } },
   craboo:     { name: 'Byrsonima crassifolia', common: 'craboo', form: 'crown', h: 8, o: { trunkH: 2.5, trunkR: 0.25, crownR: 3.4, greens: ['#4d8a3a', '#5f9c44', '#3f7a33'], flower: '#f2c230', share: 0.35 } },
   guava:      { name: 'Psidium guajava', common: 'guava', form: 'crown', h: 5, o: { trunkH: 1.6, trunkR: 0.16, crownR: 2.6, trunkC: '#b9a58a', greens: ['#4f9a3c', '#64ad45', '#3f8a35'] } },
-  cassia:     { name: 'Cassia grandis', common: 'pink shower tree', form: 'crown', h: 16, o: { trunkH: 6, trunkR: 0.45, crownR: 7, greens: ['#4a8f3a', '#3f8035', '#5a9c40'], flower: '#f3a3c4', share: 0.7 } },
+  flame:      { name: 'Delonix regia', common: 'flame tree', form: 'crown', h: 12, o: { trunkH: 4, trunkR: 0.4, crownR: 7, greens: ['#4a8a38', '#3e7c32', '#58993f'], flower: '#e8321e', share: 0.85 } },
+  cassia:     { name: 'Cassia grandis', common: 'pink shower tree', form: 'crown', h: 16, o: { trunkH: 6, trunkR: 0.45, crownR: 7, greens: ['#4a8f3a', '#3f8035', '#5a9c40'], flower: '#e59ad6', share: 0.7 } },
   jacaranda:  { name: 'Jacaranda mimosifolia', common: 'jacaranda', form: 'crown', h: 12, o: { trunkH: 4.5, trunkR: 0.32, crownR: 5.2, greens: ['#5a9c4a', '#4f8f44', '#6aa852'], flower: '#8f7bd6', share: 0.8 } },
   magnolia:   { name: 'Magnolia yoroconte', common: 'yoroconte magnolia', form: 'crown', h: 22, o: { trunkH: 8, trunkR: 0.55, crownR: 6.5, greens: ['#2f6a35', '#3b7a3a', '#285e2d'], flower: '#fbf7e8', share: 0.3 } },
   havardia:   { name: 'Havardia albicans', common: 'havardia', form: 'crown', h: 7, o: { trunkH: 2.6, trunkR: 0.22, crownR: 3.5, greens: ['#6aa05a', '#79ae63', '#5a914e'], flower: '#f5f0e6', share: 0.35 } },
@@ -2487,9 +2488,17 @@ const SPECIES = {
 const SP_KEYS = Object.keys(SPECIES), SP_SHORT = SP_KEYS.filter((k) => SPECIES[k].h <= 15), isPalmSp = (k) => SPECIES[k].form === 'palm';
 const STREET_PALMS = SP_SHORT.filter(isPalmSp), STREET_TREES = SP_SHORT.filter((k) => !isPalmSp(k));     // only species of 15 m or under line the streets
 const PARK_PALMS = SP_KEYS.filter(isPalmSp), PARK_TREES = SP_KEYS.filter((k) => !isPalmSp(k));          // parks get everything, the giants included
-const WILD_PALMS = ['thatch', 'cherryPalm', 'peachPalm', 'oilPalm'], WILD_TREES = ['guava', 'craboo', 'havardia', 'geiger', 'ziricote', 'jacaranda', 'pacaya'];
-const SP_WEIGHT = { geiger: 0.03, ziricote: 0.03 };   // the orange-flowering trees are rare: a few per neighbourhood, not a street full
-const pickSp = (list, rnd) => { let tot = 0; for (const k of list) tot += SP_WEIGHT[k] ?? 1; let r = rnd() * tot; for (const k of list) { r -= SP_WEIGHT[k] ?? 1; if (r <= 0) return k; } return list[list.length - 1]; };
+const WILD_PALMS = ['thatch', 'cherryPalm', 'peachPalm', 'oilPalm'], WILD_TREES = ['guava', 'craboo', 'havardia', 'geiger', 'ziricote', 'jacaranda', 'flame', 'pacaya'];
+// Crown colours over all trees: 80% green, 10% purple/lavender, 5% white, 3% yellow, 1% red, 1% orange (the author's mix).
+const SP_COLOUR = { jacaranda: 'purple', cassia: 'purple', magnolia: 'white', havardia: 'white', craboo: 'yellow', flame: 'red', geiger: 'orange', ziricote: 'orange' };   // every other species is green
+const COLOUR_PCT = { purple: 10, white: 5, yellow: 3, red: 1, orange: 1 };   // of all trees; green is the rest
+const PALM_SHARE = 0.44;   // palms (all green) are chosen before colour comes into it, so a broadleaf pick scales the flowering shares up by 1/(1 - PALM_SHARE) to land the totals over all trees
+function pickSp(list, rnd) {   // a colour class first (by the targets above, among the classes this list offers; the rest green), then one species of it
+  const byC = {}; for (const k of list) { const c = SP_COLOUR[k] || 'green'; (byC[c] = byC[c] || []).push(k); }
+  let l = byC.green || list, r = rnd();
+  if (byC.green) for (const c in byC) { if (c === 'green') continue; const p = COLOUR_PCT[c] / 100 / (1 - PALM_SHARE); if (r < p) { l = byC[c]; break; } r -= p; }
+  return l[Math.min(l.length - 1, (rnd() * l.length) | 0)];
+}
 // a broadleaf crown: a trunk and a cluster of leafy lumps sized to the species' height, with a share of the lumps in flower
 function crownGeometry(o, h) {
   const { trunkH, trunkR, crownR, greens, flower, share = 0, trunkC = '#7a5a3c' } = o, G = greens.map(linear), flat = clamp((h - trunkH) / (1.35 * crownR), 0.45, 1.25), rr = mulberry(h * 37 + crownR * 11);
