@@ -3607,24 +3607,29 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
     const amp = moving ? (0.2 + 0.1 * clamp(hv / 4.2, 0, 1) + 0.2 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // an unhurried, measured stride   // backing up takes shorter steps
     P.clasp += ((moving ? 0 : 1) - P.clasp) * kf; P.lean += (0 - P.lean) * kf;
     let lowest = 0;
+    // running: knee driven forward, stance knee flexed, heel kicked up behind
     u.legs.forEach((leg, i) => {
-      const φ = phase + i * Math.PI, hip = amp * Math.cos(φ) * 1.15 + 0.03 * (1 - w), swing = Math.max(0, Math.sin(φ - 0.15)), knee = (0.04 + (0.6 + 0.3 * P.run) * Math.pow(swing, 1.4)) * w + 0.02, ank = (0.22 * Math.sin(φ + 0.6) - 0.02) * w;   // legs nearly straight in stance, a smooth swing, heel then toe
+      const φ = phase + i * Math.PI, hip = amp * Math.cos(φ) * 1.15 + 0.03 * (1 - w) - 0.14 * P.run * w, swing = Math.max(0, Math.sin(φ - 0.15)), knee = (0.04 + 0.2 * P.run + (0.6 + 0.85 * P.run) * Math.pow(swing, 1.4)) * w + 0.02, ank = (0.22 * Math.sin(φ + 0.6) - 0.02) * w;   // legs nearly straight in stance, a smooth swing, heel then toe
       leg.thigh.rotation.set(hip, 0, 0); leg.knee.rotation.set(knee, 0, 0); leg.ankle.rotation.set(ank - (hip + knee) * 0.0, 0, 0);
       leg.ankle.rotation.x = clamp(-(hip + knee) * 0.0 + ank, -0.5, 0.6);
       lowest = Math.max(lowest, u.L1 * Math.cos(hip) + u.L2 * Math.cos(hip + knee));
     });
     rig.position.y = lowest + (u.ankleH ?? 0.103) + (u.lift ?? 0);
-    rig.rotation.set(0.07 * P.run * w - 0.1 * bk * w, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // upright at a walk, a slight lean into a run, back a touch when backing up
-    u.spine.rotation.set(-0.13 + 0.03 * P.run * w, -Math.sin(phase) * (0.1 + 0.06 * P.run) * w, -Math.sin(phase) * 0.012 * w);   // chest lifted back over the hips (the model stoops a little at rest), shoulders counter-turning against the hips
-    u.head.rotation.set(-0.06 + 0.04 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady
+    rig.rotation.set(0.13 * P.run * w - 0.1 * bk * w, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // upright at a walk, a slight lean into a run, back a touch when backing up
+    u.spine.rotation.set(-0.13 + 0.05 * P.run * w, -Math.sin(phase) * (0.1 + 0.06 * P.run) * w, -Math.sin(phase) * 0.012 * w);   // chest lifted back over the hips (the model stoops a little at rest), shoulders counter-turning against the hips
+    u.head.rotation.set(-0.06 - 0.07 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady
     rig.position.x = Math.sin(phase) * 0.008 * w;
     // arms: at a walk they hang at his sides and swing gently against the legs; at a run the elbows bend and pump
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, sw = Math.cos(phase + (i === 1 ? Math.PI : 0)) * w * (1 - 0.55 * bk);
       const walkT = _ikA2.set(side * 0.1, -0.5, -0.025 + sw * 0.075);
-      const runT = _ikB2.set(side * 0.11, -0.33 + 0.04 * Math.abs(sw), -0.02 + sw * 0.2);
+      // running: forward/back from the shoulder with the elbow held near a right angle, hands travelling from the hip to chest height and drifting slightly in front
+      const th = -0.2 + 0.62 * sw, el = 1.5 + 0.3 * Math.max(sw, 0), ux = side * 0.07;   // upper-arm angle from vertical (forward +), elbow bend
+      const ex = ux * u.A1, ey = -Math.cos(th) * u.A1, ez = Math.sin(th) * u.A1;
+      const runT = _ikB2.set(ex - side * 0.03 * Math.max(sw, 0), ey - Math.cos(th + el) * u.A2, ez + Math.sin(th + el) * u.A2);
+      const elbowDir = _ikC2.set(ex, ey, ez);
       walkT.lerp(runT, P.run);
-      solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1), u.A1, u.A2, 0.6);
+      solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1).lerp(elbowDir.normalize(), P.run), u.A1, u.A2, 0.6);
       arm.hand.rotation.set(0, 0, 0);
     });
     u.blob.visible = true;
@@ -3654,7 +3659,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
   }
   u.rig.scale.set(1 + breathe, 1 + breathe * 1.5, 1 + breathe);
 }
-const _ikA2 = new THREE.Vector3(), _ikB2 = new THREE.Vector3(), _pole = new THREE.Vector3();
+const _ikA2 = new THREE.Vector3(), _ikB2 = new THREE.Vector3(), _ikC2 = new THREE.Vector3(), _pole = new THREE.Vector3();
 
 // ─────────────────────────── footprints & collision ───────────────────────────
 function pointInRings(x, z, rings) {
