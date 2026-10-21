@@ -2418,7 +2418,8 @@ const SP_KEYS = Object.keys(SPECIES), SP_SHORT = SP_KEYS.filter((k) => SPECIES[k
 const STREET_PALMS = SP_SHORT.filter(isPalmSp), STREET_TREES = SP_SHORT.filter((k) => !isPalmSp(k));     // only species of 15 m or under line the streets
 const PARK_PALMS = SP_KEYS.filter(isPalmSp), PARK_TREES = SP_KEYS.filter((k) => !isPalmSp(k));          // parks get everything, the giants included
 const WILD_PALMS = ['thatch', 'cherryPalm', 'peachPalm', 'oilPalm'], WILD_TREES = ['guava', 'craboo', 'havardia', 'geiger', 'ziricote', 'jacaranda', 'pacaya'];
-const pickSp = (list, rnd) => list[Math.min(list.length - 1, (rnd() * list.length) | 0)];
+const SP_WEIGHT = { geiger: 0.03, ziricote: 0.03 };   // the orange-flowering trees are rare: a few per neighbourhood, not a street full
+const pickSp = (list, rnd) => { let tot = 0; for (const k of list) tot += SP_WEIGHT[k] ?? 1; let r = rnd() * tot; for (const k of list) { r -= SP_WEIGHT[k] ?? 1; if (r <= 0) return k; } return list[list.length - 1]; };
 // a broadleaf crown: a trunk and a cluster of leafy lumps sized to the species' height, with a share of the lumps in flower
 function crownGeometry(o, h) {
   const { trunkH, trunkR, crownR, greens, flower, share = 0, trunkC = '#7a5a3c' } = o, G = greens.map(linear), flat = clamp((h - trunkH) / (1.35 * crownR), 0.45, 1.25), rr = mulberry(h * 37 + crownR * 11);
