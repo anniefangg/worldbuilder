@@ -1816,6 +1816,32 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     const gs = ss.groundFloor in GROUND ? GROUND[ss.groundFloor] : g, ws = ss.windows in WINDOWS ? WINDOWS[ss.windows] : w;
     for (let k = 0; k < 4; k++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(gs, ws); }
   }
+  // a painted mural across one wall of about 1% of buildings: a quad 3 cm proud of the wall, flagged 2 in aWall.w's hundred-thousands (no openings; the shader paints it)
+  rec.mural = null;
+  const mw = segs ? null : muralWall(rec, RR, doorBay, s, neo);
+  if (mw) {
+    const { i, f } = mw, R0 = RR[0], k1 = ((i + 2) % R0.pts.length) >> 1, n0 = R0.nrm[i >> 1] || [f.nx, f.nz], n1 = R0.nrm[k1] || [f.nx, f.nz];
+    const wv = hgt + 200000, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (u, y) => [f.ax + dx * u + f.nx * 0.03, y, f.az + dz * u + f.nz * 0.03];
+    const q0 = geo.count, corners = [[MURAL_IN, base + MURAL_LO], [f.L - MURAL_IN, base + MURAL_LO], [f.L - MURAL_IN, top - MURAL_HI], [MURAL_IN, top - MURAL_HI]];
+    for (const [u, y] of corners) { const tt = u / f.L, nx = n0[0] + (n1[0] - n0[0]) * tt, nz = n0[1] + (n1[1] - n0[1]) * tt, nl = Math.hypot(nx, nz) || 1, pp = P(u, y); geo.v(pp[0], pp[1], pp[2], nx / nl, 0, nz / nl, cWall); geo.extra.aWall.push(u, y - base, f.L, wv); geo.extra.aShut.push(cShut.r, cShut.g, cShut.b); }
+    if (R0.sgn > 0) geo.i.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2); else geo.i.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3);
+    for (let k = 0; k < 4; k++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
+    rec.mural = { i, x: (f.ax + f.bx) / 2, z: (f.az + f.bz) / 2, nx: f.nx, nz: f.nz, L: f.L };
+  }
+}
+// ---- murals: 1% of buildings (by seed) carry a painting across one open wall of 7 m or more, preferring a wall without the front door
+const MURAL_PM = 14, MURAL_IN = 0.45, MURAL_LO = 0.6, MURAL_HI = 0.5;   // margins: inside the quoins, above the plinth, below the cornice
+function muralWall(rec, RR, doorBay, s, neo) {
+  if (neo || s.floors < 2 || ((rec.seed >>> 9) % 1000) >= MURAL_PM) return null;
+  const R = RR[0]; let best = null;
+  for (let i = 0; i < R.pts.length; i += 2) {
+    const f = ringEdge(R, i); if (f.L < 7) continue;
+    const px = (f.ax + f.bx) / 2 + f.nx * 2.5, pz = (f.az + f.bz) / 2 + f.nz * 2.5;
+    if (buildingAt(px, pz) >= 0 || H(px, pz) < 0.3) continue;
+    const score = f.L * (doorBay.has(i) ? 0.6 : 1);
+    if (!best || score > best.score) best = { i, f, score };
+  }
+  return best;
 }
 const _cSeg = new THREE.Color();
 // ---- wall segments: part of one wall (a run of bays × a run of floors) that carries its own look
@@ -2094,6 +2120,50 @@ float fb2(vec2 p) { return 0.5 * vn2(p) + 0.3 * vn2(p * 2.03 + 7.1) + 0.2 * vn2(
           c = mix(c, trim, bal); c = mix(c, trim * 0.45, gap * bal);                                  // balustrade
         }
         c = mix(c, trim, step(gf - 0.25, v) * step(v, gf) * 0.6);                // ground-floor string course
+        if (wflag > 1.5) {   // ---- a painted mural: the quad spans u 0.45..L-0.45, v 0.6..top-0.5
+          float mw = L - 0.9, mh = top - 1.1; vec2 m = vec2((u - 0.45) / mw, (v - 0.6) / mh);
+          vec2 q = vec2(m.x * mw, m.y * mh);                                      // metres within the painting, so circles stay round
+          float mr = h31(vec3(vBid, 2.2, 8.8)), mr2 = h31(vec3(vBid, 6.6, 1.4)), design = floor(mr * 4.0), pal = floor(mr2 * 4.0);
+          vec3 p0, p1, p2, p3;
+          if (pal < 0.5) { p0 = vec3(0.95, 0.78, 0.3); p1 = vec3(0.86, 0.3, 0.25); p2 = vec3(0.16, 0.42, 0.6); p3 = vec3(0.98, 0.93, 0.82); }
+          else if (pal < 1.5) { p0 = vec3(0.2, 0.55, 0.5); p1 = vec3(0.95, 0.6, 0.25); p2 = vec3(0.55, 0.25, 0.5); p3 = vec3(0.96, 0.9, 0.78); }
+          else if (pal < 2.5) { p0 = vec3(0.9, 0.45, 0.55); p1 = vec3(0.3, 0.5, 0.75); p2 = vec3(0.98, 0.85, 0.4); p3 = vec3(0.15, 0.2, 0.3); }
+          else { p0 = vec3(0.35, 0.6, 0.3); p1 = vec3(0.9, 0.35, 0.2); p2 = vec3(0.98, 0.82, 0.5); p3 = vec3(0.2, 0.3, 0.45); }
+          vec3 mc = p3;
+          if (design < 0.5) {            // sunrise over the sea: rays, a sun, waves
+            vec2 sc = vec2(mw * 0.5, mh * 0.62), d = q - sc; float ang = atan(d.y, d.x), rad = length(d);
+            mc = mix(p2 * 1.1, p3, 0.5 + 0.5 * sin(ang * 12.0));
+            mc = mix(mc, p0, 1.0 - smoothstep(mh * 0.18, mh * 0.2, rad));
+            float sea = step(q.y, mh * 0.36 + 0.25 * sin(q.x * 2.2 + 1.0) + 0.1 * sin(q.x * 5.1));
+            mc = mix(mc, p1, sea);
+            float wave = step(0.5, fract(q.y / 0.9 + 0.3 * sin(q.x * 3.0))) * sea * step(q.y, mh * 0.3);
+            mc = mix(mc, p3, wave * 0.6);
+          } else if (design < 1.5) {     // geometric: two diagonal fields and a grid of discs
+            mc = mix(p1, p2, step(0.0, q.x - q.y * 0.8 - mw * 0.25));
+            vec2 gq = q / 2.1, gqi = floor(gq), gqf = fract(gq) - 0.5;
+            float disc = (1.0 - smoothstep(0.3, 0.34, length(gqf))) * step(0.45, h21(gqi + vBid));
+            mc = mix(mc, mix(p0, p3, step(0.5, h21(gqi + 3.0 + vBid))), disc);
+          } else if (design < 2.5) {     // a great flower on a stem with leaves
+            vec2 fc = vec2(mw * 0.5, mh * 0.66), d = q - fc; float ang = atan(d.y, d.x), rad = length(d);
+            mc = mix(mc, p0 * 0.8, step(abs(q.x - mw * 0.5 - 0.3 * sin(q.y * 0.8)), 0.22) * step(q.y, fc.y));
+            for (int k = 0; k < 3; k++) { vec2 l = q - vec2(mw * 0.5 + (mod(float(k), 2.0) * 2.0 - 1.0) * 1.6, mh * (0.18 + 0.14 * float(k))); mc = mix(mc, p0, 1.0 - smoothstep(0.9, 1.0, length(l * vec2(0.7, 1.9)))); }
+            float petals = mh * (0.22 + 0.07 * abs(cos(ang * 4.0)));
+            mc = mix(mc, p1, 1.0 - smoothstep(petals, petals + 0.1, rad));
+            mc = mix(mc, p2, 1.0 - smoothstep(mh * 0.09, mh * 0.1, rad));
+          } else {                       // night: a crescent moon and stars over chevrons
+            mc = p2 * 0.75;
+            mc = mix(mc, p1, step(0.5, fract((q.y + abs(q.x - mw * 0.5) * 0.6) / 1.4)) * step(q.y, mh * 0.4));
+            vec2 mo = vec2(mw * 0.62, mh * 0.72); float moon = (1.0 - smoothstep(mh * 0.12, mh * 0.125, length(q - mo))) * smoothstep(mh * 0.09, mh * 0.095, length(q - mo - vec2(0.55, 0.3) * mh * 0.12));
+            mc = mix(mc, p0, moon);
+            float star = step(0.93, h21(floor(q * 1.3) + vBid)) * (1.0 - smoothstep(0.12, 0.16, length(fract(q * 1.3) - 0.5))) * step(mh * 0.4, q.y);
+            mc = mix(mc, p3, star);
+          }
+          float border = step(min(min(m.x, 1.0 - m.x) * mw, min(m.y, 1.0 - m.y) * mh), 0.3);   // a painted frame
+          mc = mix(mc, p3 * 0.9, border);
+          float fade = 0.78 + 0.22 * fb2(fp * 0.9);                                              // the paint has weathered unevenly
+          float inside = step(0.0, m.x) * step(m.x, 1.0) * step(0.0, m.y) * step(m.y, 1.0);
+          c = mix(c, mc * fade * (0.9 + 0.1 * vn2(fp * 5.0)), 0.95 * inside);
+        }
         c = mix(c, trim, frame);
         float louvre = 0.8 + 0.2 * step(0.45, fract(v * 16.0));
         c = mix(c, vShut * louvre, max(shut, awning * step(0.5, fract(u * 1.2))));
