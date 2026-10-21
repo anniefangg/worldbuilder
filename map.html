@@ -3799,20 +3799,21 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
       const inward = (i === 0 ? 1 : -1) * 0.055 * P.run * w;   // running: feet land closer under the body
       // in the air: thighs up and knees folded (one leg a little ahead), unfolding to reach for the ground as he falls; on landing a crouch that recovers
       const hipJ = -0.95 * (1 - 0.55 * falling) + (i ? 0.1 : -0.12), kneeJ = 1.3 * (1 - 0.5 * falling) + (i ? -0.1 : 0.1), ankJ = -0.3 + 0.55 * falling;
-      const hipF = L2(hip, hipJ, J) - 0.45 * landK, kneeF = L2(knee, kneeJ, J) + 0.95 * landK, ankF = L2(ank, ankJ, J) - 0.25 * landK;
+      const kneeB = knee + (0.2 + 0.4 * swing) * bk * w, ankB = ank + 0.32 * swing * bk * w;   // backing up: knees stay soft and the reaching foot feels for the ground toe first
+      const hipF = L2(hip, hipJ, J) - 0.45 * landK, kneeF = L2(kneeB, kneeJ, J) + 0.95 * landK, ankF = L2(ankB, ankJ, J) - 0.25 * landK;
       leg.thigh.rotation.set(hipF, 0, inward); leg.knee.rotation.set(kneeF, 0, 0);
       leg.ankle.rotation.x = clamp(ankF, -0.5, 0.6); leg.ankle.rotation.z = -inward;   // foot stays flat
       lowest = Math.max(lowest, u.L1 * Math.cos(hipF) + u.L2 * Math.cos(hipF + kneeF));
     });
     rig.position.y = L2(lowest + (u.ankleH ?? 0.103) + (u.lift ?? 0), u.HIP + (u.lift ?? 0), J);   // airborne the pelvis rides the jump's arc and the tucked feet come up under him
-    rig.rotation.set(0.13 * P.run * w - 0.1 * bk * w + J * (0.2 * rising - 0.05 * falling) + 0.12 * landK, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // upright at a walk, a slight lean into a run, back a touch when backing up; leans into the spring of a jump and the landing
-    u.spine.rotation.set(-0.13 + 0.05 * P.run * w - 0.06 * J + 0.1 * landK, -Math.sin(phase) * (0.1 + 0.06 * P.run) * w, -Math.sin(phase) * 0.012 * w);   // chest lifted back over the hips (the model stoops a little at rest), shoulders counter-turning against the hips
-    u.head.rotation.set(-0.06 - 0.07 * P.run * w + 0.1 * bk * w - 0.12 * J * rising + 0.1 * J * falling, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady; looks up on the way up, down at the landing
+    rig.rotation.set(0.13 * P.run * w + 0.07 * bk * w + J * (0.2 * rising - 0.05 * falling) + 0.12 * landK, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // upright at a walk, a slight lean into a run, a touch forward when backing up (for balance); leans into the spring of a jump and the landing
+    u.spine.rotation.set(-0.13 + 0.05 * P.run * w - 0.06 * J + 0.1 * landK, -Math.sin(phase) * (0.1 + 0.06 * P.run) * w - 0.2 * bk * w, -Math.sin(phase) * 0.012 * w);   // backing up he twists a little to glance behind   // chest lifted back over the hips (the model stoops a little at rest), shoulders counter-turning against the hips
+    u.head.rotation.set(-0.06 - 0.07 * P.run * w + 0.04 * bk * w - 0.12 * J * rising + 0.1 * J * falling, Math.sin(phase) * 0.035 * w - 0.62 * bk * w, -0.05 * bk * w);   // head held level and steady; looks up on the way up, down at the landing; over the shoulder when backing up
     rig.position.x = Math.sin(phase) * 0.008 * w;
     // arms: at a walk they hang at his sides and swing gently against the legs; at a run the elbows bend and pump
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, sw = Math.cos(phase + (i === 1 ? Math.PI : 0)) * w * (1 - 0.55 * bk);
-      const walkT = _ikA2.set(side * 0.1, -0.5, -0.025 + sw * 0.075);
+      const walkT = _ikA2.set(side * (0.1 + 0.05 * bk), -0.5 + 0.06 * bk, -0.025 + sw * 0.075 + 0.1 * bk * w);   // backing up the arms come a little out and forward, ready to steady him
       // running: forward/back from the shoulder with the elbow held near a right angle, swinging around a point a little behind the shoulder so the hands stay at his sides
       const th = -0.6 + 0.52 * sw, el = 1.35 + 0.1 * Math.max(sw, 0), ux = side * 0.16;   // upper-arm angle from vertical (forward +), elbow bend
       const ex = ux * u.A1, ey = -Math.cos(th) * u.A1, ez = Math.sin(th) * u.A1;
@@ -6111,7 +6112,7 @@ function update(dt, t) {
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
     if (player.mode === 'walk' && player.pos.y - H(player.pos.x, player.pos.z) < 0.05) character.position.y += GROUND_SKIN;   // the drawn street sits above the terrain height
     const fwdV = player.vel.x * Math.sin(player.yaw) + player.vel.z * Math.cos(player.yaw);   // signed: positive forward, negative backwards
-    player.walkPhase += dt * hv * 1.75 * (1 - 0.32 * clamp((hv - 4.8) / 3.5, 0, 1)) * (fwdV < -0.3 ? -0.85 : 1);   // running: a lower cadence, so each stride covers more ground
+    player.walkPhase += dt * hv * 1.75 * (1 - 0.32 * clamp((hv - 4.8) / 3.5, 0, 1)) * (fwdV < -0.3 ? -1.2 : 1);   // running: a lower cadence, so each stride covers more ground; backing up: short, quicker steps
     poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: fwdV, air: player.mode === 'walk' && !player.onGround, vy: player.vy, airH: player.mode === 'walk' ? Math.max(0, player.pos.y - groundAt(player.pos.x, player.pos.z, player.pos.y)) : 0, climbing: player.mode === 'fly' && (k(' ', 'e') || pad.up), diving: player.mode === 'fly' && (k('q', 'c') || pad.down) && player.vel.y < -0.5, turning: clamp((k('a', 'arrowleft') ? 1 : 0) - (k('d', 'arrowright') ? 1 : 0) - joy.x, -1, 1) });
     character.rotation.z = 0;
     // chase camera behind the character, swinging round as it turns
