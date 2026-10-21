@@ -3504,7 +3504,8 @@ async function loadCaptain() {
   const raw = atob(txt), buf = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
   const gltf = await new GLTFLoader().parseAsync(buf.buffer, '');
   const S = 0.0088, V = (x, y, z = 0) => new THREE.Vector3(x, y, z);   // model centimetres → metres
-  const J = { hip: 85, knee: 44, ankle: 9, waist: 112, neck: 165, sh: [14, 163], el: [36, 141], wr: [55, 121.5], tip: [68, 110], legX: [9, 9.5, 10] };
+  const J = { hip: 85, knee: 44, ankle: 9, waist: 112, neck: 165, sh: [14, 163, -4], el: [36, 141, -6.5], wr: [55, 121.5, 2.5], tip: [68, 110, 8.5],   // arm joints follow the model's arm, whose forearm angles forward
+    legX: [9, 9.5, 10] };
   const g = new THREE.Group(), bones = [], mk = (parent, wx, wy, wz, ref) => { const b = new THREE.Bone(); b.position.set((wx - ref[0]) * S, (wy - ref[1]) * S, (wz - ref[2]) * S); parent.add(b); bones.push(b); return b; };
   const rig = new THREE.Bone(); rig.position.set(0, J.hip * S, 0); bones.push(rig); g.add(rig);
   const spine = mk(rig, 0, J.waist, 0, [0, J.hip, 0]), head = mk(spine, 0, J.neck, 0, [0, J.waist, 0]);
@@ -3514,11 +3515,11 @@ async function loadCaptain() {
     const thigh = mk(rig, s * J.legX[0], J.hip, 0, [0, J.hip, 0]), knee = mk(thigh, s * J.legX[1], J.knee, 0, [s * J.legX[0], J.hip, 0]), ankle = mk(knee, s * J.legX[2], J.ankle, 0, [s * J.legX[1], J.knee, 0]);
     legs.push({ thigh, knee, ankle });
     segs.push({ bone: thigh, a: V(s * J.legX[0], J.hip), b: V(s * J.legX[1], J.knee), r: 10, kind: 'leg', x: s * J.legX[0] }, { bone: knee, a: V(s * J.legX[1], J.knee), b: V(s * J.legX[2], J.ankle), r: 7.5, kind: 'leg', x: s * J.legX[1] }, { bone: ankle, a: V(s * J.legX[2], J.ankle), b: V(s * J.legX[2], 4, 14), r: 7, kind: 'foot' });
-    const sh = mk(spine, s * J.sh[0], J.sh[1], 0, [0, J.waist, 0]), el = mk(sh, s * J.el[0], J.el[1], 0, [s * J.sh[0], J.sh[1], 0]), wr = mk(el, s * J.wr[0], J.wr[1], 0, [s * J.el[0], J.el[1], 0]);
+    const sh = mk(spine, s * J.sh[0], J.sh[1], J.sh[2], [0, J.waist, 0]), el = mk(sh, s * J.el[0], J.el[1], J.el[2], [s * J.sh[0], J.sh[1], J.sh[2]]), wr = mk(el, s * J.wr[0], J.wr[1], J.wr[2], [s * J.el[0], J.el[1], J.el[2]]);
     const hand = new THREE.Object3D(); wr.add(hand);
-    const r1 = V(s * (J.el[0] - J.sh[0]), J.el[1] - J.sh[1]).normalize(), r2 = V(s * (J.wr[0] - J.el[0]), J.wr[1] - J.el[1]).normalize();
+    const r1 = V(s * (J.el[0] - J.sh[0]), J.el[1] - J.sh[1], J.el[2] - J.sh[2]).normalize(), r2 = V(s * (J.wr[0] - J.el[0]), J.wr[1] - J.el[1], J.wr[2] - J.el[2]).normalize();
     arms.push({ sh, el, wr, hand, r1, r2 });
-    segs.push({ bone: sh, a: V(s * J.sh[0], J.sh[1]), b: V(s * J.el[0], J.el[1]), r: 6.5, kind: 'arm' }, { bone: el, a: V(s * J.el[0], J.el[1]), b: V(s * J.wr[0], J.wr[1]), r: 5.5, kind: 'arm' }, { bone: wr, a: V(s * J.wr[0], J.wr[1]), b: V(s * J.tip[0], J.tip[1]), r: 5, kind: 'arm' });
+    segs.push({ bone: sh, a: V(s * J.sh[0], J.sh[1], J.sh[2]), b: V(s * J.el[0], J.el[1], J.el[2]), r: 6.5, kind: 'arm' }, { bone: el, a: V(s * J.el[0], J.el[1], J.el[2]), b: V(s * J.wr[0], J.wr[1], J.wr[2]), r: 5.5, kind: 'arm' }, { bone: wr, a: V(s * J.wr[0], J.wr[1], J.wr[2]), b: V(s * J.tip[0], J.tip[1], J.tip[2]), r: 5, kind: 'arm' });
   }
   g.updateMatrixWorld(true);
   const skeleton = new THREE.Skeleton(bones), idx = new Map(bones.map((b, i) => [b, i]));
@@ -3547,7 +3548,7 @@ async function loadCaptain() {
   });
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false })); blob.position.y = 0.06; blob.renderOrder = 8; g.add(blob);
   const dummy = () => new THREE.Object3D();
-  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1]) * S, ankleH: J.ankle * S, stride: 1, lift: 0.07, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
+  g.userData = { rig, spine, head, hat: dummy(), pony: dummy(), plume: dummy(), skirt: dummy(), sword: dummy(), legs, arms, blob, HIP: J.hip * S, L1: (J.hip - J.knee) * S, L2: (J.knee - J.ankle) * S, A1: Math.hypot(J.el[0] - J.sh[0], J.el[1] - J.sh[1], J.el[2] - J.sh[2]) * S, A2: Math.hypot(J.wr[0] - J.el[0], J.wr[1] - J.el[1], J.wr[2] - J.el[2]) * S, ankleH: J.ankle * S, stride: 1, lift: 0.07, pose: { lean: 0, clasp: 1, run: 0 }, sp: { sk: [0, 0], sks: [0, 0], po: [0, 0], pl: [0, 0], vf: 0, vs: 0 } };
   return g;
 }
 
@@ -3563,7 +3564,8 @@ function solveArm(arm, T, pole, l1, l2, blend, tmpQ) {
   arm.sh.quaternion.slerp(up, blend); arm.el.quaternion.slerp(fore, blend);
 }
 function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
-  const P = u.pose, rig = u.rig, kf = 1 - Math.exp(-dt * 7), moving = hv > 0.25, run = clamp((hv - 2.2) / 6, 0, 1), L2 = THREE.MathUtils.lerp;
+  const P = u.pose, rig = u.rig, kf = 1 - Math.exp(-dt * 7), moving = hv > 0.25, run = clamp((hv - 4.8) / 3.5, 0, 1),   // 0 at a walk (4.2 m/s), 1 at a run (9 m/s)
+    L2 = THREE.MathUtils.lerp;
   const sp = u.sp, spring = (s, target, k, c) => { s[1] += ((target - s[0]) * k - s[1] * c) * dt; s[0] += s[1] * dt; };
   P.run += (run - P.run) * kf;
   const backT = (vFwd ?? 1) < -0.3 ? 1 : 0; P.back = (P.back || 0) + (backT - (P.back || 0)) * (1 - Math.exp(-dt * 9)); const bk = P.back, bkSpd = bk * clamp(hv / 25, 0, 1);   // eased 0..1: how far into a backward move he is
@@ -3580,17 +3582,17 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
       lowest = Math.max(lowest, u.L1 * Math.cos(hip) + u.L2 * Math.cos(hip + knee));
     });
     rig.position.y = lowest + (u.ankleH ?? 0.103) + (u.lift ?? 0);
-    rig.rotation.set(0.015 + 0.08 * P.run * w - 0.1 * bk * w, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // leans back a touch when backing up
-    u.spine.rotation.set(-0.035, -Math.sin(phase) * 0.1 * w, -Math.sin(phase) * 0.012 * w);   // chest lifted, shoulders counter-turning against the hips
-    u.head.rotation.set(0.0 - 0.05 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady
+    rig.rotation.set(0.07 * P.run * w - 0.1 * bk * w, Math.sin(phase) * 0.07 * w, Math.sin(phase) * 0.018 * w);   // upright at a walk, a slight lean into a run, back a touch when backing up
+    u.spine.rotation.set(-0.13 + 0.03 * P.run * w, -Math.sin(phase) * (0.1 + 0.06 * P.run) * w, -Math.sin(phase) * 0.012 * w);   // chest lifted back over the hips (the model stoops a little at rest), shoulders counter-turning against the hips
+    u.head.rotation.set(-0.06 + 0.04 * P.run * w + 0.1 * bk * w, Math.sin(phase) * 0.035 * w, 0);   // head held level and steady
     rig.position.x = Math.sin(phase) * 0.008 * w;
-    // arms swing against the legs; with no one to clasp, hands settle in front
+    // arms: at a walk they hang at his sides and swing gently against the legs; at a run the elbows bend and pump
     u.arms.forEach((arm, i) => {
-      const side = i === 0 ? -1 : 1, swing = Math.cos(phase + (i === 1 ? Math.PI : 0)) * (0.09 + 0.14 * P.run) * w * 2.1, lift = 0.08 + 0.2 * P.run;
-      const sw2 = swing * (1 - 0.55 * bk), free = _ikA2.set(side * 0.09 * (1 - 0.5 * bk), -0.49, sw2 * 0.085 - 0.015);   // arms hang straight down at his sides, with only the faintest swing   // arms held closer, swinging less
-      const idle = _ikB2.set(side * 0.07, -0.5, 0.02);
-      free.lerp(idle, P.clasp);
-      solveArm(arm, free, _pole.set(side * 0.55, -0.35, -0.75), u.A1, u.A2, 0.6);
+      const side = i === 0 ? -1 : 1, sw = Math.cos(phase + (i === 1 ? Math.PI : 0)) * w * (1 - 0.55 * bk);
+      const walkT = _ikA2.set(side * 0.1, -0.5, -0.025 + sw * 0.075);
+      const runT = _ikB2.set(side * 0.11, -0.33 + 0.04 * Math.abs(sw), -0.02 + sw * 0.2);
+      walkT.lerp(runT, P.run);
+      solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1), u.A1, u.A2, 0.6);
       arm.hand.rotation.set(0, 0, 0);
     });
     u.blob.visible = true;
@@ -3606,10 +3608,10 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
     P.lean += (want - P.lean) * kf; P.clasp += ((want < 0.12 && bk < 0.3 ? 1 : 0) - P.clasp) * kf;
     rig.position.y = u.HIP + 0.1 + Math.sin(t * 1.7) * (0.05 + 0.05 * (1 - P.lean)); rig.position.x = 0;   // hovering bobs more than cruising
     rig.rotation.set(P.lean * 1.15 - 0.32 * bkSpd, 0, Math.sin(t * 0.9) * 0.03);   // tilts back when going backwards
-    u.spine.rotation.set(0.02 * Math.sin(t * 1.3), 0, 0); u.head.rotation.set(-P.lean * 0.95 + 0.26 * bkSpd, 0, 0);
+    u.spine.rotation.set(0.02 * Math.sin(t * 1.3) - 0.11 * (1 - P.lean), 0, 0); u.head.rotation.set(-P.lean * 0.95 + 0.26 * bkSpd, 0, 0);
     u.legs.forEach((leg, i) => { const s = i === 0 ? -1 : 1; leg.thigh.rotation.set(0.1 + P.lean * 0.45 - 0.55 * bkSpd + s * 0.04 + flutter * 0.02, 0, s * 0.03); leg.knee.rotation.set(0.2 + P.lean * 0.15 + (i ? 0.1 : 0), 0, 0); leg.ankle.rotation.set(0.5 - P.lean * 0.15, 0, 0); });
     u.arms.forEach((arm, i) => {
-      const side = i === 0 ? -1 : 1, sweep = _ikA2.set(side * (0.2 + 0.1 * P.lean + 0.1 * bkSpd), -0.42 + P.lean * 0.18, -0.12 - P.lean * 0.34 + 0.3 * bkSpd + flutter * 0.03), idle = _ikB2.set(side * 0.07, -0.5, 0.02);
+      const side = i === 0 ? -1 : 1, sweep = _ikA2.set(side * (0.2 + 0.1 * P.lean + 0.1 * bkSpd), -0.42 + P.lean * 0.18, -0.12 - P.lean * 0.34 + 0.3 * bkSpd + flutter * 0.03), idle = _ikB2.set(side * 0.1, -0.5, -0.025);
       sweep.lerp(idle, P.clasp); solveArm(arm, sweep, _pole.set(side * 0.6, -0.4, -0.7), u.A1, u.A2, 0.5); arm.hand.rotation.set(0, 0, 0);
     });
     u.blob.visible = false;
