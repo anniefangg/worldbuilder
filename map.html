@@ -5330,6 +5330,7 @@ function setMode(mode) {
 }
 function tweenCamera(toPos, toTarget, dur) { tween = { t: 0, dur, fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos, toTarget, map: true }; }
 function dropIn(x, z) {
+  cam.focus = null; cam.lift = undefined;
   player.pos.set(x, 0, z); collide(player.pos, 0.4); player.pos.y = groundAt(player.pos.x, player.pos.z, 999); player.vy = 0;
   $('intro').hidden = true; setMode('walk'); tween = null;
 }
@@ -5775,10 +5776,23 @@ function update(dt, t) {
     character.rotation.z = 0;
     // chase camera behind the character, swinging round as it turns
     let dy = player.yaw - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); cam.yaw += dy * (1 - Math.exp(-dt * 8));
-    const head = _look.copy(player.pos); head.y += 1.5;
+    // the camera follows a focus point that trails the character on a short leash: bobbing, kerb steps and small nudges inside the leash
+    // never move it, real movement drags it along, and it drifts back to centre once he stops
+    const Fc = cam.focus || (cam.focus = player.pos.clone());
+    if (Fc.distanceTo(player.pos) > 40) Fc.copy(player.pos);                                            // a teleport: snap
+    const RH = player.mode === 'fly' ? 0.6 : 0.35, RV = player.mode === 'fly' ? 0.8 : 0.3;
+    { const ex = player.pos.x - Fc.x, ez = player.pos.z - Fc.z, d = Math.hypot(ex, ez);
+      if (d > RH + 1e-3) { const k = (d - RH) / d; Fc.x += ex * k; Fc.z += ez * k; }                     // taut: dragged along, a little behind (the millimetre keeps rounding from holding it taut)
+      else { const k = 1 - Math.exp(-dt * 1.6); Fc.x += ex * k; Fc.z += ez * k; }                       // slack: a slow drift back to centre
+      const ey = player.pos.y - Fc.y;
+      if (Math.abs(ey) > RV + 1e-3) Fc.y += ey - Math.sign(ey) * RV; else Fc.y += ey * (1 - Math.exp(-dt * 1.2)); }
+    const head = _look.copy(Fc); head.y += 1.5;
     const back = Math.cos(cam.pitch) * cam.dist, cy = cam.yaw;
     const want = _want.set(head.x - Math.sin(cy) * back, head.y + Math.sin(cam.pitch) * cam.dist, head.z - Math.cos(cy) * back);
-    const gy = H(want.x, want.z) + 0.6; if (want.y < gy) want.y = gy;
+    // keep the camera out of the ground: it lifts at once but settles back down slowly, so uneven ground under it doesn't jog the view
+    const needLift = Math.max(0, H(want.x, want.z) + 0.6 - want.y);
+    cam.lift = cam.lift === undefined || needLift > cam.lift ? needLift : cam.lift + (needLift - cam.lift) * (1 - Math.exp(-dt * 3));
+    want.y += cam.lift;
     if (tween) {
       tween.t += dt / tween.dur; const e = 1 - Math.pow(1 - Math.min(tween.t, 1), 3);
       camera.position.lerpVectors(tween.fromPos, want, e); camera.lookAt(_tg.lerpVectors(tween.fromTarget, head, e));
