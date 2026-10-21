@@ -5756,8 +5756,9 @@ function update(dt, t) {
       player.boostT = Math.max(0, (player.boostT || 0) + (fast && mag > 0 ? dt : -dt * 2.5));   // holding shift keeps building speed
       const speed = fast ? 140 * (1 + 5 * Math.pow(Math.min(player.boostT / 9, 1), 1.6)) : 32;
       _desired.copy(_move).multiplyScalar(speed * mag);
-      const climb = (k(' ', 'e') || pad.up ? 1 : 0) - (k('q', 'c') || pad.down ? 1 : 0);
-      _desired.y = climb * speed * 0.7;
+      const up = k(' ', 'e') || pad.up, down = (k('q', 'c') || pad.down) && !up;
+      player.descT = clamp((player.descT || 0) + (down ? dt / 1.8 : -dt / 0.5), 0, 1);   // a descent builds up over ~2 s rather than dropping at once
+      _desired.y = up ? speed * 0.7 : down ? -speed * 0.45 * player.descT * player.descT : 0;
       player.vel.lerp(_desired, 1 - Math.exp(-dt * 2.5));
       player.vy = lerp(player.vy, 0, 1 - Math.exp(-dt * 2)); player.vel.y += player.vy * dt * 2;
       player.pos.addScaledVector(player.vel, dt);
