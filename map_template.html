@@ -3781,13 +3781,14 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
   const P = u.pose, rig = u.rig, kf = 1 - Math.exp(-dt * 7), moving = hv > 0.25, run = clamp((hv - 4.8) / 3.5, 0, 1),   // 0 at a walk (4.2 m/s), 1 at a run (9 m/s)
     L2 = THREE.MathUtils.lerp;
   const sp = u.sp, spring = (s, target, k, c) => { s[1] += ((target - s[0]) * k - s[1] * c) * dt; s[0] += s[1] * dt; };
+  const ARM_K = 1 - Math.exp(-dt * 7.5);   // the arms ease toward their targets over ~0.3 s rather than snapping, so every gesture flows
   P.run += (run - P.run) * kf;
   const backT = (vFwd ?? 1) < -0.3 ? 1 : 0; P.back = (P.back || 0) + (backT - (P.back || 0)) * (1 - Math.exp(-dt * 9)); const bk = P.back, bkSpd = bk * clamp(hv / 25, 0, 1);   // eased 0..1: how far into a backward move he is
   const breathe = Math.sin(t * 1.5) * 0.004, tPose = (mode === 'walk');
   if (tPose) {
     // ---- walking: leg phases half a cycle apart; hips, knees and ankles from a gait curve; pelvis keeps the lower foot on the ground
     const amp = moving ? (0.2 + 0.1 * clamp(hv / 4.2, 0, 1) + 0.36 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // an unhurried, measured stride   // backing up takes shorter steps
-    P.clasp += ((moving ? 0 : 1) - P.clasp) * kf; P.lean += (0 - P.lean) * kf;
+    P.clasp += ((moving ? 0 : 1) - P.clasp) * (1 - Math.exp(-dt * 4.5)); P.lean += (0 - P.lean) * kf;
     // jumping: spring up with the legs tucked and the arms flung up and back, reach down as he falls, knees give on landing and straighten again
     if (!air && P.wasAir) P.landT = 0.42; P.wasAir = air; P.landT = Math.max(0, (P.landT || 0) - dt);
     P.jump = (P.jump || 0) + ((air ? 1 : 0) - (P.jump || 0)) * (1 - Math.exp(-dt * (air ? 16 : 12)));
@@ -3823,7 +3824,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
       // jumping: arms flung up and out behind on the way up, coming forward and down as he falls, then a little forward for balance on landing
       const jumpT = _ikD2.set(side * (0.3 + 0.05 * falling), -0.05 - 0.32 * falling, -0.2 + 0.28 * falling);
       walkT.lerp(jumpT, J); walkT.z += 0.14 * landK; walkT.y += 0.06 * landK;
-      solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1).lerp(elbowDir.normalize(), P.run), u.A1, u.A2, 0.6);
+      solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1).lerp(elbowDir.normalize(), P.run), u.A1, u.A2, ARM_K);
       arm.hand.rotation.set(0, 0, 0);
     });
     u.blob.visible = true; u.blob.position.y = 0.06 - airH; u.blob.scale.setScalar(1 - 0.35 * clamp(airH / 2, 0, 1)); u.blob.material.opacity = 0.2 * (1 - 0.5 * clamp(airH / 2, 0, 1));   // the shadow stays on the ground under him
@@ -3836,7 +3837,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
   } else {
     // ---- flight, with no glider: upright and hands clasped when hovering; leaning into the air at speed with legs trailing and the coat streaming
     const want = clamp(hv / 55, 0, 1) * (1 - bk), flutter = Math.sin(t * 3.1) * 0.5 + Math.sin(t * 5.3) * 0.3;   // no forward lean when drifting backwards
-    P.lean += (want - P.lean) * kf; P.clasp += ((want < 0.12 && bk < 0.3 ? 1 : 0) - P.clasp) * kf;
+    P.lean += (want - P.lean) * kf; P.clasp += ((want < 0.12 && bk < 0.3 ? 1 : 0) - P.clasp) * (1 - Math.exp(-dt * 4.5));
     // taking off or climbing: one arm thrust straight up (it comes down again for forward flight and hovering)
     if (P.mode !== 'fly') P.launch = 0.9; P.launch = Math.max(0, (P.launch || 0) - dt);
     // already flying forward when the climb starts: no raised arm; he tilts his body up along the climb instead (climbF)
@@ -3844,10 +3845,10 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
     P.climbF = (P.climbF || 0) + ((climbing ? fwd : 0) - (P.climbF || 0)) * (1 - Math.exp(-dt * 3));
     const upT = climbing && fwd < 0.5 ? 1 : 0;   // the full overhead arm is only for a climb from a hover
     // taking off (the first ~0.9 s after entering fly mode): both arms raised halfway, out to the sides; a climb started in that window takes over at once
-    const launchT = P.launch > 0 && !climbing && hv < 4 ? 1 : 0; P.launchK = (P.launchK || 0) + (launchT - (P.launchK || 0)) * (1 - Math.exp(-dt * (launchT ? 6 : 4)));
+    const launchT = P.launch > 0 && !climbing && hv < 4 ? 1 : 0; P.launchK = (P.launchK || 0) + (launchT - (P.launchK || 0)) * (1 - Math.exp(-dt * (launchT ? 3.8 : 2.8)));
     // descending: tip forward and down into the drop (more when already moving forward); turning: bank into the turn like a bird
     P.dive = (P.dive || 0) + ((diving && !climbing ? 0.22 + 0.4 * fwd : 0) - (P.dive || 0)) * (1 - Math.exp(-dt * 3));
-    P.bank = (P.bank || 0) + (-turning * (0.16 + 0.34 * fwd) - (P.bank || 0)) * (1 - Math.exp(-dt * 3.5)); const om = upT ? 4.6 : 4.2; P.up = P.up || 0; P.upV = P.upV || 0; P.upV += (om * om * (upT - P.up) - 2 * om * P.upV) * Math.min(dt, 0.05); P.up = clamp(P.up + P.upV * Math.min(dt, 0.05), 0, 1);   // a critically damped spring on the climb key itself: eases in and out, rising over ~0.8 s and lowering over ~1 s from the moment the climb stops
+    P.bank = (P.bank || 0) + (-turning * (0.16 + 0.34 * fwd) - (P.bank || 0)) * (1 - Math.exp(-dt * 3.5)); const om = upT ? 3.6 : 3.3; P.up = P.up || 0; P.upV = P.upV || 0; P.upV += (om * om * (upT - P.up) - 2 * om * P.upV) * Math.min(dt, 0.05); P.up = clamp(P.up + P.upV * Math.min(dt, 0.05), 0, 1);   // a critically damped spring on the climb key itself: eases in and out, rising over ~0.8 s and lowering over ~1 s from the moment the climb stops
     rig.position.y = u.HIP + 0.1 + Math.sin(t * 1.7) * (0.05 + 0.05 * (1 - P.lean)); rig.position.x = 0;   // hovering bobs more than cruising
     rig.rotation.set(P.lean * 1.15 - 0.32 * bkSpd - 0.55 * P.climbF * P.lean + P.dive, 0, Math.sin(t * 0.9) * 0.03 + P.bank);   // tilts back when going backwards; nose up into a forward climb
     u.spine.rotation.set(0.02 * Math.sin(t * 1.3) - 0.11 * (1 - P.lean), 0, 0); u.head.rotation.set(-P.lean * 0.95 + 0.26 * bkSpd - 0.18 * (P.up || 0) - 0.2 * P.climbF - 0.45 * P.dive * fwd + 0.15 * P.dive * (1 - fwd), 0, -0.4 * P.bank);   // head stays looking ahead in a dive, glances down in a hover drop; levels a little in a bank
@@ -3857,7 +3858,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
       sweep.lerp(idle, P.clasp); _pole.set(side * 0.6, -0.4, -0.7);
       if (P.launchK > 0.001) { sweep.lerp(_ikD2.set(side * 0.44, 0.02, -0.08), P.launchK); _pole.lerp(_ikC2.set(side * 0.5, -0.3, -0.8), P.launchK); }   // take-off: both arms out and halfway up
       if (i === 0 && P.up > 0.001) { sweep.lerp(_ikC2.set(side * 0.1, 0.5, 0.05), P.up); _pole.lerp(_ikB2.set(side * 0.3, 0, -1), P.up); }   // his right arm (arms[0], on his -x side) raised overhead
-      solveArm(arm, sweep, _pole, u.A1, u.A2, 0.5); arm.hand.rotation.set(0, 0, 0);
+      solveArm(arm, sweep, _pole, u.A1, u.A2, ARM_K); arm.hand.rotation.set(0, 0, 0);
     });
     u.blob.visible = false;
     spring(sp.sk, 0.12 + P.lean * 0.7 - 0.55 * bkSpd + flutter * (0.05 + 0.08 * P.lean), 40, 5); spring(sp.sks, Math.sin(t * 2.3) * 0.05, 40, 5); u.skirt.rotation.set(sp.sk[0], 0, sp.sks[0]);
