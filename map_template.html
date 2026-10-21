@@ -6253,7 +6253,7 @@ function drawMinimap(now) {
   if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr); }
   if (plan.bldDirty) planBuildings();
   const alt = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z));
-  const s = mm.scale = clamp(0.42 * mm.zoom * (player.mode === 'fly' ? Math.min(1, 40 / Math.max(8, alt)) : 1), 0.0015, 0.42), px = 1 / s;   // the walking view (~400 m across) is as close as it gets; climbing only ever zooms it out, down to the whole island
+  const floor = W / 500, s = mm.scale = clamp(floor * mm.zoom * (player.mode === 'fly' ? Math.min(1, 40 / Math.max(8, alt)) : 1), 0.0015, floor), px = 1 / s;   // the walking view, 500 m across, is as close as it gets; climbing only ever zooms it out, down to the whole island
   const g = c.getContext('2d'), P = plan.paths, cx = player.pos.x + mm.px, cz = player.pos.z + mm.pz;
   g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#7fc6d6'; g.fillRect(0, 0, W, Hh);
   g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - cx * s), dpr * (Hh / 2 - cz * s));
