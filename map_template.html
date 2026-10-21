@@ -372,7 +372,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
-    <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area · ⌘⇧-drag (Ctrl⇧-drag) across part of a wall to edit just that segment</dd>
+    <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area · ⌘-drag (Ctrl-drag) across part of a wall to edit just that segment · ⌘⇧-drag to add more segments</dd>
   </dl>
   <p class="credit" style="margin:10px 0 0;font-size:11px;opacity:.7">Character: “BARBOSSA” by ultradeath6700, <a href="https://sketchfab.com/3d-models/barbossa-09f52fb779154652aedcc2b43e4b9175" target="_blank" rel="noopener">Sketchfab</a>, licensed <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
 </div>
@@ -4075,37 +4075,47 @@ Also classify the change: "category" is one of ${CATEGORIES.filter((c) => c !== 
 Reply with only JSON in this shape:
 {"style": {...}, "attributes": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
 }
-function promptForSegment(t, doc, sg, text, nImages = 0) {
-  const cur = styleFor(t), stored = storedSegment(doc, sg), info = { id: t.id, name: doc.name || null, tags: doc.tags, building_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows },
-    segment: { bays: `${sg.bays[0] + 1}-${sg.bays[1] + 1} of ${sg.nb || '?'} along this wall`, floors: `${sg.floors[0] === 0 ? 'ground' : sg.floors[0] + 1}-${sg.floors[1] === 0 ? 'ground' : sg.floors[1] + 1}`, includes_ground_floor: sg.floors[0] === 0, wall_length_m: sg.wallLen ? Math.round(sg.wallLen) : null, current_segment_style: stored ? stored.style : null } };
-  return `You edit one segment of one wall of a building in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean (Latin American colonial and Mediterranean looks: lime-washed and pastel walls, terracotta roofs, shutters, wrought iron).
-The segment is a run of window bays on a run of floors of a single wall. Only this segment changes; the rest of the building stays as it is.
+function promptForSegments(segs, text, nImages = 0) {
+  const info = segs.map((sg) => {
+    const t = targetOf(sg.bId), doc = docFor(sg.bId), cur = styleFor(t), stored = storedSegment(doc, sg);
+    return { building: sg.bId, name: doc.name || null, building_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows },
+      bays: `${sg.bays[0] + 1}-${sg.bays[1] + 1} of ${sg.nb || '?'} along this wall`, floors: `${sg.floors[0] === 0 ? 'ground' : sg.floors[0] + 1}-${sg.floors[1] === 0 ? 'ground' : sg.floors[1] + 1}`, includes_ground_floor: sg.floors[0] === 0, wall_length_m: sg.wallLen ? Math.round(sg.wallLen) : null, current_segment_style: stored ? stored.style : null };
+  });
+  return `You edit ${segs.length > 1 ? `${segs.length} segments of building walls` : 'one segment of one wall of a building'} in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean (Latin American colonial and Mediterranean looks: lime-washed and pastel walls, terracotta roofs, shutters, wrought iron).
+A segment is a run of window bays on a run of floors of a single wall. Only these segments change; the rest of each building stays as it is. The same change applies to every segment listed.
 
-Feature: ${JSON.stringify(info)}
+Segments: ${JSON.stringify(info)}
 
 The author's request: ${JSON.stringify(text)}
 ${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''}. Match it as closely as the fields allow.\n` : ''}
-Style fields you may set on the segment (include only the ones that change):
-- windows: "shutters", "plain", "balconies", or "none" (a blank stretch of wall: no windows, doors or openings on this segment; use this when asked to remove, take away or move the windows off this part of the wall)
-- wall: this segment's façade colour, "#rrggbb"
-- shutters: this segment's shutter colour, "#rrggbb"
-- groundFloor: "arches", "shopfront" or "plain" (only meaningful when the segment includes the ground floor)
+Style fields you may set on the segments (include only the ones that change):
+- windows: "shutters", "plain", "balconies", or "none" (a blank stretch of wall: no windows, doors or openings on the segment; use this when asked to remove, take away or move the windows off this part of the wall)
+- wall: the segment's façade colour, "#rrggbb"
+- shutters: the segment's shutter colour, "#rrggbb"
+- groundFloor: "arches", "shopfront" or "plain" (only meaningful on a segment that includes the ground floor)
 
 Also classify the change: "category" is one of ${CATEGORIES.filter((c) => c !== 'Revert').map((c) => `"${c}"`).join(', ')}, and "changeTags" are 1-4 short lowercase tags.
 
 Reply with only JSON in this shape:
 {"style": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express (e.g. moving windows to another wall, a different window size or spacing)"}`;
 }
-async function applySegmentPrompt(pid, p, t, before, nImages, opts) {
-  const sg = p.segment, r = await SAMPLE.json(promptForSegment(t, before, sg, p.text, nImages), opts);
-  const style = cleanSegmentStyle(r && r.style), after = Object.keys(style).length ? withSegment(before, sg, style) : before;
-  if (after !== before) saveTarget(t.id, after, 0);
-  const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || (after !== before ? 'Applied to the segment' : 'Nothing these fields could change')).slice(0, 300);
+async function applySegmentPrompt(pid, p, nImages, opts) {
+  const segs = (p.segments || [{ ...p.segment, bId: p.bId }]).filter((sg) => { const t = targetOf(sg.bId); return t && t.kind === 'building'; });
+  if (!segs.length) { patchPrompt(pid, { status: 'failed', result: 'Those walls no longer exist.' }); return false; }
+  const r = await SAMPLE.json(promptForSegments(segs, p.text, nImages), opts);
+  const style = cleanSegmentStyle(r && r.style), needs = String((r && r.needsCode) || '').trim();
+  const summary = String((r && r.summary) || (Object.keys(style).length ? 'Applied to the segments' : 'Nothing these fields could change')).slice(0, 300);
+  const byB = new Map(); for (const sg of segs) { if (!byB.has(sg.bId)) byB.set(sg.bId, []); byB.get(sg.bId).push(sg); }
+  let changed = 0;
+  if (Object.keys(style).length) for (const [bId, list] of byB) {
+    const t = targetOf(bId), before = docFor(bId); let after = before; for (const sg of list) after = withSegment(after, sg, style);
+    saveTarget(bId, after, 0); changed++;
+    logChange({ id: bId, source: 'prompt', prompt: p.text, summary: `Wall segment${list.length > 1 ? 's' : ''} (${list.map(segmentWords).join('; ')}): ${summary}`, category: r && r.category, tags: ['segment', ...(Array.isArray(r && r.changeTags) ? r.changeTags : [])], before, after, images: p.images });
+    const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400);
+  }
   patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
-  if (after !== before) logChange({ id: t.id, source: 'prompt', prompt: p.text, summary: `Wall segment (${segmentWords(sg)}): ${summary}`, category: r && r.category, tags: ['segment', ...(Array.isArray(r && r.changeTags) ? r.changeTags : [])], before, after, images: p.images });
-  if (needs) { const q = newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued', { segment: sg }); if (p.images) patchPrompt(q, { images: p.images }); }
-  const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400);
-  if (ui.segment && ui.segment.bId === t.id) showSegmentFx(ui.segment);
+  if (needs) { const q = newPrompt(p.bId, `${p.text}\n\nStill needed: ${needs}`, 'queued', { segments: segs }); if (p.images) patchPrompt(q, { images: p.images }); }
+  if (changed && ui.segs.length) refreshSegmentFx();
   return true;
 }
 async function applyPrompt(pid) {
@@ -4126,7 +4136,7 @@ async function applyPrompt(pid) {
     if (canSee && images.length) opts.images = images;
     if (p.bIds) return await applyGroupPrompt(pid, p, canSee ? images : [], opts);
     const before = docFor(t.id);
-    if (p.segment && t.kind === 'building') return await applySegmentPrompt(pid, p, t, before, canSee ? images.length : 0, opts);
+    if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
     const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
@@ -4152,7 +4162,7 @@ const LAYER_ORDER = ['building', 'street', 'path', 'plaza', 'park', 'canal', 'wa
 const LAYER_DOT = { building: '#c96a6e', street: '#8a96a3', path: '#c2a271', plaza: '#cfc6b3', park: '#6cbf55', canal: '#4aa3c4', water: '#2f86b8', beach: '#f0d79a' };
 const LKEY = 'amparacan-map-layers', layers = Object.fromEntries(LAYER_ORDER.map((k) => [k, true]));
 try { const sv = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (sv) for (const k of LAYER_ORDER) if (sv[k] === false) layers[k] = false; } catch (e) {}
-const ui = { hover: null, selected: null, editing: false, editSnapshot: null, trayOpen: false, trayTab: 'batch', hist: { kind: '', category: '', tag: '', source: '', q: '', only: false } };
+const ui = { segs: [], segFx: [], hover: null, selected: null, editing: false, editSnapshot: null, trayOpen: false, trayTab: 'batch', hist: { kind: '', category: '', tag: '', source: '', q: '', only: false } };
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : v); }
@@ -4177,9 +4187,9 @@ function endEditing() {
   if (ui.editSnapshot) logChange({ id: ui.selected, source: 'manual', before: ui.editSnapshot, after, tags: diffDocs(ui.editSnapshot, after).map((f) => FIELD_LABEL[f] || f) });
   ui.editing = false; ui.editSnapshot = null;
 }
-function select(id, { edit = false, focusPrompt = false } = {}) {
+function select(id, { edit = false, focusPrompt = false, keepSegs = false } = {}) {
   if (multi.size) clearMulti(true);
-  if (ui.segment && ui.segment.bId !== id) clearSegment(true);
+  if (ui.segs.length && !keepSegs) clearSegment(true);
   if (id !== ui.selected) { endEditing(); for (const x of attach.list) URL.revokeObjectURL(x.url); attach.list = []; }
   const prev = targetOf(ui.selected); if (prev && prev.b && ui.selected !== id) animOf(prev.b.idx).wantSel = 0;
   ui.selected = id || null;
@@ -4269,22 +4279,34 @@ function segmentPick(x0, y0, x1, y1) {
   const js = best.cells.map((q) => q[0]), fs = best.cells.map((q) => q[1]), f = best.f;
   return { bId: best.b.id, face: { x: (f.ax + f.bx) / 2, z: (f.az + f.bz) / 2, nx: f.nx, nz: f.nz }, bays: [Math.min(...js), Math.max(...js)], floors: [Math.min(...fs), Math.max(...fs)], nb: best.nb, wallLen: f.L };
 }
-// the chosen segment: highlighted on the wall, and the panel's prompt box edits it instead of the whole building
-function openSegment(sg) {
-  clearMulti(true); select(sg.bId); ui.segment = sg; showSegmentFx(sg); renderInfo();
-  const b = world.byId.get(sg.bId); if (b) animOf(b.idx).wantSel = 0;   // the whole-building tint would swamp the segment highlight
+// the picked segments (⌘-drag picks one, ⌘⇧-drag adds more, on any wall or building): highlighted on their walls; the panel's prompt box edits them instead of the whole building
+const sameSeg = (a, b) => a.bId === b.bId && Math.hypot(a.face.x - b.face.x, a.face.z - b.face.z) < 1.5 && a.bays[0] === b.bays[0] && a.bays[1] === b.bays[1] && a.floors[0] === b.floors[0] && a.floors[1] === b.floors[1];
+function openSegment(sg, add) {
+  clearMulti(true);
+  if (!add) clearSegment(true);
+  const dup = ui.segs.findIndex((q) => sameSeg(q, sg));
+  if (dup >= 0 && add) { const [gone] = ui.segs.splice(dup, 1); dropSegmentFx(gone); if (!ui.segs.length) { clearSegment(); return; } }   // ⌘⇧-drag over a picked segment un-picks it
+  else { ui.segs.push(sg); ui.segFx.push(segmentFx(sg)); }
+  select(sg.bId, { keepSegs: true });
+  for (const q of ui.segs) { const b = world.byId.get(q.bId); if (b) animOf(b.idx).wantSel = 0; }   // the whole-building tint would swamp the segment highlights
+  renderInfo();
   setTimeout(() => { const x = $('prompt-text'); if (x) x.focus(); }, 0);
 }
-function clearSegment(keepPanel) { const sg = ui.segment; ui.segment = null; clearSegmentFx(); if (sg && ui.selected === sg.bId) { const b = world.byId.get(sg.bId); if (b) animOf(b.idx).wantSel = 1; } if (!keepPanel) renderInfo(); }
-function clearSegmentFx() { if (ui.segFx) { scene.remove(ui.segFx); ui.segFx.geometry.dispose(); ui.segFx.material.dispose(); ui.segFx = null; } }
-function showSegmentFx(sg) {
-  clearSegmentFx();
-  const b = world.byId.get(sg.bId); if (!b) return; const e = segmentEdge(roundedRings(b)[0], sg); if (!e) return;
-  const f = e.f, box = segmentBox(f, b.base, b.top, sg); if (!box) return;
+function clearSegment(keepPanel) {
+  const segs = ui.segs; ui.segs = []; for (const m of ui.segFx) dropSegmentFx(null, m); ui.segFx = [];
+  for (const q of segs) if (ui.selected === q.bId) { const b = world.byId.get(q.bId); if (b) animOf(b.idx).wantSel = 1; }
+  if (!keepPanel) renderInfo();
+}
+function dropSegmentFx(sg, m) { if (sg) { const k = ui.segs.indexOf(sg); m = ui.segFx.splice(k >= 0 ? k : ui.segFx.length, 1)[0]; if (!m) { const j = ui.segFx.findIndex((x) => x && x.userData.sg === sg); if (j >= 0) m = ui.segFx.splice(j, 1)[0]; } } if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } }
+function refreshSegmentFx() { for (const m of ui.segFx) dropSegmentFx(null, m); ui.segFx = ui.segs.map(segmentFx); }
+function segmentFx(sg) {
+  const b = world.byId.get(sg.bId); if (!b) return null; const e = segmentEdge(roundedRings(b)[0], sg); if (!e) return null;
+  const f = e.f, box = segmentBox(f, b.base, b.top, sg);
   const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (u, y) => [f.ax + dx * u + f.nx * 0.12, y, f.az + dz * u + f.nz * 0.12];
+  if (!box) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...P(box.u0, box.y0), ...P(box.u1, box.y0), ...P(box.u1, box.y1), ...P(box.u0, box.y1)], 3)); g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#ff7a4a', transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-  m.renderOrder = 11; scene.add(m); ui.segFx = m;
+  m.renderOrder = 11; m.userData.sg = sg; scene.add(m); return m;
 }
 // the stored segment (if any) that covers exactly this pick
 function storedSegment(doc, sg) { return (doc.segments || []).find((q) => Math.hypot(q.face.x - sg.face.x, q.face.z - sg.face.z) < 1.5 && q.bays[0] === sg.bays[0] && q.bays[1] === sg.bays[1] && q.floors[0] === sg.floors[0] && q.floors[1] === sg.floors[1]) || null; }
@@ -4307,19 +4329,23 @@ function segmentWords(sg) {
   const fl = (k) => (k === 0 ? 'ground' : String(k + 1)), floors = sg.floors[0] === sg.floors[1] ? `${sg.floors[0] === 0 ? 'ground floor' : 'floor ' + (sg.floors[0] + 1)}` : `floors ${fl(sg.floors[0])}–${fl(sg.floors[1])}`;
   return `${bays}${sg.nb ? ` of ${sg.nb}` : ''} · ${floors}`;
 }
-function resetSegment(id, sg) {
-  const before = docFor(id), cur = storedSegment(before, sg); if (!cur) return;
-  const after = { ...before, segments: (before.segments || []).filter((q) => q !== cur && q.id !== cur.id), updatedAt: new Date().toISOString() }; if (!after.segments.length) delete after.segments;
-  saveTarget(id, after, 0); logChange({ id, source: 'manual', summary: `Reset the wall segment (${segmentWords(sg)}) to the building's look`, category: 'Revert', tags: ['segment'], before, after });
+function resetSegments(segs) {   // drop the stored edits of the picked segments, building by building
+  const byB = new Map(); for (const sg of segs) { if (!byB.has(sg.bId)) byB.set(sg.bId, []); byB.get(sg.bId).push(sg); }
+  for (const [id, list] of byB) {
+    const before = docFor(id), gone = list.map((sg) => storedSegment(before, sg)).filter(Boolean); if (!gone.length) continue;
+    const after = { ...before, segments: (before.segments || []).filter((q) => !gone.includes(q)), updatedAt: new Date().toISOString() }; if (!after.segments.length) delete after.segments;
+    saveTarget(id, after, 0); logChange({ id, source: 'manual', summary: `Reset wall segment${gone.length > 1 ? 's' : ''} (${list.map(segmentWords).join('; ')}) to the building's look`, category: 'Revert', tags: ['segment'], before, after });
+  }
 }
 // Shared pointer handling: Shift-drag (or the Select tool) draws a box; Shift-click toggles one item
 function attachBoxSelect(el, pick, boxPick) {
   let box = null;
   const show = (x0, y0, x1, y1) => { const b = $('selbox'); b.hidden = false; Object.assign(b.style, { left: x0 + 'px', top: y0 + 'px', width: (x1 - x0) + 'px', height: (y1 - y0) + 'px' }); };
   el.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || !(e.shiftKey || ui.boxTool)) return;
+    const seg = e.metaKey || e.ctrlKey;   // ⌘-drag (Ctrl-drag) picks part of one wall; with Shift it adds another segment to the picked ones
+    if (e.button !== 0 || !(e.shiftKey || ui.boxTool || seg)) return;
     e.stopImmediatePropagation(); e.preventDefault();
-    box = { sx: e.clientX, sy: e.clientY, id: e.pointerId, shift: e.shiftKey, seg: e.shiftKey && (e.metaKey || e.ctrlKey), moved: false };   // ⌘⇧ / Ctrl⇧-drag picks part of one wall
+    box = { sx: e.clientX, sy: e.clientY, id: e.pointerId, shift: e.shiftKey, seg, moved: false };
     $('selbox').classList.toggle('seg', box.seg);
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
   }, true);
@@ -4334,9 +4360,9 @@ function attachBoxSelect(el, pick, boxPick) {
     e.stopImmediatePropagation(); $('selbox').hidden = true;
     const b = box; box = null;
     if (b.moved && b.seg) {
-      if (boxPick !== boxSelect3D) { toast('Pick a wall segment in the 3D view: ⌘⇧-drag (Ctrl⇧-drag) across part of a building wall.'); return; }
+      if (boxPick !== boxSelect3D) { toast('Pick a wall segment in the 3D view: ⌘-drag (Ctrl-drag) across part of a building wall.'); return; }
       const sg = segmentPick(Math.min(b.sx, e.clientX), Math.min(b.sy, e.clientY), Math.max(b.sx, e.clientX), Math.max(b.sy, e.clientY));
-      if (sg) openSegment(sg); else toast('No wall there. Drag across part of a building wall you can see.');
+      if (sg) openSegment(sg, b.shift); else toast('No wall there. Drag across part of a building wall you can see.');
       return;
     }
     if (b.moved) {
@@ -4582,19 +4608,22 @@ function renderInfo() {
       const hasStyle = Object.keys(doc.style || {}).length > 0;
       kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => { startEditing(); renderInfo(); } }, 'Edit details'),
         hasStyle ? el('button', { class: 'btn small', type: 'button', onclick: () => resetLook(id) }, 'Reset look') : null));
-      const sg = ui.segment && ui.segment.bId === id ? ui.segment : null;
-      if (sg) {   // a wall segment is picked: the prompt box edits just that part of the wall
-        const cur = storedSegment(doc, sg), ss = cur && cur.style || {};
-        const words = Object.entries(ss).map(([k, v]) => `${FIELD_LABEL[k] || k}: ${v}`).join(' · ');
-        kids.push(el('hr', { class: 'sep' }), el('div', { class: 'row', style: 'justify-content:space-between' }, el('h4', { class: 'eyebrow', style: 'margin:0' }, 'Wall segment'),
-          el('button', { class: 'btn link', type: 'button', onclick: () => clearSegment() }, 'Whole building')),
-          el('div', { class: 'facts' }, `${segmentWords(sg)}${sg.wallLen ? ` · ${(sg.wallLen / (sg.nb || 1) * (sg.bays[1] - sg.bays[0] + 1)).toFixed(0)} m wide` : ''}`),
-          el('div', { class: 'hint' }, words ? `Its own look: ${words}` : 'Looks like the rest of the building. Describe what should change on just this part of the wall.'),
-          cur ? el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => resetSegment(id, sg) }, 'Reset segment')) : null,
-          promptBox(t, sg));
+      const mine = ui.segs.filter((q) => q.bId === id), others = ui.segs.length - mine.length;
+      if (ui.segs.length) {   // wall segments are picked: the prompt box edits just those parts of the walls
+        const stored = ui.segs.map((q) => storedSegment(docFor(q.bId), q)).filter(Boolean);
+        kids.push(el('hr', { class: 'sep' }), el('div', { class: 'row', style: 'justify-content:space-between' }, el('h4', { class: 'eyebrow', style: 'margin:0' }, ui.segs.length > 1 ? `Wall segments · ${ui.segs.length}` : 'Wall segment'),
+          el('button', { class: 'btn link', type: 'button', onclick: () => clearSegment() }, 'Whole building')));
+        for (const sg of mine) {
+          const cur = storedSegment(doc, sg), ss = cur && cur.style || {}, words = Object.entries(ss).map(([k, v]) => `${FIELD_LABEL[k] || k}: ${v}`).join(' · ');
+          kids.push(el('div', { class: 'facts' }, `${segmentWords(sg)}${sg.wallLen ? ` · ${(sg.wallLen / (sg.nb || 1) * (sg.bays[1] - sg.bays[0] + 1)).toFixed(0)} m wide` : ''}${words ? ` · ${words}` : ''}`));
+        }
+        if (others) kids.push(el('div', { class: 'hint' }, `+ ${others} on other building${others > 1 ? 's' : ''}`));
+        kids.push(el('div', { class: 'hint' }, stored.length ? 'Describe what should change on these parts of the walls.' : 'They look like the rest of the building. Describe what should change on just these parts of the walls. ⌘⇧-drag to add another segment.'),
+          stored.length ? el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => resetSegments(ui.segs) }, stored.length > 1 ? 'Reset segments' : 'Reset segment')) : null,
+          promptBox(t, ui.segs));
       } else {
         const n = (doc.segments || []).length;
-        if (n) kids.push(el('div', { class: 'hint' }, `${n} wall segment${n > 1 ? 's' : ''} with its own look. ⌘⇧-drag across part of a wall to pick one.`));
+        if (n) kids.push(el('div', { class: 'hint' }, `${n} wall segment${n > 1 ? 's' : ''} with its own look. ⌘-drag across part of a wall to pick one.`));
         kids.push(el('hr', { class: 'sep' }), promptBox(t));
       }
     }
@@ -4697,7 +4726,7 @@ function promptBox(t, seg = null) {
   const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
   area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
   const box = el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
-    el('label', { for: 'prompt-text' }, seg ? 'Change this wall segment' : `Change this ${labelOf(t.kind).toLowerCase()}`),
+    el('label', { for: 'prompt-text' }, seg ? (seg.length > 1 ? `Change these ${seg.length} wall segments` : 'Change this wall segment') : `Change this ${labelOf(t.kind).toLowerCase()}`),
     area,
     el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }),
       el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, attach.list.length ? '+ Add image' : '+ Reference image'), file),
@@ -4731,7 +4760,7 @@ async function submitPrompt(t, how, seg = null) {
   const x = $('prompt-text'), text = x.value.trim();
   if (!text && !attach.list.length) { x.focus(); return; }
   const files = attach.list.splice(0); x.value = ''; renderAttachments();
-  const id = newPrompt(t.id, text || 'Make it look like the attached image.', 'draft', seg ? { segment: { face: seg.face, bays: seg.bays, floors: seg.floors, nb: seg.nb, wallLen: seg.wallLen } } : {}); rememberFocus(t.id);
+  const id = newPrompt(t.id, text || 'Make it look like the attached image.', 'draft', seg ? { segments: seg.map((q) => ({ bId: q.bId, face: q.face, bays: q.bays, floors: q.floors, nb: q.nb, wallLen: q.wallLen })) } : {}); rememberFocus(t.id);
   if (files.length) {
     sessionBlobs.set(id, files.map((f) => f.blob));
     patchPrompt(id, { images: await storeImages(files) });
@@ -4747,7 +4776,7 @@ function promptItem(id, p, withWho) {
       withWho ? (p.bIds ? el('button', { class: 'btn link who', type: 'button', onclick: () => { setMulti(p.bIds); const c = selectionCentre(p.bIds); if (c) { if (player.mode === 'plan') { plan.cx = c[0]; plan.cz = c[1]; plan.invalidate(); } else { setMode('map'); tweenCamera(new THREE.Vector3(c[0] + 150, 450, c[1] + 450), new THREE.Vector3(c[0], 0, c[1]), 1.4); } } } }, `${p.bIds.length.toLocaleString()} selected items`)
         : el('button', { class: 'btn link who', type: 'button', onclick: () => t && focusTarget(t.id) }, nameOf(p.bId))) : el('span'),
       el('span', { class: 'pill ' + p.status }, STATUS_LABEL[p.status] || p.status)),
-    p.segment ? el('div', { class: 'facts' }, `Wall segment · ${segmentWords(p.segment)}`) : null,
+    p.segments || p.segment ? el('div', { class: 'facts' }, (p.segments || [p.segment]).length > 1 ? `${p.segments.length} wall segments` : `Wall segment · ${segmentWords((p.segments || [p.segment])[0])}`) : null,
     el('div', { class: 'txt' }, p.text),
     p.images && p.images.length ? el('div', { class: 'thumbs-sm' }, p.images.map((im) => el('img', { src: im.url, alt: 'Reference image', title: im.name || '' }))) : null,
     p.result ? el('div', { class: 'hint' }, p.result) : null,
@@ -5606,7 +5635,7 @@ function initControls() {
   addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
-    if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.segment) clearSegment(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.segs.length) clearSegment(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
     if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
