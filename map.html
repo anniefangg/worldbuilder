@@ -3657,7 +3657,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
   const breathe = Math.sin(t * 1.5) * 0.004, tPose = (mode === 'walk');
   if (tPose) {
     // ---- walking: leg phases half a cycle apart; hips, knees and ankles from a gait curve; pelvis keeps the lower foot on the ground
-    const amp = moving ? (0.2 + 0.1 * clamp(hv / 4.2, 0, 1) + 0.2 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // an unhurried, measured stride   // backing up takes shorter steps
+    const amp = moving ? (0.2 + 0.1 * clamp(hv / 4.2, 0, 1) + 0.36 * P.run) * (u.stride ?? 1) * (1 - 0.45 * bk) : 0, w = moving ? 1 : 0;   // an unhurried, measured stride   // backing up takes shorter steps
     P.clasp += ((moving ? 0 : 1) - P.clasp) * kf; P.lean += (0 - P.lean) * kf;
     let lowest = 0;
     // running: knee driven forward, stance knee flexed, heel kicked up behind
@@ -3678,7 +3678,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
       const side = i === 0 ? -1 : 1, sw = Math.cos(phase + (i === 1 ? Math.PI : 0)) * w * (1 - 0.55 * bk);
       const walkT = _ikA2.set(side * 0.1, -0.5, -0.025 + sw * 0.075);
       // running: forward/back from the shoulder with the elbow held near a right angle, swinging around a point a little behind the shoulder so the hands stay at his sides
-      const th = -0.62 + 0.34 * sw, el = 1.35 + 0.08 * Math.max(sw, 0), ux = side * 0.16;   // upper-arm angle from vertical (forward +), elbow bend
+      const th = -0.6 + 0.52 * sw, el = 1.35 + 0.1 * Math.max(sw, 0), ux = side * 0.16;   // upper-arm angle from vertical (forward +), elbow bend
       const ex = ux * u.A1, ey = -Math.cos(th) * u.A1, ez = Math.sin(th) * u.A1;
       const runT = _ikB2.set(ex, ey - Math.cos(th + el) * u.A2, ez + Math.sin(th + el) * u.A2);
       const elbowDir = _ikC2.set(ex, ey, ez);
@@ -5764,7 +5764,7 @@ function update(dt, t) {
     character.position.copy(player.pos); character.rotation.set(0, player.yaw, 0);
     if (player.mode === 'walk' && player.pos.y - H(player.pos.x, player.pos.z) < 0.05) character.position.y += GROUND_SKIN;   // the drawn street sits above the terrain height
     const fwdV = player.vel.x * Math.sin(player.yaw) + player.vel.z * Math.cos(player.yaw);   // signed: positive forward, negative backwards
-    player.walkPhase += dt * hv * 1.75 * (fwdV < -0.3 ? -0.85 : 1);
+    player.walkPhase += dt * hv * 1.75 * (1 - 0.32 * clamp((hv - 4.8) / 3.5, 0, 1)) * (fwdV < -0.3 ? -0.85 : 1);   // running: a lower cadence, so each stride covers more ground
     poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: fwdV, climbing: player.mode === 'fly' && (k(' ', 'e') || pad.up) });
     character.rotation.z = 0;
     // chase camera behind the character, swinging round as it turns
