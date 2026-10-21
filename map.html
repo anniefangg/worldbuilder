@@ -5628,8 +5628,10 @@ function dropIn(x, z) {
   $('intro').hidden = true; setMode('walk'); tween = null;
 }
 
+const START = { x: -2727.8, z: 1618.3, yaw: 3.024 };   // where walking and flying begin: the plaza by the fountain, facing just west of north (chosen by the author)
 function spawnPoint() {
-  // Heart of the densest neighbourhood, on the nearest street
+  if (H(START.x, START.z) > 0.3 && buildingAt(START.x, START.z) < 0) { const p = new THREE.Vector3(START.x, 0, START.z); collide(p, 0.4); p.y = H(p.x, p.z); return p; }
+  // otherwise (the plaza no longer exists after a re-import): the heart of the densest neighbourhood, on the nearest street
   const C = 250, count = new Map(); let best = null, bestN = 0;
   for (const b of world.buildings) { const k = gkey(Math.floor(b.cx / C) + 2000, Math.floor(b.cz / C) + 2000), n = (count.get(k) || 0) + 1; count.set(k, n); if (n > bestN) { bestN = n; best = b; } }
   const cx = (Math.floor(best.cx / C) + 0.5) * C, cz = (Math.floor(best.cz / C) + 0.5) * C;
@@ -6531,7 +6533,7 @@ store.on((what, ids) => {
     setTimeOfDay(TOD[tod] ? tod : 'dusk');
     character = makeCharacter(); scene.add(character);
     loadCaptain().then((c) => { if (!c) return; const old = character; c.position.copy(old.position); c.rotation.copy(old.rotation); scene.remove(old); character = c; scene.add(c); }).catch((e) => console.warn('captain model failed, keeping the procedural one', e));
-    player.pos.copy(spawnPoint()); player.yaw = Math.PI;
+    player.pos.copy(spawnPoint()); player.yaw = START.yaw;
     initPlan(); initControls();
     setMode('map');
     const { cx, cz } = world.bounds;
