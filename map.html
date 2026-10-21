@@ -1606,6 +1606,46 @@ function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
     }
   }
 }
+// Solar panels on a flat roof: rows of panels tilted ~20° to face south (+z), laid parallel to the building's longest wall and kept clear of the parapet.
+// All of it goes in the main mesh (not the close-up detail cells) so the arrays read as panels from the air too.
+const SOLAR_PCT = 41;   // % of the flat roofs left after gardens and decks; tuned so ~20% of all flat roofs carry panels
+const PV = linear('#1f3150'), PV_BACK = linear('#7d838a'), PV_FRAME = linear('#c4cad0');
+function solarPanels(geo, dg, rec, top) {
+  const f0 = longestEdge(rec); let tx = (f0.bx - f0.ax) / f0.L, tz = (f0.bz - f0.az) / f0.L, nx = -tz, nz = tx;
+  if (nz < 0) { nx = -nx; nz = -nz; }                                        // n: the side of the long wall that faces most nearly south
+  if (Math.abs(nz) < 0.35) { const sx = Math.sign(nx) || 1; nx = 0; nz = 1; tx = sx; tz = 0; }   // a building running north-south: face the rows due south anyway
+  const ox = rec.cx, oz = rec.cz, W = (u, v) => [ox + tx * u + nx * v, oz + tz * u + nz * v];
+  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+  for (const r of rec.rings) for (let i = 0; i < r.length; i += 2) { const dx = r[i] - ox, dz = r[i + 1] - oz, u = dx * tx + dz * tz, v = dx * nx + dz * nz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+  const M = 1.25, D = 1.55, RISE = D * Math.tan(0.35), GAP = 1.0, y = top + 0.22, n = [nx * Math.sin(0.35), Math.cos(0.35), nz * Math.sin(0.35)];
+  const ok = (u, v) => { const [x, z] = W(u, v); return pointInRings(x, z, rec.rings); };
+  let rows = 0;
+  for (let v = v0 + M; v + D <= v1 - M && rows < 9; v += D + GAP) {
+    let run = null; const flush = (end) => {
+      if (run !== null && end - run >= 2.1) {
+        const a = run, b = end, hi = y + RISE;
+        const Pa = W(a, v), Pb = W(b, v), Pc = W(b, v + D), Pd = W(a, v + D);
+        quadN(geo, [[Pa[0], hi, Pa[1]], [Pb[0], hi, Pb[1]], [Pc[0], y, Pc[1]], [Pd[0], y, Pd[1]]], n, PV, Z4);   // the panels, high edge to the north
+        quadN(geo, [[Pa[0], hi, Pa[1]], [Pb[0], hi, Pb[1]], [Pb[0], top, Pb[1]], [Pa[0], top, Pa[1]]], [-nx, 0, -nz], PV_BACK, Z4);   // the frame's back, seen from the north
+        for (let k = 1, m = Math.round((b - a) / 1.05); k < m; k++) {        // frame lines between panels
+          const t = a + (b - a) * k / m, P0 = W(t - 0.04, v), P1 = W(t + 0.04, v), P2 = W(t + 0.04, v + D), P3 = W(t - 0.04, v + D);
+          quadN(geo, [[P0[0], hi + 0.035, P0[1]], [P1[0], hi + 0.035, P1[1]], [P2[0], y + 0.035, P2[1]], [P3[0], y + 0.035, P3[1]]], n, PV_FRAME, Z4);
+        }
+        const A = W(a, v + D / 2 - 0.035), B = W(b, v + D / 2 - 0.035), C = W(b, v + D / 2 + 0.035), Dd = W(a, v + D / 2 + 0.035), ym = y + RISE / 2 + 0.035;
+        quadN(geo, [[A[0], ym + 0.012, A[1]], [B[0], ym + 0.012, B[1]], [C[0], ym - 0.012, C[1]], [Dd[0], ym - 0.012, Dd[1]]], n, PV_FRAME, Z4);   // the seam along the row
+        rows++;
+      }
+      run = null;
+    };
+    let last = 0;
+    for (let u = u0 + M; u <= u1 - M + 0.01; u += 0.5) {
+      const inside = ok(u, v - M + 0.3) && ok(u, v + D + M - 0.3) && ok(u - 0.9, v + D / 2) && ok(u + 0.9, v + D / 2);
+      if (inside) { if (run === null) run = u; last = u; } else flush(last);
+    }
+    flush(last);
+  }
+  return rows > 0;
+}
 // the footprint pulled in by d metres (for a lawn or deck inside the parapet); null when the shape is too fiddly to inset cleanly
 function insetFootprint(r, d, area) {
   const n = r.length / 2, sgn = ringArea(r) > 0 ? 1 : -1, off = ringOffsets({ pts: r, nrm: new Array(n).fill(null), sgn }), pts = [];
@@ -1684,6 +1724,9 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
         if (ok) { rec.roofKind = kind; polyFlat(geo, [ins], top + 0.05, kind === 'garden' ? _cP.set('#5a9f3e') : _cP.set('#a9794b'), [0, 0, kind === 'garden' ? -8 : -9, 0]); }
       }
     }
+    // solar panels on about a fifth of flat roofs: only where there is no garden or deck, and never over a roof colour chosen for that building
+    rec.solar = false;
+    if (!s.roof && !rec.roofKind && area > 45 && ((rec.seed >>> 17) % 100) < SOLAR_PCT) rec.solar = solarPanels(geo, dg, rec, top);
   }
   roofClutter(dg, rec, s, top, pitched, ridge);
   // front doors: a stone stoop and a wrought-iron lantern over each
