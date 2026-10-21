@@ -731,7 +731,7 @@ function applyWeather() {
   if (b) { b.innerHTML = ICONS[wx.name === 'sunny' && t.night > 0.6 ? 'clear' : wx.name]; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
 }
 function setWeather(name) { wx.name = WEATHER[name] ? name : 'sunny'; wx.nextFlash = 0; applyWeather(); }
-function toggleWeather() { const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
+function toggleWeather() { AUTO.wx = false; const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
 // Rain: streaks recycled in a box that travels with the camera
 function addRain() {
   const N = world.rainN = 12000, pos = new Float32Array(N * 6), rnd = mulberry(99);
@@ -5827,8 +5827,8 @@ function initDropdowns() {
   const menu = $('opt-menu'); let openFor = null;
   const close = () => { menu.hidden = true; if (openFor) openFor.setAttribute('aria-expanded', 'false'); openFor = null; };
   const defs = {
-    tod: () => ({ cur: todState.name, items: TOD_ORDER.map((k) => ({ k, label: k[0].toUpperCase() + k.slice(1) })), pick: (k) => { setTimeOfDay(k); try { localStorage.setItem('amparacan-map-tod', k); } catch (e) {} } }),
-    wx: () => ({ cur: wx.name, items: WEATHER_ORDER.map((k) => ({ k, label: k === 'sunny' && TOD[todState.name].night > 0.6 ? 'Clear' : WEATHER[k].label })), pick: (k) => { setWeather(k); try { localStorage.setItem('amparacan-map-weather', k); } catch (e) {} } }),
+    tod: () => ({ cur: AUTO.tod ? 'auto' : todState.name, items: [{ k: 'auto', label: `Auto · ${todState.name} where you are now` }, ...TOD_ORDER.map((k) => ({ k, label: k[0].toUpperCase() + k.slice(1) }))], pick: (k) => { if (k === 'auto') { setAuto('tod', true); return; } AUTO.tod = false; setTimeOfDay(k); try { localStorage.setItem('amparacan-map-tod', k); } catch (e) {} } }),
+    wx: () => ({ cur: AUTO.wx ? 'auto' : wx.name, items: [{ k: 'auto', label: AUTO.wxOk === false ? 'Auto · live weather isn’t available here' : AUTO.wxOk ? `Auto · ${WEATHER[wx.name].label.toLowerCase()} where you are now` : 'Auto · your local weather' }, ...WEATHER_ORDER.map((k) => ({ k, label: k === 'sunny' && TOD[todState.name].night > 0.6 ? 'Clear' : WEATHER[k].label }))], pick: (k) => { if (k === 'auto') { setAuto('wx', true); return; } AUTO.wx = false; setWeather(k); try { localStorage.setItem('amparacan-map-weather', k); } catch (e) {} } }),
     qual: () => ({ cur: Q.mode, items: [{ k: 'auto', label: 'Auto', sub: 'Adjusts itself to keep the map smooth' }, { k: 'low', label: 'Low', sub: 'Fastest: no glow or contact shadows' }, { k: 'medium', label: 'Medium', sub: 'Balanced' }, { k: 'high', label: 'High', sub: 'Everything on' }], pick: (k) => setQualityMode(k) }),
   };
   for (const id of Object.keys(defs)) $(id).addEventListener('click', (e) => {
@@ -5845,7 +5845,47 @@ function initDropdowns() {
   addEventListener('click', close);
   addEventListener('keydown', (e) => { if (menu.hidden) return; if (e.key === 'Escape') { close(); e.stopPropagation(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const bs = [...menu.querySelectorAll('button')], i = bs.indexOf(document.activeElement); bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length].focus(); } }, true);
 }
-function toggleTOD() { const n = TOD_ORDER[(TOD_ORDER.indexOf(todState.name) + 1) % TOD_ORDER.length]; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
+function toggleTOD() { AUTO.tod = false; const n = TOD_ORDER[(TOD_ORDER.indexOf(todState.name) + 1) % TOD_ORDER.length]; setTimeOfDay(n); try { localStorage.setItem('amparacan-map-tod', n); } catch (e) {} }
+// ---- Auto: the time of day follows the sun at your location (worked out from your clock and timezone), and the weather follows a live
+// forecast for it wherever this page is allowed to fetch one (the local preview can; the published artifact's sandbox blocks it). Picking any
+// option by hand, or pressing T / R, switches that menu back to manual; "Auto" in the menu switches it on again.
+const AUTO = { tod: false, wx: false, wxOk: null, wxAt: 0 };
+const TZ_PLACES = { 'Europe/London': [51.5, -0.1], 'Europe/Dublin': [53.3, -6.3], 'Europe/Lisbon': [38.7, -9.1], 'Europe/Madrid': [40.4, -3.7], 'Europe/Paris': [48.9, 2.3], 'Europe/Brussels': [50.8, 4.4], 'Europe/Amsterdam': [52.4, 4.9], 'Europe/Berlin': [52.5, 13.4], 'Europe/Zurich': [47.4, 8.5], 'Europe/Vienna': [48.2, 16.4], 'Europe/Rome': [41.9, 12.5], 'Europe/Prague': [50.1, 14.4], 'Europe/Warsaw': [52.2, 21.0], 'Europe/Copenhagen': [55.7, 12.6], 'Europe/Oslo': [59.9, 10.8], 'Europe/Stockholm': [59.3, 18.1], 'Europe/Helsinki': [60.2, 24.9], 'Europe/Athens': [38.0, 23.7], 'Europe/Istanbul': [41.0, 29.0], 'Europe/Kiev': [50.5, 30.5], 'Europe/Kyiv': [50.5, 30.5], 'Europe/Moscow': [55.8, 37.6],
+  'America/New_York': [40.7, -74.0], 'America/Toronto': [43.7, -79.4], 'America/Detroit': [42.3, -83.0], 'America/Chicago': [41.9, -87.6], 'America/Winnipeg': [49.9, -97.1], 'America/Denver': [39.7, -105.0], 'America/Edmonton': [53.5, -113.5], 'America/Phoenix': [33.4, -112.1], 'America/Los_Angeles': [34.1, -118.2], 'America/Vancouver': [49.3, -123.1], 'America/Anchorage': [61.2, -149.9], 'Pacific/Honolulu': [21.3, -157.9], 'America/Halifax': [44.6, -63.6], 'America/Mexico_City': [19.4, -99.1], 'America/Havana': [23.1, -82.4], 'America/Bogota': [4.7, -74.1], 'America/Lima': [-12.0, -77.0], 'America/Santiago': [-33.4, -70.6], 'America/Argentina/Buenos_Aires': [-34.6, -58.4], 'America/Sao_Paulo': [-23.5, -46.6], 'America/Caracas': [10.5, -66.9], 'America/Panama': [9.0, -79.5], 'America/Puerto_Rico': [18.5, -66.1],
+  'Asia/Tokyo': [35.7, 139.7], 'Asia/Seoul': [37.6, 127.0], 'Asia/Shanghai': [31.2, 121.5], 'Asia/Hong_Kong': [22.3, 114.2], 'Asia/Taipei': [25.0, 121.6], 'Asia/Manila': [14.6, 121.0], 'Asia/Singapore': [1.4, 103.8], 'Asia/Kuala_Lumpur': [3.1, 101.7], 'Asia/Bangkok': [13.8, 100.5], 'Asia/Jakarta': [-6.2, 106.8], 'Asia/Kolkata': [19.1, 72.9], 'Asia/Karachi': [24.9, 67.0], 'Asia/Dubai': [25.2, 55.3], 'Asia/Riyadh': [24.7, 46.7], 'Asia/Tehran': [35.7, 51.4], 'Asia/Jerusalem': [31.8, 35.2], 'Asia/Tel_Aviv': [32.1, 34.8], 'Africa/Cairo': [30.0, 31.2], 'Africa/Casablanca': [33.6, -7.6], 'Africa/Lagos': [6.5, 3.4], 'Africa/Nairobi': [-1.3, 36.8], 'Africa/Johannesburg': [-26.2, 28.0],
+  'Australia/Sydney': [-33.9, 151.2], 'Australia/Melbourne': [-37.8, 145.0], 'Australia/Brisbane': [-27.5, 153.0], 'Australia/Perth': [-31.9, 115.9], 'Australia/Adelaide': [-34.9, 138.6], 'Pacific/Auckland': [-36.8, 174.8] };
+function localPlace() {
+  let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  const p = TZ_PLACES[tz]; if (p) return { lat: p[0], lon: p[1], tz };
+  const off = -new Date().getTimezoneOffset() / 60; return { lat: 35, lon: off * 15, tz: tz || `UTC${off >= 0 ? '+' : ''}${off}` };   // unknown zone: the longitude its clock implies, mid-latitude
+}
+function sunElevation(lat, lon, date) {   // degrees above the horizon (a standard low-precision solar position, good to about a degree)
+  const rad = Math.PI / 180, J = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
+  const g = ((357.529 + 0.98560028 * J) % 360) * rad, q = (280.459 + 0.98564736 * J) % 360, L = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad, e = (23.439 - 0.00000036 * J) * rad;
+  const RA = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = ((18.697374558 + 24.06570982441908 * J) % 24 + 24) % 24, H = (gmst * 15 + lon) * rad - RA;
+  return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(H)) / rad;
+}
+function todForNow() {
+  const { lat, lon } = localPlace(), now = Date.now(), e = sunElevation(lat, lon, new Date(now)), e2 = sunElevation(lat, lon, new Date(now - 600000));
+  return e > 8 ? 'day' : e < -8 ? 'night' : e > e2 ? 'dawn' : 'dusk';   // within 8° of the horizon it is dawn if the sun is climbing, dusk if sinking
+}
+function autoTod() { if (!AUTO.tod) return; const n = todForNow(); if (n !== todState.name) setTimeOfDay(n); }
+const WMO = (c) => c >= 95 ? 'storm' : c >= 51 ? 'rain' : c === 45 || c === 48 ? 'fog' : c >= 2 ? 'cloudy' : 'sunny';   // WMO weather codes → the map's kinds (drizzle, rain, snow and showers all read as rain)
+async function autoWeather() {
+  if (!AUTO.wx) return; const { lat, lon } = localPlace();
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&current=weather_code,cloud_cover`), j = await r.json(), c = j.current;
+    let n = WMO(c.weather_code); if (n === 'sunny' && c.cloud_cover > 65) n = 'cloudy'; if (n === 'fog' && c.cloud_cover < 50) n = 'misty';
+    AUTO.wxOk = true; AUTO.wxAt = Date.now(); AUTO.wxLast = `${n} (code ${c.weather_code}, ${c.cloud_cover}% cloud)`; if (n !== wx.name) setWeather(n);
+  } catch (e) { AUTO.wxOk = false; }
+}
+function setAuto(kind, on) {
+  AUTO[kind] = on; try { localStorage.setItem(kind === 'tod' ? 'amparacan-map-tod' : 'amparacan-map-weather', on ? 'auto' : (kind === 'tod' ? todState.name : wx.name)); } catch (e) {}
+  if (!on) return;
+  if (kind === 'tod') autoTod(); else autoWeather().then(() => { if (AUTO.wxOk === false) toast('Live weather can’t be fetched in this view, so the weather stays as it is. Pick one from the menu instead.'); });
+}
+function initAuto() { autoTod(); autoWeather(); setInterval(() => { autoTod(); if (AUTO.wx && Date.now() - AUTO.wxAt > 15 * 60000) autoWeather(); }, 60000); }
 function startExploring(mode) { $('intro').hidden = true; setMode(mode); canvas.focus(); }
 
 // ─────────────────────────── houseboats ───────────────────────────
@@ -6543,9 +6583,13 @@ store.on((what, ids) => {
     await buildWorld();
     for (const id of store.buildings.keys()) { const r = world.byId.get(id); if (r && JSON.stringify(styleOf(r)) !== JSON.stringify(r.style)) markDirty(id); }
     flushDirty();
-    let tod = 'dusk'; try { tod = localStorage.getItem('amparacan-map-tod') || 'dusk'; } catch (e) {}
-    try { wx.name = WEATHER[localStorage.getItem('amparacan-map-weather')] ? localStorage.getItem('amparacan-map-weather') : 'sunny'; } catch (e) {}
-    setTimeOfDay(TOD[tod] ? tod : 'dusk');
+    let tod = 'auto', wxSaved = 'auto';
+    try { tod = localStorage.getItem('amparacan-map-tod') || 'auto'; wxSaved = localStorage.getItem('amparacan-map-weather') || 'auto'; } catch (e) {}
+    try { if (!localStorage.getItem('amparacan-map-auto1')) { localStorage.setItem('amparacan-map-auto1', '1'); localStorage.setItem('amparacan-map-tod', 'auto'); localStorage.setItem('amparacan-map-weather', 'auto'); tod = 'auto'; wxSaved = 'auto'; } } catch (e) {}   // once: this version starts both menus on Auto
+    AUTO.tod = tod === 'auto'; AUTO.wx = wxSaved === 'auto';
+    wx.name = WEATHER[wxSaved] ? wxSaved : 'sunny';
+    setTimeOfDay(AUTO.tod ? todForNow() : (TOD[tod] ? tod : 'dusk'));
+    initAuto();
     character = makeCharacter(); scene.add(character);
     loadCaptain().then((c) => { if (!c) return; const old = character; c.position.copy(old.position); c.rotation.copy(old.rotation); scene.remove(old); character = c; scene.add(c); }).catch((e) => console.warn('captain model failed, keeping the procedural one', e));
     player.pos.copy(spawnPoint()); player.yaw = START.yaw;
