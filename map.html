@@ -3648,7 +3648,7 @@ function solveArm(arm, T, pole, l1, l2, blend, tmpQ) {
   const F = dir.clone().multiplyScalar(d).sub(E).normalize(), foreW = new THREE.Quaternion().setFromUnitVectors(arm.r2 || _down, F), fore = up.clone().invert().multiply(foreW);
   arm.sh.quaternion.slerp(up, blend); arm.el.quaternion.slerp(fore, blend);
 }
-function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = false }) {
+function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = false, diving = false, turning = 0 }) {
   const P = u.pose, rig = u.rig, kf = 1 - Math.exp(-dt * 7), moving = hv > 0.25, run = clamp((hv - 4.8) / 3.5, 0, 1),   // 0 at a walk (4.2 m/s), 1 at a run (9 m/s)
     L2 = THREE.MathUtils.lerp;
   const sp = u.sp, spring = (s, target, k, c) => { s[1] += ((target - s[0]) * k - s[1] * c) * dt; s[0] += s[1] * dt; };
@@ -3702,10 +3702,13 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
     // already flying forward when the climb starts: no raised arm; he tilts his body up along the climb instead (climbF)
     const fwd = smooth(4, 12, hv) * (1 - bk);
     P.climbF = (P.climbF || 0) + ((climbing ? fwd : 0) - (P.climbF || 0)) * (1 - Math.exp(-dt * 3));
-    const upT = (climbing && fwd < 0.5) || (P.launch > 0 && hv < 4) ? 1 : 0; const om = upT ? 4.6 : 4.2; P.up = P.up || 0; P.upV = P.upV || 0; P.upV += (om * om * (upT - P.up) - 2 * om * P.upV) * Math.min(dt, 0.05); P.up = clamp(P.up + P.upV * Math.min(dt, 0.05), 0, 1);   // a critically damped spring on the climb key itself: eases in and out, rising over ~0.8 s and lowering over ~1 s from the moment the climb stops
+    const upT = (climbing && fwd < 0.5) || (P.launch > 0 && hv < 4) ? 1 : 0;
+    // descending: tip forward and down into the drop (more when already moving forward); turning: bank into the turn like a bird
+    P.dive = (P.dive || 0) + ((diving && !climbing ? 0.22 + 0.4 * fwd : 0) - (P.dive || 0)) * (1 - Math.exp(-dt * 3));
+    P.bank = (P.bank || 0) + (-turning * (0.16 + 0.34 * fwd) - (P.bank || 0)) * (1 - Math.exp(-dt * 3.5)); const om = upT ? 4.6 : 4.2; P.up = P.up || 0; P.upV = P.upV || 0; P.upV += (om * om * (upT - P.up) - 2 * om * P.upV) * Math.min(dt, 0.05); P.up = clamp(P.up + P.upV * Math.min(dt, 0.05), 0, 1);   // a critically damped spring on the climb key itself: eases in and out, rising over ~0.8 s and lowering over ~1 s from the moment the climb stops
     rig.position.y = u.HIP + 0.1 + Math.sin(t * 1.7) * (0.05 + 0.05 * (1 - P.lean)); rig.position.x = 0;   // hovering bobs more than cruising
-    rig.rotation.set(P.lean * 1.15 - 0.32 * bkSpd - 0.55 * P.climbF * P.lean, 0, Math.sin(t * 0.9) * 0.03);   // tilts back when going backwards; nose up into a forward climb
-    u.spine.rotation.set(0.02 * Math.sin(t * 1.3) - 0.11 * (1 - P.lean), 0, 0); u.head.rotation.set(-P.lean * 0.95 + 0.26 * bkSpd - 0.18 * (P.up || 0) - 0.2 * P.climbF, 0, 0);
+    rig.rotation.set(P.lean * 1.15 - 0.32 * bkSpd - 0.55 * P.climbF * P.lean + P.dive, 0, Math.sin(t * 0.9) * 0.03 + P.bank);   // tilts back when going backwards; nose up into a forward climb
+    u.spine.rotation.set(0.02 * Math.sin(t * 1.3) - 0.11 * (1 - P.lean), 0, 0); u.head.rotation.set(-P.lean * 0.95 + 0.26 * bkSpd - 0.18 * (P.up || 0) - 0.2 * P.climbF - 0.45 * P.dive * fwd + 0.15 * P.dive * (1 - fwd), 0, -0.4 * P.bank);   // head stays looking ahead in a dive, glances down in a hover drop; levels a little in a bank
     u.legs.forEach((leg, i) => { const s = i === 0 ? -1 : 1; leg.thigh.rotation.set(0.1 + P.lean * 0.45 - 0.55 * bkSpd + s * 0.04 + flutter * 0.02, 0, s * 0.03); leg.knee.rotation.set(0.2 + P.lean * 0.15 + (i ? 0.1 : 0), 0, 0); leg.ankle.rotation.set(0.5 - P.lean * 0.15, 0, 0); });
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, sweep = _ikA2.set(side * (0.2 + 0.1 * P.lean + 0.1 * bkSpd), -0.42 + P.lean * 0.18, -0.12 - P.lean * 0.34 + 0.3 * bkSpd + flutter * 0.03), idle = _ikB2.set(side * 0.1, -0.5, -0.025);
@@ -5768,7 +5771,7 @@ function update(dt, t) {
     if (player.mode === 'walk' && player.pos.y - H(player.pos.x, player.pos.z) < 0.05) character.position.y += GROUND_SKIN;   // the drawn street sits above the terrain height
     const fwdV = player.vel.x * Math.sin(player.yaw) + player.vel.z * Math.cos(player.yaw);   // signed: positive forward, negative backwards
     player.walkPhase += dt * hv * 1.75 * (1 - 0.32 * clamp((hv - 4.8) / 3.5, 0, 1)) * (fwdV < -0.3 ? -0.85 : 1);   // running: a lower cadence, so each stride covers more ground
-    poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: fwdV, climbing: player.mode === 'fly' && (k(' ', 'e') || pad.up) });
+    poseCharacter(u, { mode: player.mode, hv, dt, t, phase: player.walkPhase, vFwd: fwdV, climbing: player.mode === 'fly' && (k(' ', 'e') || pad.up), diving: player.mode === 'fly' && (k('q', 'c') || pad.down) && player.vel.y < -0.5, turning: clamp((k('a', 'arrowleft') ? 1 : 0) - (k('d', 'arrowright') ? 1 : 0) - joy.x, -1, 1) });
     character.rotation.z = 0;
     // chase camera behind the character, swinging round as it turns
     let dy = player.yaw - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); cam.yaw += dy * (1 - Math.exp(-dt * 8));
