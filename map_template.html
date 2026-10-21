@@ -2345,27 +2345,34 @@ function bushGeometry(flowers) {
 }
 
 // ─────────────────────────── trees ───────────────────────────
-function palmGeometry() {
-  const parts = [], trunkC = linear('#8a6a47'), ringC = linear('#6d5236'), leafA = linear('#2f7a2c'), leafB = linear('#5fae3c'), leafT = linear('#8cc34a');
-  const trunk = new THREE.CylinderGeometry(0.15, 0.26, 1, 7, 8, true).translate(0, 0.5, 0);
-  const tp = trunk.attributes.position, tc = []; for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); tp.setX(i, tp.getX(i) + 0.9 * y * y); tp.setY(i, y * 7); const ring = Math.floor(y * 8 + 0.0001) % 2 ? 1 : 0; const c = ring ? ringC : trunkC; tc.push(c.r, c.g, c.b); }
+function palmGeometry(o = {}) {
+  const { trunkH = 7, trunkR = 0.26, lean = 0.9, NF = 11, L = 3.6, droop = 1, fan = false, stems = 1 } = o;
+  const parts = [], trunkC = linear(o.trunkC || '#8a6a47'), ringC = linear('#6d5236'), leafA = linear(o.leafA || '#2f7a2c'), leafB = linear(o.leafB || '#5fae3c'), leafT = linear(o.leafT || (o.leafB ? o.leafB : '#8cc34a'));
+  const wmul = fan ? 1.9 : 1, riseMul = fan ? 1.5 : 1, dr = fan ? 0.4 * droop : droop;
+  const trunk = new THREE.CylinderGeometry(trunkR * 0.58, trunkR, 1, 7, 8, true).translate(0, 0.5, 0);
+  const tp = trunk.attributes.position, tc = []; for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); tp.setX(i, tp.getX(i) + lean * y * y); tp.setY(i, y * trunkH); const ring = Math.floor(y * 8 + 0.0001) % 2 ? 1 : 0; const c = ring ? ringC : trunkC; tc.push(c.r, c.g, c.b); }
   const tg = trunk.toNonIndexed(); const tcol = new Float32Array(tg.attributes.position.count * 3); for (let i = 0; i < tg.attributes.position.count; i++) { const y = tg.attributes.position.getY(i), ring = Math.floor(y / 0.42) % 2 ? 0.78 : 1; tcol[i * 3] = trunkC.r * ring; tcol[i * 3 + 1] = trunkC.g * ring; tcol[i * 3 + 2] = trunkC.b * ring; }
   tg.setAttribute('color', new THREE.BufferAttribute(tcol, 3)); tg.computeVertexNormals(); parts.push(tg);
-  // fronds: arched, drooping strips with a feathery (alternately notched) edge, dark at the stem and bright at the tip
-  const NF = 11, SEG = 7, L = 3.6;
+  // fronds: arched, drooping strips with a feathery (alternately notched) edge, dark at the stem and bright at the tip (a fan palm's are short, wide and held up)
+  const SEG = 7;
   for (let k = 0; k < NF; k++) {
-    const pos = [], col = [], a = k / NF * Math.PI * 2 + (k % 2) * 0.25, ca = Math.cos(a), sa = Math.sin(a), len = L * (0.85 + (k % 3) * 0.1), rise = 0.7 + (k % 4) * 0.18;
-    const P = (t) => [ca * t * len * 0.92, rise * Math.sin(t * 1.9) * 1.4 - 1.7 * t * t * (0.7 + (k % 3) * 0.15), sa * t * len * 0.92];
+    const pos = [], col = [], a = k / NF * Math.PI * 2 + (k % 2) * 0.25, ca = Math.cos(a), sa = Math.sin(a), len = L * (0.85 + (k % 3) * 0.1), rise = (0.7 + (k % 4) * 0.18) * riseMul;
+    const P = (t) => [ca * t * len * 0.92, rise * Math.sin(t * 1.9) * 1.4 - 1.7 * dr * t * t * (0.7 + (k % 3) * 0.15), sa * t * len * 0.92];
     for (let i = 0; i < SEG; i++) {
-      const t0 = i / SEG, t1 = (i + 1) / SEG, p0 = P(t0), p1 = P(t1), w0 = 0.42 * Math.sin(Math.PI * Math.min(1, t0 * 1.15 + 0.12)) * (i % 2 ? 0.62 : 1), w1 = 0.42 * Math.sin(Math.PI * Math.min(1, t1 * 1.15 + 0.12)) * ((i + 1) % 2 ? 0.62 : 1);
+      const t0 = i / SEG, t1 = (i + 1) / SEG, p0 = P(t0), p1 = P(t1), w0 = 0.42 * wmul * (L / 3.6) * Math.sin(Math.PI * Math.min(1, t0 * 1.15 + 0.12)) * (i % 2 ? 0.62 : 1), w1 = 0.42 * wmul * (L / 3.6) * Math.sin(Math.PI * Math.min(1, t1 * 1.15 + 0.12)) * ((i + 1) % 2 ? 0.62 : 1);
       const px0 = -sa * w0, pz0 = ca * w0, px1 = -sa * w1, pz1 = ca * w1, tint = (t) => { const c = new THREE.Color().copy(leafA).lerp(k % 2 ? leafB : leafT, t); return c; };
       const c0 = tint(t0), c1 = tint(t1);
       const quad = [[p0[0] - px0, p0[1] - 0.18 * w0, p0[2] - pz0, c0], [p0[0] + px0, p0[1] - 0.18 * w0, p0[2] + pz0, c0], [p1[0] + px1, p1[1] - 0.18 * w1, p1[2] + pz1, c1], [p1[0] - px1, p1[1] - 0.18 * w1, p1[2] - pz1, c1]];
       for (const q of [[0, 1, 2], [0, 2, 3]]) for (const vi of q) { pos.push(quad[vi][0], quad[vi][1], quad[vi][2]); col.push(quad[vi][3].r, quad[vi][3].g, quad[vi][3].b); }
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.translate(0.9, 7, 0); g.computeVertexNormals(); parts.push(g);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.translate(lean, trunkH, 0); g.computeVertexNormals(); parts.push(g);
   }
-  const m = mergeGeometries(parts.map(stripUV)); m.computeVertexNormals(); return m;
+  let m = mergeGeometries(parts.map(stripUV)); m.computeVertexNormals();
+  if (stems > 1) {   // a clustering palm: several stems of different heights leaning out from one base
+    const all = []; for (let k = 0; k < stems; k++) { const a = k / stems * Math.PI * 2 + 0.4, sc = 0.72 + 0.28 * ((k * 7) % stems) / Math.max(1, stems - 1); all.push(m.clone().scale(sc, sc, sc).rotateY(a).translate(Math.cos(a) * 0.35, 0, Math.sin(a) * 0.35)); }
+    m = mergeGeometries(all); m.computeVertexNormals();
+  }
+  return m;
 }
 // a tall, dark Mediterranean cypress
 function cypressGeometry() {
@@ -2382,6 +2389,64 @@ function broadleafGeometry() {
     parts.push(colorize(new THREE.IcosahedronGeometry(r, 0).translate(x, y, z), greens[i % 3]));
   });
   return mergeGeometries(parts.map(stripUV));
+}
+// ---- the city's tree species (the author's list): each has its own parametric look at its real height. Species over 15 m only grow in parks.
+const SPECIES = {
+  peachPalm:  { name: 'Bactris gasipaes', common: 'peach palm', form: 'palm', h: 13, o: { trunkH: 11, trunkR: 0.17, lean: 0.22, NF: 10, L: 3.2, stems: 3, trunkC: '#6b5a44', leafA: '#2d6e2a', leafB: '#4e9a39' } },
+  pacaya:     { name: 'Chamaedorea tepejilote', common: 'pacaya palm', form: 'palm', h: 5, o: { trunkH: 3.8, trunkR: 0.07, lean: 0.1, NF: 7, L: 1.9, trunkC: '#6f8a4e', leafA: '#2f7a30', leafB: '#5cab44' } },
+  oilPalm:    { name: 'Elaeis oleifera', common: 'American oil palm', form: 'palm', h: 7, o: { trunkH: 2.6, trunkR: 0.45, lean: 0.5, NF: 16, L: 4.4, droop: 1.3, trunkC: '#5f4a36', leafA: '#2b6f2b', leafB: '#4a9436' } },
+  macaw:      { name: 'Acrocomia aculeata', common: 'macaw palm', form: 'palm', h: 16, o: { trunkH: 13, trunkR: 0.3, lean: 0.35, NF: 12, L: 3.8, trunkC: '#5a4a3a', leafA: '#2a6a2c', leafB: '#4f9a3c' } },
+  gaussia:    { name: 'Gaussia maya', common: 'Maya palm', form: 'palm', h: 17, o: { trunkH: 15, trunkR: 0.2, lean: 0.4, NF: 9, L: 2.9, trunkC: '#9a8f7e', leafA: '#2f7a2c', leafB: '#5fae3c' } },
+  thatch:     { name: 'Coccothrinax', common: 'silver thatch palm', form: 'palm', h: 7, o: { trunkH: 5.5, trunkR: 0.12, lean: 0.3, NF: 16, L: 1.5, fan: true, trunkC: '#8a8068', leafA: '#5f8f5a', leafB: '#9fc39a' } },
+  cherryPalm: { name: 'Pseudophoenix sargentii', common: 'Florida cherry palm', form: 'palm', h: 6, o: { trunkH: 4.5, trunkR: 0.22, lean: 0.15, NF: 10, L: 2.4, trunkC: '#9c9a8c', leafA: '#3a7f3a', leafB: '#78b25e' } },
+  bactrisMex: { name: 'Bactris mexicana', common: 'Mexican bactris', form: 'palm', h: 5, o: { trunkH: 3.6, trunkR: 0.08, lean: 0.2, NF: 8, L: 2.0, stems: 4, trunkC: '#5f5240', leafA: '#2f7a30', leafB: '#57a640' } },
+  geiger:     { name: 'Cordia sebestena', common: 'geiger tree', form: 'crown', h: 8, o: { trunkH: 2.8, trunkR: 0.22, crownR: 3.2, greens: ['#3f8a35', '#2f7a2f', '#4f9a3c'], flower: '#ff6a1f', share: 0.5 } },
+  mahogany:   { name: 'Swietenia mahagoni', common: 'West Indian mahogany', form: 'crown', h: 22, o: { trunkH: 8, trunkR: 0.6, crownR: 8, greens: ['#3a7a33', '#2f6a2b', '#4a8c3c'] } },
+  monterey:   { name: 'Hesperocyparis macrocarpa', common: 'Monterey cypress', form: 'conical', h: 20, o: { trunkH: 5, trunkR: 0.55, rad: 5.5, kind: 'cypress', greens: ['#2a5a35', '#24502f', '#2f6a3a'] } },
+  copal:      { name: 'Protium copal', common: 'copal tree', form: 'crown', h: 22, o: { trunkH: 9, trunkR: 0.5, crownR: 6.5, greens: ['#356f31', '#2b5f2b', '#45833a'] } },
+  chico:      { name: 'Manilkara zapota', common: 'chicozapote', form: 'crown', h: 24, o: { trunkH: 7, trunkR: 0.6, crownR: 7.5, greens: ['#234f27', '#2d5f30', '#1f4722'] } },
+  ziricote:   { name: 'Cordia dodecandra', common: 'ziricote', form: 'crown', h: 12, o: { trunkH: 4, trunkR: 0.3, crownR: 4.5, greens: ['#3f7f37', '#4a8c3c', '#356f31'], flower: '#f2731e', share: 0.4 } },
+  pine:       { name: 'Pinus caribaea', common: 'Caribbean pine', form: 'conical', h: 25, o: { trunkH: 14, trunkR: 0.45, rad: 3.8, kind: 'pine', trunkC: '#7a4a32', greens: ['#3a6f3a', '#2f6030', '#4a7f3e'] } },
+  craboo:     { name: 'Byrsonima crassifolia', common: 'craboo', form: 'crown', h: 8, o: { trunkH: 2.5, trunkR: 0.25, crownR: 3.4, greens: ['#4d8a3a', '#5f9c44', '#3f7a33'], flower: '#f2c230', share: 0.35 } },
+  guava:      { name: 'Psidium guajava', common: 'guava', form: 'crown', h: 5, o: { trunkH: 1.6, trunkR: 0.16, crownR: 2.6, trunkC: '#b9a58a', greens: ['#4f9a3c', '#64ad45', '#3f8a35'] } },
+  cassia:     { name: 'Cassia grandis', common: 'pink shower tree', form: 'crown', h: 16, o: { trunkH: 6, trunkR: 0.45, crownR: 7, greens: ['#4a8f3a', '#3f8035', '#5a9c40'], flower: '#f3a3c4', share: 0.7 } },
+  jacaranda:  { name: 'Jacaranda mimosifolia', common: 'jacaranda', form: 'crown', h: 12, o: { trunkH: 4.5, trunkR: 0.32, crownR: 5.2, greens: ['#5a9c4a', '#4f8f44', '#6aa852'], flower: '#8f7bd6', share: 0.8 } },
+  magnolia:   { name: 'Magnolia yoroconte', common: 'yoroconte magnolia', form: 'crown', h: 22, o: { trunkH: 8, trunkR: 0.55, crownR: 6.5, greens: ['#2f6a35', '#3b7a3a', '#285e2d'], flower: '#fbf7e8', share: 0.3 } },
+  havardia:   { name: 'Havardia albicans', common: 'havardia', form: 'crown', h: 7, o: { trunkH: 2.6, trunkR: 0.22, crownR: 3.5, greens: ['#6aa05a', '#79ae63', '#5a914e'], flower: '#f5f0e6', share: 0.35 } },
+};
+const SP_KEYS = Object.keys(SPECIES), SP_SHORT = SP_KEYS.filter((k) => SPECIES[k].h <= 15), isPalmSp = (k) => SPECIES[k].form === 'palm';
+const STREET_PALMS = SP_SHORT.filter(isPalmSp), STREET_TREES = SP_SHORT.filter((k) => !isPalmSp(k));     // only species of 15 m or under line the streets
+const PARK_PALMS = SP_KEYS.filter(isPalmSp), PARK_TREES = SP_KEYS.filter((k) => !isPalmSp(k));          // parks get everything, the giants included
+const WILD_PALMS = ['thatch', 'cherryPalm', 'peachPalm', 'oilPalm'], WILD_TREES = ['guava', 'craboo', 'havardia', 'geiger', 'ziricote', 'jacaranda', 'pacaya'];
+const pickSp = (list, rnd) => list[Math.min(list.length - 1, (rnd() * list.length) | 0)];
+// a broadleaf crown: a trunk and a cluster of leafy lumps sized to the species' height, with a share of the lumps in flower
+function crownGeometry(o, h) {
+  const { trunkH, trunkR, crownR, greens, flower, share = 0, trunkC = '#7a5a3c' } = o, G = greens.map(linear), flat = clamp((h - trunkH) / (1.35 * crownR), 0.45, 1.25), rr = mulberry(h * 37 + crownR * 11);
+  const parts = [colorize(new THREE.CylinderGeometry(trunkR * 0.7, trunkR, trunkH + 0.5, 6).translate(0, trunkH / 2, 0).toNonIndexed(), linear(trunkC))];
+  const lumps = [[0, 0.5, 0, 0.58]]; for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283 + 0.3; lumps.push([Math.cos(a) * 0.55, 0.42 + (k % 2) * 0.08, Math.sin(a) * 0.55, 0.5]); } lumps.push([0.05, 0.95, -0.05, 0.4]);
+  lumps.forEach(([x, y, z, r], i) => { const bloom = flower && rr() < share; parts.push(colorize(new THREE.IcosahedronGeometry(r * crownR, 0).scale(1, flat, 1).translate(x * crownR, trunkH + y * crownR * flat, z * crownR), bloom ? linear(flower).lerp(G[i % G.length], 0.35) : G[i % G.length])); });
+  if (flower && share > 0.5) for (let k = 0; k < 6; k++) { const a = rr() * 6.283, el = 0.1 + rr() * 0.9, rad = crownR * 0.9; parts.push(colorize(new THREE.IcosahedronGeometry(crownR * 0.22, 0).translate(Math.cos(a) * Math.cos(el) * rad, trunkH + crownR * flat * (0.45 + Math.sin(el) * 0.6), Math.sin(a) * Math.cos(el) * rad), linear(flower))); }
+  return mergeGeometries(parts.map(stripUV));
+}
+// a conical tree: stacked lumps tapering to a point (cypress), or a bare trunk with layered flat plates of needles (pine)
+function conicalGeometry(o, h) {
+  const { trunkH, trunkR, rad, kind, greens, trunkC = '#5a4632' } = o, G = greens.map(linear);
+  const parts = [colorize(new THREE.CylinderGeometry(trunkR * 0.6, trunkR, kind === 'pine' ? trunkH + 2 : trunkH, 6).translate(0, (kind === 'pine' ? trunkH + 2 : trunkH) / 2, 0).toNonIndexed(), linear(trunkC))];
+  const levels = kind === 'pine' ? [[0.62, 1.0, 0.45], [0.74, 0.82, 0.45], [0.85, 0.62, 0.45], [0.95, 0.38, 0.55]] : [[0.22, 1.0, 1.5], [0.4, 0.92, 1.6], [0.57, 0.78, 1.5], [0.73, 0.6, 1.4], [0.86, 0.4, 1.3], [0.96, 0.2, 1.0]];
+  levels.forEach(([fy, fr, sy], i) => parts.push(colorize(new THREE.IcosahedronGeometry(rad * fr, 1).scale(1, sy, 1).translate((i % 2 ? 0.15 : -0.1) * rad * 0.3, h * fy, (i % 3 - 1) * rad * 0.08), G[i % G.length])));
+  return mergeGeometries(parts.map(stripUV));
+}
+function speciesGeometry(key) { const sp = SPECIES[key]; return sp.form === 'palm' ? palmGeometry(sp.o) : sp.form === 'crown' ? crownGeometry(sp.o, sp.h) : conicalGeometry(sp.o, sp.h); }
+function speciesProxy(key) {   // the cheap far stand-in: a trunk and one lump of the right size and colour
+  const sp = SPECIES[key], o = sp.o, m = (parts) => mergeGeometries(parts.map(stripUV)), trunk = (r, hh, c) => colorize(new THREE.CylinderGeometry(r * 0.7, r, hh, 4).translate(0, hh / 2, 0).toNonIndexed(), linear(c));
+  if (sp.form === 'palm') return m([trunk(o.trunkR, o.trunkH, o.trunkC || '#7a5a3c'), colorize(new THREE.ConeGeometry(o.L * 0.75, 1.5, 6).translate(o.lean, o.trunkH + 0.4, 0).toNonIndexed(), linear(o.leafA))]);
+  if (sp.form === 'crown') { const flat = clamp((sp.h - o.trunkH) / (1.35 * o.crownR), 0.45, 1.25); return m([trunk(o.trunkR, o.trunkH, o.trunkC || '#6e5238'), colorize(new THREE.IcosahedronGeometry(o.crownR * 0.95, 0).scale(1, flat * 0.9, 1).translate(0, o.trunkH + o.crownR * flat * 0.7, 0).toNonIndexed(), linear(o.greens[0]))]); }
+  return m([trunk(o.trunkR, o.trunkH * 0.9, o.trunkC || '#5a4632'), colorize(new THREE.ConeGeometry(o.rad, sp.h - o.trunkH * 0.5, 5).translate(0, o.trunkH * 0.5 + (sp.h - o.trunkH * 0.5) / 2, 0).toNonIndexed(), linear(o.greens[0]))]);
+}
+function speciesMaterial(key) {
+  const sp = SPECIES[key], palm = sp.form === 'palm', o = sp.o;
+  return windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: !palm, side: palm ? THREE.DoubleSide : THREE.FrontSide }),
+    { hh: `smoothstep(${(sp.h * (palm ? 0.5 : 0.22)).toFixed(1)}, ${(sp.h * 0.92).toFixed(1)}, position.y)`, amp: palm ? 0.22 : sp.form === 'conical' ? 0.07 : 0.1, duck: palm ? 1.6 : (o.crownR || o.rad) * 0.85, duckH: sp.h });
 }
 function stripUV(g) { g.deleteAttribute('uv'); return g; }
 function colorize(g, c) { const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); if (!g.attributes.normal) g.computeVertexNormals(); return g; }
@@ -2880,19 +2945,22 @@ function groveMeshes(items) {   // items: [x, y, z, s, rot, hue] per tree, bucke
 function dropVeg(list) { for (const m of list || []) { scene.remove(m); m.dispose(); world.veg.delete(m); } }
 function treeMeshes(buckets) {
   world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry(), bush: bushGeometry(false), flowerBush: bushGeometry(true) };
+  for (const k of Object.keys(buckets)) if (SPECIES[k] && !world.treeGeos[k]) world.treeGeos[k] = speciesGeometry(k);
   world.treeProxy = world.treeProxy || proxyGeometries();
+  for (const k of Object.keys(buckets)) if (SPECIES[k] && !world.treeProxy[k]) world.treeProxy[k] = speciesProxy(k);
   world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22, duck: 1.6, duckH: 11 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1, duck: 4.0, duckH: 7.5 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16, duck: 1.4, duckH: 2.2 }), far: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
   world.treeMats.flowerBush = world.treeMats.bush;
   world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad; world.treeMats.cypress = world.treeMats.cypress || world.treeMats.broad;
+  for (const k of Object.keys(buckets)) if (SPECIES[k] && !world.treeMats[k]) world.treeMats[k] = speciesMaterial(k);
   world.veg = world.veg || new Set();
   const out = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  for (const kind of ['palm', 'broad', 'canopy', 'cypress', 'bush', 'flowerBush']) for (const [tk, l] of buckets[kind] || []) {
+  for (const kind of Object.keys(buckets)) for (const [tk, l] of buckets[kind] || []) {
     const n = l.length / 6; if (!n) continue;
     const small = kind === 'bush' || kind === 'flowerBush', mesh = new THREE.InstancedMesh(world.treeGeos[kind], world.treeMats[kind], n), far = small ? null : new THREE.InstancedMesh(world.treeProxy[kind], world.treeMats.far, n);
     for (let i = 0; i < n; i++) {
       const [x, y, z, s, rot, hue] = l.slice(i * 6, i * 6 + 6);
       M4.compose(V.set(x, y, z), Q4.setFromAxisAngle(up, rot), Sc.set(s, s * (0.9 + hue * 0.25), s)); mesh.setMatrixAt(i, M4); if (far) far.setMatrixAt(i, M4);
-      if (small) tint.setHSL(0.27 + (hue - 0.5) * 0.06, 0.35, 0.52 + hue * 0.12).lerp(white, kind === 'bush' ? 0.45 : 0.78); else if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
+      if (small) tint.setHSL(0.27 + (hue - 0.5) * 0.06, 0.35, 0.52 + hue * 0.12).lerp(white, kind === 'bush' ? 0.45 : 0.78); else if (SPECIES[kind]) tint.setHSL(0.25 + (hue - 0.5) * 0.05, 0.3, 0.56 + hue * 0.08).lerp(white, 0.65); else if (kind === 'cypress') tint.setHSL(0.3 + (hue - 0.5) * 0.06, 0.3, 0.55 + hue * 0.1).lerp(white, 0.25); else tint.setHSL(0.25 + (hue - 0.5) * 0.08, 0.35, 0.5 + hue * 0.12).lerp(white, 0.55);
       mesh.setColorAt(i, tint); if (far) far.setColorAt(i, tint);
     }
     const cx = (Math.floor(tk / 1000) - TREE_TN / 2 + 0.5) * TREE_TILE, cz = ((tk % 1000) - TREE_TN / 2 + 0.5) * TREE_TILE;
@@ -2927,7 +2995,7 @@ function rebuildParkTrees(onlyTiles) {
   let count = 0;
   for (const tk of tiles) {
     dropVeg(world.parkTrees.get(tk));
-    const buckets = { palm: new Map(), broad: new Map() }, groves = [];
+    const buckets = {}, groves = [];
     for (const f of world.features) {
       if (f.kind !== 'park' || treeTile(f.cx, f.cz) !== tk || f.rings[0].length < 6) continue;
       const s = featureStyle(f), per = { none: 0, sparse: 0.5, normal: 1.5, dense: 3 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5 }[s.treeType];
@@ -2957,7 +3025,7 @@ function rebuildParkTrees(onlyTiles) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
           if (occParkAt(x, z) > 0.5 || hardAt(x, z, 1.4)) continue;
-          const sp = rnd() < palmShare ? 'palm' : rnd() < 0.3 ? 'cypress' : rnd() < 0.3 ? 'canopy' : 'broad'; bucketAdd(buckets, sp, x, z, sp === 'cypress' ? 0.9 + rnd() * 0.5 : sp === 'canopy' ? 0.7 + rnd() * 0.4 : 0.8 + rnd() * 0.5, rnd); count++;
+          const sp = rnd() < palmShare ? pickSp(PARK_PALMS, rnd) : pickSp(PARK_TREES, rnd); bucketAdd(buckets, sp, x, z, 0.85 + rnd() * 0.3, rnd); count++;   // any species, the tall ones included: parks are the only place they grow
         }
         // shrubs and flowering bushes, in loose drifts
         let nb = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 55 * per; nb = Math.floor(nb) + (rnd() < nb % 1 ? 1 : 0);
@@ -2992,7 +3060,7 @@ function narrowWalk(cx, cz, nx, nz, side, hw) {
 // Trees along streets follow each street's style; rebuilt as a whole when one changes
 function rebuildStreetTrees() {
   dropVeg(world.streetTrees);
-  const buckets = { palm: new Map(), broad: new Map(), canopy: new Map() }; let n = 0;
+  const buckets = {}; let n = 0;
   for (const f of world.features) {
     if (f.kind !== 'street') continue;
     const c = featureStyle(f).canopy / 100; if (c < 0.04) continue;
@@ -3010,8 +3078,8 @@ function rebuildStreetTrees() {
           if (roadAt(x, z, 0.6)) continue;                                           // never in a carriageway, whichever street it belongs to
           if (side !== 0 && narrowWalk(cx, cz, nx, nz, side, f.w / 2)) continue;   // no trees on narrow pavements
           const big = rnd() < shade;
-          const scale = big ? Math.max(0.9, Math.min(1.5, f.w / 9)) * (0.9 + rnd() * 0.25) * (0.8 + 0.4 * c) : 0.85 + rnd() * 0.3;
-          bucketAdd(buckets, big ? 'canopy' : 'palm', x, z, scale, rnd); n++;
+          const scale = (0.85 + rnd() * 0.3) * (big ? clamp(f.w / 9, 0.85, 1.15) : 1);
+          bucketAdd(buckets, big ? pickSp(STREET_TREES, rnd) : pickSp(STREET_PALMS, rnd), x, z, scale, rnd); n++;   // street species are all 15 m or under
         }
         next += gap * (0.9 + rnd() * 0.2);
       }
@@ -3041,7 +3109,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
     for (const L of paths) { g.lineWidth = L.w + 1.5; g.stroke(line2d(L.pts)); }
   });
   world.occP = new Uint8Array(occP.length); for (let i = 0; i < occP.length; i++) world.occP[i] = occP[i] * 255;
-  const rnd = mulberry(2024), buckets = { palm: new Map(), broad: new Map() };
+  const rnd = mulberry(2024), buckets = {};
   const parks = rebuildParkTrees();
   // Countryside: forest clumps and scattered palms near the coast
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
@@ -3052,7 +3120,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
     const p = coast ? 0.26 : smooth(0.45, 0.75, forest) * 0.85 + 0.03;
     if (rnd() > p) continue;
-    bucketAdd(buckets, coast || rnd() < 0.25 ? 'palm' : 'broad', px, pz, coast ? 0.9 + rnd() * 0.5 : 1.0 + rnd() * 0.9, rnd); wild++;
+    bucketAdd(buckets, coast || rnd() < 0.25 ? pickSp(WILD_PALMS, rnd) : pickSp(WILD_TREES, rnd), px, pz, 0.9 + rnd() * 0.35, rnd); wild++;   // countryside: the shorter species too
   }
   treeMeshes(buckets);
   return { parks, countryside: wild, streets: rebuildStreetTrees() };
