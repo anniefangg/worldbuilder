@@ -2477,7 +2477,8 @@ const LIFT = 0.25;
 // quay strip beside them that covers the hole left in the terrain mesh (which is too coarse to follow a canal's edge). Pieces that would stand in
 // another canal, or in the sea, are left out, so junctions and mouths stay open.
 function buildCanalWalls(canals) {
-  const geo = new Geo(), STONE = linear('#b9b0a0'), STAIN = linear('#5a6457'), COPING = linear('#dcd4c4'), QUAY = linear('#e4ded2'), QUAY2 = linear('#d9d2c4');
+  const geo = new Geo(), STONE = linear('#b9b0a0'), STAIN = linear('#5a6457'), MOSS = linear('#6a9447'), MOSS_D = linear('#44653a'), COPING = linear('#aea697'), KERB = linear('#b4ac9e'), KERB2 = linear('#aaa294'), QUAY = linear('#e4ded2'), QUAY2 = linear('#d9d2c4'), _ca = new THREE.Color(), _cb = new THREE.Color();
+  const BANDS = [[0.55, 2.6, KERB, KERB2], [2.6, 7.1, QUAY, QUAY2], [7.1, 11.6, QUAY2, QUAY], [11.6, 16.1, QUAY, QUAY2], [16.1, 18, QUAY2, QUAY]];   // the stone nearest the water is darker than the pavement beyond
   const quad = (P, n, cols, uvs) => { const q0 = geo.count; for (let k = 0; k < 4; k++) geo.v(P[k][0], P[k][1], P[k][2], n[0], n[1], n[2], cols[k], uvs[k][0], uvs[k][1]);
     const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
     const cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
@@ -2496,18 +2497,21 @@ function buildCanalWalls(canals) {
           const u0 = L * k / n, u1 = L * (k + 1) / n, x0 = ax + tx * u0, z0 = az + tz * u0, x1 = ax + tx * u1, z1 = az + tz * u1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
           if (open(mx + nx * 0.9, mz + nz * 0.9, c)) { continue; }                     // the bank here is water: no wall
           const t0 = world.landTop(x0, z0) + LIFT, t1 = world.landTop(x1, z1) + LIFT, v0 = (along + u0) / 4, v1 = (along + u1) / 4;
-          // the wall, facing the water, stained toward the waterline
-          quad([[x0, BOT, z0], [x1, BOT, z1], [x1, t1, z1], [x0, t0, z0]], [-nx, 0, -nz], [STAIN, STAIN, STONE, STONE], [[v0, BOT / 4], [v1, BOT / 4], [v1, t1 / 4], [v0, t0 / 4]]);
+          // the wall, facing the water: stained toward the waterline, and mossy in patches up to a height that wanders along the canal
+          const mAmt = smooth(0.22, 0.7, vnoise(mx / 11 + 3.1, mz / 11)), hm = 0.4 + 0.8 * vnoise(mx / 7, mz / 7 + 5.2) + 0.6 * mAmt;
+          const cBot = _ca.copy(STAIN).lerp(MOSS_D, mAmt), cMid = _cb.copy(STONE).lerp(MOSS, mAmt);
+          quad([[x0, BOT, z0], [x1, BOT, z1], [x1, hm, z1], [x0, hm, z0]], [-nx, 0, -nz], [cBot, cBot, cMid, cMid], [[v0, BOT / 4], [v1, BOT / 4], [v1, hm / 4], [v0, hm / 4]]);
+          quad([[x0, hm, z0], [x1, hm, z1], [x1, t1, z1], [x0, t0, z0]], [-nx, 0, -nz], [cMid, cMid, STONE, STONE], [[v0, hm / 4], [v1, hm / 4], [v1, t1 / 4], [v0, t0 / 4]]);
           // coping: a pale slab along the top edge, overhanging the water a little
           const o0 = [x0 - nx * 0.35, z0 - nz * 0.35], o1 = [x1 - nx * 0.35, z1 - nz * 0.35], q0 = [x0 + nx * 0.55, z0 + nz * 0.55], q1 = [x1 + nx * 0.55, z1 + nz * 0.55];
           quad([[o0[0], t0 + 0.1, o0[1]], [o1[0], t1 + 0.1, o1[1]], [q1[0], t1 + 0.1, q1[1]], [q0[0], t0 + 0.1, q0[1]]], [0, 1, 0], [COPING, COPING, COPING, COPING], [[v0, 0], [v1, 0], [v1, 0.25], [v0, 0.25]]);
           quad([[o0[0], t0 - 0.25, o0[1]], [o1[0], t1 - 0.25, o1[1]], [o1[0], t1 + 0.1, o1[1]], [o0[0], t0 + 0.1, o0[1]]], [-nx, 0, -nz], [COPING, COPING, COPING, COPING], [[v0, 0], [v1, 0], [v1, 0.1], [v0, 0.1]]);
           // the quay: flagstones from the coping out over the terrain gap, cells left out where they would cover water
-          for (let w = 0.55; w < QW; w += 4.5) {
-            const w1 = Math.min(QW, w + 4.5), cxm = mx + nx * (w + w1) / 2, czm = mz + nz * (w + w1) / 2;
+          for (const [w, w1, cA, cB] of BANDS) {
+            const cxm = mx + nx * (w + w1) / 2, czm = mz + nz * (w + w1) / 2;
             if (open(cxm, czm, null)) continue;
             const yIn = (ww, x, z) => world.landTop(x, z) + LIFT - 0.03 - (ww / QW) * (LIFT - 0.06);   // eases from quay level down to just above the terrain at the outer edge
-            const a0 = [x0 + nx * w, z0 + nz * w], a1 = [x1 + nx * w, z1 + nz * w], b1 = [x1 + nx * w1, z1 + nz * w1], b0 = [x0 + nx * w1, z0 + nz * w1], col = ((k + Math.round(w)) & 1) ? QUAY : QUAY2;
+            const a0 = [x0 + nx * w, z0 + nz * w], a1 = [x1 + nx * w, z1 + nz * w], b1 = [x1 + nx * w1, z1 + nz * w1], b0 = [x0 + nx * w1, z0 + nz * w1], col = (k & 1) ? cA : cB;
             quad([[a0[0], yIn(w, ...a0), a0[1]], [a1[0], yIn(w, ...a1), a1[1]], [b1[0], yIn(w1, ...b1), b1[1]], [b0[0], yIn(w1, ...b0), b0[1]]], [0, 1, 0], [col, col, col, col], [[a0[0] / 4, a0[1] / 4], [a1[0] / 4, a1[1] / 4], [b1[0] / 4, b1[1] / 4], [b0[0] / 4, b0[1] / 4]]);
           }
         }
@@ -3223,6 +3227,8 @@ function furnitureGeometries() {
   // Mediterranean cast-iron lamp post with a lantern head
   G.lamp = merge([cyl(0.2, 0.14, 0.55, iron, 0), cyl(0.075, 0.055, 3.45, iron, 0.55, 6), cyl(0.12, 0.12, 0.1, iron, 4.0), cyl(0.09, 0.09, 0.05, iron, 4.6), P(new THREE.ConeGeometry(0.3, 0.3, 6), iron, 0, 4.78, 0), cyl(0.035, 0.035, 0.2, iron, 4.92, 4)]);
   G.lampGlass = merge([cyl(0.13, 0.22, 0.52, linear('#fff1cf'), 4.1, 6)]);
+  const g1 = linear('#4e8a3e'), g2 = linear('#3f7a35'), g3 = linear('#5e9c49');   // a low clipped shrub: a few leafy lumps
+  G.shrub = merge([blob(0.5, g1, 0, 0.45, 0, 0.8), blob(0.38, g2, 0.36, 0.4, 0.2, 0.85), blob(0.36, g1, -0.33, 0.38, -0.16, 0.8), blob(0.3, g3, 0.06, 0.64, -0.26, 0.9), blob(0.26, g3, -0.1, 0.62, 0.3, 0.9)]);
   G.bench = merge([...[-0.17, 0, 0.17].map((z) => box(1.8, 0.05, 0.13, wood, 0, 0.46, z)), box(1.8, 0.12, 0.05, woodD, 0, 0.7, -0.27), box(1.8, 0.12, 0.05, woodD, 0, 0.88, -0.29),
     ...[-0.75, 0.75].flatMap((x) => [box(0.06, 0.46, 0.5, iron, x, 0.23, 0), box(0.06, 0.6, 0.05, iron, x, 0.72, -0.28)])]);
   G.bin = merge([cyl(0.21, 0.25, 0.82, green, 0, 10), cyl(0.27, 0.27, 0.06, iron, 0.82, 10), cyl(0.05, 0.05, 0.1, iron, 0.88, 6)]);
@@ -3306,7 +3312,12 @@ function addStreetFurniture() {
       for (const sd of [1, -1]) walk(f.pts, 2.4, 1.2, (x, z, nx, nz, dx, dz) => {
         let d = f.w / 2 + 0.6; while (d < f.w / 2 + 7 && H(x + nx * d * sd, z + nz * d * sd) < 0.7) d += 0.4;
         const rx = x + nx * (d + 0.3) * sd, rz = z + nz * (d + 0.3) * sd;
-        if (d < f.w / 2 + 7 && buildingAt(rx, rz) < 0 && bridgeAt(rx, rz) === -Infinity) put('rail', rx, rz, Math.atan2(dx, dz) + Math.PI / 2, 1, H(rx, rz) + LIFT - 0.05);
+        if (d < f.w / 2 + 7 && buildingAt(rx, rz) < 0 && bridgeAt(rx, rz) === -Infinity) {
+          put('rail', rx, rz, Math.atan2(dx, dz) + Math.PI / 2, 1, H(rx, rz) + LIFT - 0.05);
+          // shrubs in runs along the railing, on the pavement side, where nothing else stands
+          const sx = x + nx * (d + 1.35) * sd, sz = z + nz * (d + 1.35) * sd;
+          if (rnd() < 0.42 && clear(sx, sz, 0.5)) { claim(sx, sz); put('shrub', sx + (rnd() - 0.5) * 0.3, sz + (rnd() - 0.5) * 0.3, rnd() * 6.28, 0.75 + rnd() * 0.55); }
+        }
       });
     } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]];
@@ -5933,6 +5944,7 @@ function initBoats() {
       }
     } }
   boats.sort((a, b) => a.pri - b.pri); const N = boats.length;
+  addLilies(boats);
   const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n)); m.frustumCulled = false; m.renderOrder = 6; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
   const body = mk(G.body, matBody, N); body.castShadow = true; body.receiveShadow = true;
   const win = mk(winGeo, matWin, N), frame = mk(frameGeo, matDet, N);
@@ -5956,6 +5968,36 @@ function initBoats() {
   const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const pts = new THREE.Points(pg, new THREE.PointsMaterial({ map: tex, size: 2.4, sizeAttenuation: true, transparent: true, opacity: 0.26, depthWrite: false, color: '#dcd6cc' })); pts.frustumCulled = false; pts.renderOrder = 12; scene.add(pts);
   world.boats = { list: boats, body, win, frame, dets, upBody, upTrim, upWin, winMat: matWin, pts, pos, smokeN: sm.length, _m: new THREE.Matrix4(), _q: new THREE.Quaternion(), _e: new THREE.Euler(), _p: new THREE.Vector3(), _s: new THREE.Vector3(), _zero: new THREE.Matrix4().makeScale(0, 0, 0) };
+}
+// rare clusters of water lilies against the canal walls: flat green pads, a few with a pink or white flower
+function addLilies(boats) {
+  if (world.lilies) { scene.remove(world.lilies); world.lilies.geometry.dispose(); }
+  const parts = [], rnd = mulberry(4242), Y = 0.24, pad = new THREE.CircleGeometry(1, 9).rotateX(-Math.PI / 2), flower = new THREE.ConeGeometry(1, 1, 5), PADS = ['#4f8a3f', '#5a9446', '#46803a', '#63a04f'].map(linear), BLOOM = ['#f3b8d0', '#fff2f0', '#f6a6c3'].map(linear);
+  const near = (x, z, r) => boats.some((b) => !b.inlet && Math.hypot(b.x - x, b.z - z) < r);
+  let clusters = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'canal' || f.w < 6) continue;
+    const others = world.features.filter((g) => g.kind === 'canal' && g !== f), P = f.pts;
+    for (let i = 0; i < P.length - 2; i += 2) {
+      const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, L = Math.hypot(dx, dz); if (L < 12) continue;
+      const tx = dx / L, tz = dz / L, nx = -tz, nz = tx;
+      for (let u = 8; u < L - 8; u += 6) {
+        if (rnd() > 0.055) continue;                                                  // rare
+        const sd = rnd() < 0.5 ? 1 : -1, off = f.w / 2 - 2.0, cx = ax + tx * u + nx * off * sd, cz = az + tz * u + nz * off * sd;
+        if (bridgeAt(cx, cz) !== -Infinity || bridgeAt(cx + tx * 6, cz + tz * 6) !== -Infinity || bridgeAt(cx - tx * 6, cz - tz * 6) !== -Infinity) continue;   // not under a bridge
+        if (near(cx, cz, 11.5) || others.some((g) => cx > g.bbox[0] - 12 && cx < g.bbox[2] + 12 && cz > g.bbox[1] - 12 && cz < g.bbox[3] + 12 && distToLine(g.pts, cx, cz) < g.w / 2 + 8)) continue;
+        const n = 4 + ((rnd() * 6) | 0); clusters++;
+        for (let k = 0; k < n; k++) {
+          const a = rnd() * 6.28, d = rnd() * 2.2, px = cx + Math.cos(a) * d, pz = cz + Math.sin(a) * d * 0.8, r = 0.26 + rnd() * 0.2;
+          const g = colorize(pad.clone().scale(r, 1, r).rotateY(rnd() * 6.28).translate(px, Y + rnd() * 0.02, pz), PADS[(rnd() * PADS.length) | 0]); parts.push(g);
+          if (rnd() < 0.28) parts.push(colorize(flower.clone().scale(0.11, 0.16, 0.11).translate(px, Y + 0.1, pz), BLOOM[(rnd() * BLOOM.length) | 0]));
+        }
+      }
+    }
+  }
+  if (!parts.length) return;
+  const m = new THREE.Mesh(mergeGeometries(parts.map((g) => stripUV(g.index ? g.toNonIndexed() : g))), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  m.renderOrder = 7; m.frustumCulled = false; scene.add(m); world.lilies = m; world.lilyClusters = clusters;
 }
 function stepBoats(dt, t) {
   if (world.boats === undefined) { try { initBoats(); } catch (e) { console.warn('boats failed', e); world.boats = null; } }
