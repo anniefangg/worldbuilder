@@ -2172,19 +2172,28 @@ function buildingDepthMaterial() {
 
 // ─────────────────────────── wind: swaying grass, shrubs and trees ───────────────────────────
 const WIND = { value: 0 };
+// trees between the camera and the character duck into the ground so the view of him stays clear (walk and fly modes)
+const DUCK = { a: { value: new THREE.Vector3() }, b: { value: new THREE.Vector3() }, on: { value: 0 } };
 // Adds a wind sway to a lit, instanced material. `hh` is a GLSL expression (0 at the roots → 1 at the tips); `amp` scales the push; `fade` shrinks far blades into the ground.
-function windPatch(mat, { hh, amp = 1, fade = null }) {
-  mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${!!fade}`;   // each patch compiles its own program
+function windPatch(mat, { hh, amp = 1, fade = null, duck = 0, duckH = 8 }) {   // duck: how close (m) a tree's root must be to the camera→character line to get out of the way (0 = never); duckH: its height, above which the line passes clear
+  mat.customProgramCacheKey = () => `wind|${hh}|${amp}|${!!fade}|${duck}|${duckH}`;   // each patch compiles its own program
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uWind = WIND; if (fade) sh.uniforms.uFade = fade;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;' + (fade ? '\nuniform vec2 uFade;' : ''))
+    sh.uniforms.uWind = WIND; if (fade) sh.uniforms.uFade = fade; if (duck) { sh.uniforms.uDuckA = DUCK.a; sh.uniforms.uDuckB = DUCK.b; sh.uniforms.uDuck = DUCK.on; }
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWind;' + (fade ? '\nuniform vec2 uFade;' : '') + (duck ? '\nuniform vec3 uDuckA, uDuckB; uniform float uDuck;' : ''))
       .replace('#include <project_vertex>', `
-        vec4 mvPosition = vec4(transformed, 1.0);
-        float isc = 1.0;
         vec4 rootW = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         #ifdef USE_INSTANCING
-          mvPosition = instanceMatrix * mvPosition; isc = length(instanceMatrix[1].xyz);
           rootW = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        #endif
+        ${duck ? `{ // in the way of the camera's view of the character: shrink into the ground
+          vec2 ab = (uDuckB - uDuckA).xz; float l2 = max(dot(ab, ab), 1e-3), tt = clamp(dot(rootW.xz - uDuckA.xz, ab) / l2, 0.0, 1.0);   // nearest point on the line, on the ground plane
+          vec2 cp = uDuckA.xz + ab * tt; float dd = distance(rootW.xz, cp), hAbove = uDuckA.y + (uDuckB.y - uDuckA.y) * tt - rootW.y;   // how high the line passes over this root
+          float k = uDuck * (1.0 - smoothstep(${(duck * 0.55).toFixed(2)}, ${duck.toFixed(2)}, dd)) * smoothstep(0.0, 0.06, tt) * (1.0 - smoothstep(0.86, 1.0, tt)) * (1.0 - smoothstep(${duckH.toFixed(1)}, ${(duckH * 1.3).toFixed(1)}, hAbove));
+          transformed *= 1.0 - 0.97 * k; }` : ''}
+        vec4 mvPosition = vec4(transformed, 1.0);
+        float isc = 1.0;
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition; isc = length(instanceMatrix[1].xyz);
         #endif
         vec4 wpos = modelMatrix * mvPosition;
         float hh = ${hh};
@@ -2784,7 +2793,7 @@ function dropVeg(list) { for (const m of list || []) { scene.remove(m); m.dispos
 function treeMeshes(buckets) {
   world.treeGeos = world.treeGeos || { palm: palmGeometry(), broad: broadleafGeometry(), canopy: canopyGeometry(), cypress: cypressGeometry(), bush: bushGeometry(false), flowerBush: bushGeometry(true) };
   world.treeProxy = world.treeProxy || proxyGeometries();
-  world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16 }), far: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
+  world.treeMats = world.treeMats || { palm: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { hh: 'smoothstep(5.5, 10.5, position.y)', amp: 0.22, duck: 1.6, duckH: 11 }), broad: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(1.8, 6.5, position.y)', amp: 0.1, duck: 4.0, duckH: 7.5 }), bush: windPatch(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { hh: 'smoothstep(0.1, 1.1, position.y)', amp: 0.16, duck: 1.4, duckH: 2.2 }), far: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }) };
   world.treeMats.flowerBush = world.treeMats.bush;
   world.treeMats.canopy = world.treeMats.canopy || world.treeMats.broad; world.treeMats.cypress = world.treeMats.cypress || world.treeMats.broad;
   world.veg = world.veg || new Set();
@@ -6029,6 +6038,7 @@ function update(dt, t) {
   scene.fog.near = (1800 + alt * 3) * W0.nearK * br; scene.fog.far = (24000 + alt * 6) * W0.fogK * br;
   stepWeather(dt, t); stepBoats(dt, t);
   WIND.value = t;
+  DUCK.on.value = player.mode === 'walk' || player.mode === 'fly' ? 1 : 0; DUCK.a.value.set(player.pos.x, player.pos.y + 1.2, player.pos.z); DUCK.b.value.copy(camera.position);
   updateGrass(dt);
   updateCull(dt);
   updateFurniture();
