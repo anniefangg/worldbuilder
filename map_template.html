@@ -3842,7 +3842,9 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
     // already flying forward when the climb starts: no raised arm; he tilts his body up along the climb instead (climbF)
     const fwd = smooth(4, 12, hv) * (1 - bk);
     P.climbF = (P.climbF || 0) + ((climbing ? fwd : 0) - (P.climbF || 0)) * (1 - Math.exp(-dt * 3));
-    const upT = (climbing && fwd < 0.5) || (P.launch > 0 && hv < 4) ? 1 : 0;
+    const upT = climbing && fwd < 0.5 ? 1 : 0;   // the full overhead arm is only for a climb from a hover
+    // taking off (the first ~0.9 s after entering fly mode): both arms raised halfway, out to the sides; a climb started in that window takes over at once
+    const launchT = P.launch > 0 && !climbing && hv < 4 ? 1 : 0; P.launchK = (P.launchK || 0) + (launchT - (P.launchK || 0)) * (1 - Math.exp(-dt * (launchT ? 6 : 4)));
     // descending: tip forward and down into the drop (more when already moving forward); turning: bank into the turn like a bird
     P.dive = (P.dive || 0) + ((diving && !climbing ? 0.22 + 0.4 * fwd : 0) - (P.dive || 0)) * (1 - Math.exp(-dt * 3));
     P.bank = (P.bank || 0) + (-turning * (0.16 + 0.34 * fwd) - (P.bank || 0)) * (1 - Math.exp(-dt * 3.5)); const om = upT ? 4.6 : 4.2; P.up = P.up || 0; P.upV = P.upV || 0; P.upV += (om * om * (upT - P.up) - 2 * om * P.upV) * Math.min(dt, 0.05); P.up = clamp(P.up + P.upV * Math.min(dt, 0.05), 0, 1);   // a critically damped spring on the climb key itself: eases in and out, rising over ~0.8 s and lowering over ~1 s from the moment the climb stops
@@ -3853,6 +3855,7 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide, climbing = fals
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, sweep = _ikA2.set(side * (0.2 + 0.1 * P.lean + 0.1 * bkSpd), -0.42 + P.lean * 0.18, -0.12 - P.lean * 0.34 + 0.3 * bkSpd + flutter * 0.03), idle = _ikB2.set(side * 0.1, -0.5, -0.025);
       sweep.lerp(idle, P.clasp); _pole.set(side * 0.6, -0.4, -0.7);
+      if (P.launchK > 0.001) { sweep.lerp(_ikD2.set(side * 0.44, 0.02, -0.08), P.launchK); _pole.lerp(_ikC2.set(side * 0.5, -0.3, -0.8), P.launchK); }   // take-off: both arms out and halfway up
       if (i === 0 && P.up > 0.001) { sweep.lerp(_ikC2.set(side * 0.1, 0.5, 0.05), P.up); _pole.lerp(_ikB2.set(side * 0.3, 0, -1), P.up); }   // his right arm (arms[0], on his -x side) raised overhead
       solveArm(arm, sweep, _pole, u.A1, u.A2, 0.5); arm.hand.rotation.set(0, 0, 0);
     });
