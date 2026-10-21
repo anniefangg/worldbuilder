@@ -1029,7 +1029,7 @@ function groundTexture(kind) {
 // ─────────────────────────── world state ───────────────────────────
 const world = { buildings: [], bGrid: new Map(), GRID: 24 };
 const gkey = (ix, iz) => ix * 65536 + iz;
-let H = () => 0, sMask = () => 0;
+let H = () => 0, sMask = () => 0, canalIn = () => -1e9;
 
 async function buildWorld() {
   await progress('Reading map data', 4);
@@ -1043,11 +1043,9 @@ async function buildWorld() {
   // ---- rasters: coastline mask, depth, hills, beaches, occupancy
   await progress('Shaping the coastline', 10);
   const N = 2048;
-  const maskRaw = raster(N, (g) => {
-    g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd');
-    g.fillStyle = '#000'; for (const p of water) g.fill(path2d(p), 'evenodd');
-    g.strokeStyle = '#000'; for (const c of canals) { g.lineWidth = c.w + 6; g.stroke(line2d(c.pts)); }
-  });
+  const coast = (g) => { g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd'); g.fillStyle = '#000'; for (const p of water) g.fill(path2d(p), 'evenodd'); };
+  const maskRaw = raster(N, (g) => { coast(g); g.strokeStyle = '#000'; for (const c of canals) { g.lineWidth = c.w + 6; g.stroke(line2d(c.pts)); } });   // with the canals: what the water shader sees
+  const maskNoCanal = blur(raster(N, coast), N, 1, 2);                                                                                                  // without them: the land stays at full height right up to the canal walls
   const maskS = blur(maskRaw, N, 1, 2), maskL = blur(maskRaw.slice(), N, 24, 3);
   const deepR = blur(raster(512, (g) => { g.fillStyle = '#fff'; for (const p of deep) g.fill(path2d(p), 'evenodd'); }), 512, 10, 2);
   const elevR = blur(raster(1024, (g) => {
@@ -1057,12 +1055,24 @@ async function buildWorld() {
   // built-up density: courtyards and back lots between buildings read as paved patios, not lawns
   const urbanR = blur(raster(N, (g) => { g.fillStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); }), N, 3, 2);
   const sUrban = sampler(urbanR, N);
-  const sS = sampler(maskS, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sElev = sampler(elevR, 1024), sBeach = sampler(beachR, N);
-  sMask = sS;
+  const sS = sampler(maskS, N), sSL = sampler(maskNoCanal, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sElev = sampler(elevR, 1024), sBeach = sampler(beachR, N);
+  sMask = sSL;
   const hillM = (x, z) => sElev(x, z) * (255 / 100) * 9;        // level 1 ≈ 9 m, level 2 ≈ 18 m
   // the seabed shelves up to ~1.5 m at the waterline, so waves feel the bottom and break on the beach
   const seaDepth = (x, z) => 3 * (1 - sS(x, z)) + 17 * Math.pow(Math.max(0, (0.5 - sL(x, z)) * 2), 1.3) + 14 * sDeep(x, z);
-  H = (x, z) => { const l = smooth(0.32, 0.6, sS(x, z)), d = seaDepth(x, z); return -d + (d + LAND_Y + hillM(x, z)) * l; };
+  // canals are straight-sided trenches: the land keeps its full height to the wall, the water inside sits at -2.2 m (`canalIn`: metres inside the nearest canal, negative outside)
+  const CGRID = 48, cIdx = new Map(), ckey = (i, j) => (i + 5000) * 100000 + (j + 5000);
+  for (const c of canals) { const P = c.pts, hw = c.w / 2; for (let i = 0; i < P.length - 2; i += 2) {
+    const sg = { ax: P[i], az: P[i + 1], bx: P[i + 2], bz: P[i + 3], hw, c };
+    for (let ci = Math.floor((Math.min(sg.ax, sg.bx) - hw - 1) / CGRID); ci <= Math.floor((Math.max(sg.ax, sg.bx) + hw + 1) / CGRID); ci++) for (let cj = Math.floor((Math.min(sg.az, sg.bz) - hw - 1) / CGRID); cj <= Math.floor((Math.max(sg.az, sg.bz) + hw + 1) / CGRID); cj++) { const k = ckey(ci, cj); let l = cIdx.get(k); if (!l) cIdx.set(k, l = []); l.push(sg); }
+  } }
+  canalIn = (x, z, except = null) => {
+    const l = cIdx.get(ckey(Math.floor(x / CGRID), Math.floor(z / CGRID))); if (!l) return -1e9; let best = -1e9;
+    for (const sg of l) { if (sg.c === except) continue; const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, L2 = dx * dx + dz * dz || 1, t = clamp(((x - sg.ax) * dx + (z - sg.az) * dz) / L2, 0, 1); best = Math.max(best, sg.hw - Math.hypot(x - sg.ax - dx * t, z - sg.az - dz * t)); }
+    return best;
+  };
+  H = (x, z) => { const l = smooth(0.32, 0.6, sSL(x, z)), d = seaDepth(x, z), h = -d + (d + LAND_Y + hillM(x, z)) * l; return canalIn(x, z) > 0 ? Math.min(h, -2.2) : h; };
+  world.landTop = (x, z) => LAND_Y + hillM(x, z);   // the land's own height (quay level) beside a canal
 
   // ---- water
   await progress('Filling the sea', 18);
@@ -1178,19 +1188,21 @@ async function buildWorld() {
       tmp.lerp(forest, smooth(0.55, 0.8, vnoise(x / 700 + 9, z / 700 - 3)) * 0.6);
       tmp.lerp(hillC, smooth(4, 16, hillM(x, z)) * 0.35);
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
-      const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sS(x, z)));
+      const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sSL(x, z)));
       tmp.lerp(sand, clamp(shore * 1.2, 0, 1));
       if (h < 0.15) tmp.copy(wet);
       col[k * 3] = tmp.r; col[k * 3 + 1] = tmp.g; col[k * 3 + 2] = tmp.b;
     }
     const idx = new Uint32Array((nx - 1) * (nz - 1) * 6); let q = 0;
+    const nearCanal = new Uint8Array(nx * nz); for (let k = 0; k < nx * nz; k++) nearCanal[k] = canalIn(pos[k * 3], pos[k * 3 + 2]) > -1.5 ? 1 : 0;   // a triangle touching a canal is left out: the stone quay covers the gap
     for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-      idx[q++] = a; idx[q++] = c; idx[q++] = b; idx[q++] = b; idx[q++] = c; idx[q++] = d;
+      if (!(nearCanal[a] || nearCanal[c] || nearCanal[b])) { idx[q++] = a; idx[q++] = c; idx[q++] = b; }
+      if (!(nearCanal[b] || nearCanal[c] || nearCanal[d])) { idx[q++] = b; idx[q++] = c; idx[q++] = d; }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx.subarray(0, q), 1)); g.computeVertexNormals();
     const terrain = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: groundTexture('grass').map }));
     terrain.receiveShadow = true; scene.add(terrain);
   }
@@ -1198,6 +1210,7 @@ async function buildWorld() {
   // ---- ground: plazas, parks, streets and paths, each feature styled on its own
   await progress('Paving streets and plazas', 36);
   world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves') };
+  buildCanalWalls(canals);
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
   overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r, color: '#7d8083' })), 4), world.tex.setts, 3);
@@ -2460,6 +2473,59 @@ const CANOPY_WORDS = [[1, 'No trees'], [25, 'A few palms'], [45, 'Palm-lined'], 
 const canopyWord = (c) => CANOPY_WORDS.find(([m]) => c < m)[1];
 const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass' };
 const LIFT = 0.25;
+// ---- canals: straight stone-walled trenches. Vertical walls from below the water up to quay level with a pale coping along the edge, and a flagstone
+// quay strip beside them that covers the hole left in the terrain mesh (which is too coarse to follow a canal's edge). Pieces that would stand in
+// another canal, or in the sea, are left out, so junctions and mouths stay open.
+function buildCanalWalls(canals) {
+  const geo = new Geo(), STONE = linear('#b9b0a0'), STAIN = linear('#5a6457'), COPING = linear('#dcd4c4'), QUAY = linear('#e4ded2'), QUAY2 = linear('#d9d2c4');
+  const quad = (P, n, cols, uvs) => { const q0 = geo.count; for (let k = 0; k < 4; k++) geo.v(P[k][0], P[k][1], P[k][2], n[0], n[1], n[2], cols[k], uvs[k][0], uvs[k][1]);
+    const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
+    const cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cx * n[0] + cy * n[1] + cz * n[2] >= 0) geo.i.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3); else geo.i.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2); };
+  const PIECE = 3, QW = 18, BOT = -1.4, open = (x, z, c) => canalIn(x, z, c) > -0.2 || world.landTop(x, z) + 0.0 < 0.3 || sMask(x, z) < 0.55;   // another canal, or the sea
+  for (const c of canals) {
+    const P = c.pts, hw = c.w / 2;
+    for (const sd of [1, -1]) {
+      const E = shiftLine(P, hw, sd);                     // the wall line
+      let along = 0;
+      for (let i = 0; i < E.length - 2; i += 2) {
+        const ax = E[i], az = E[i + 1], bx = E[i + 2], bz = E[i + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+        const tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz * sd, nz = tx * sd;   // n: away from the water
+        const n = Math.max(1, Math.ceil(L / PIECE));
+        for (let k = 0; k < n; k++) {
+          const u0 = L * k / n, u1 = L * (k + 1) / n, x0 = ax + tx * u0, z0 = az + tz * u0, x1 = ax + tx * u1, z1 = az + tz * u1, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+          if (open(mx + nx * 0.9, mz + nz * 0.9, c)) { continue; }                     // the bank here is water: no wall
+          const t0 = world.landTop(x0, z0) + LIFT, t1 = world.landTop(x1, z1) + LIFT, v0 = (along + u0) / 4, v1 = (along + u1) / 4;
+          // the wall, facing the water, stained toward the waterline
+          quad([[x0, BOT, z0], [x1, BOT, z1], [x1, t1, z1], [x0, t0, z0]], [-nx, 0, -nz], [STAIN, STAIN, STONE, STONE], [[v0, BOT / 4], [v1, BOT / 4], [v1, t1 / 4], [v0, t0 / 4]]);
+          // coping: a pale slab along the top edge, overhanging the water a little
+          const o0 = [x0 - nx * 0.35, z0 - nz * 0.35], o1 = [x1 - nx * 0.35, z1 - nz * 0.35], q0 = [x0 + nx * 0.55, z0 + nz * 0.55], q1 = [x1 + nx * 0.55, z1 + nz * 0.55];
+          quad([[o0[0], t0 + 0.1, o0[1]], [o1[0], t1 + 0.1, o1[1]], [q1[0], t1 + 0.1, q1[1]], [q0[0], t0 + 0.1, q0[1]]], [0, 1, 0], [COPING, COPING, COPING, COPING], [[v0, 0], [v1, 0], [v1, 0.25], [v0, 0.25]]);
+          quad([[o0[0], t0 - 0.25, o0[1]], [o1[0], t1 - 0.25, o1[1]], [o1[0], t1 + 0.1, o1[1]], [o0[0], t0 + 0.1, o0[1]]], [-nx, 0, -nz], [COPING, COPING, COPING, COPING], [[v0, 0], [v1, 0], [v1, 0.1], [v0, 0.1]]);
+          // the quay: flagstones from the coping out over the terrain gap, cells left out where they would cover water
+          for (let w = 0.55; w < QW; w += 4.5) {
+            const w1 = Math.min(QW, w + 4.5), cxm = mx + nx * (w + w1) / 2, czm = mz + nz * (w + w1) / 2;
+            if (open(cxm, czm, null)) continue;
+            const yIn = (ww, x, z) => world.landTop(x, z) + LIFT - 0.03 - (ww / QW) * (LIFT - 0.06);   // eases from quay level down to just above the terrain at the outer edge
+            const a0 = [x0 + nx * w, z0 + nz * w], a1 = [x1 + nx * w, z1 + nz * w], b1 = [x1 + nx * w1, z1 + nz * w1], b0 = [x0 + nx * w1, z0 + nz * w1], col = ((k + Math.round(w)) & 1) ? QUAY : QUAY2;
+            quad([[a0[0], yIn(w, ...a0), a0[1]], [a1[0], yIn(w, ...a1), a1[1]], [b1[0], yIn(w1, ...b1), b1[1]], [b0[0], yIn(w1, ...b0), b0[1]]], [0, 1, 0], [col, col, col, col], [[a0[0] / 4, a0[1] / 4], [a1[0] / 4, a1[1] / 4], [b1[0] / 4, b1[1] / 4], [b0[0] / 4, b0[1] / 4]]);
+          }
+        }
+        along += L;
+      }
+    }
+    // a dead end gets a wall across it
+    for (const end of [0, 1]) {
+      const i = end ? P.length - 2 : 0, j = end ? P.length - 4 : 2, x = P[i], z = P[i + 1], dx = P[i] - P[j], dz = P[i + 1] - P[j + 1], L = Math.hypot(dx, dz) || 1, ex = dx / L, ez = dz / L;
+      if (open(x + ex * 1.5, z + ez * 1.5, c)) continue;
+      const lx = -ez, lz = ex, t = world.landTop(x, z) + LIFT, A = [x + lx * hw, z + lz * hw], B = [x - lx * hw, z - lz * hw];
+      quad([[A[0], BOT, A[1]], [B[0], BOT, B[1]], [B[0], t, B[1]], [A[0], t, A[1]]], [-ex, 0, -ez], [STAIN, STAIN, STONE, STONE], [[0, BOT / 4], [c.w / 4, BOT / 4], [c.w / 4, t / 4], [0, t / 4]]);
+      quad([[A[0] - ex * 0.35, t + 0.1, A[1] - ez * 0.35], [B[0] - ex * 0.35, t + 0.1, B[1] - ez * 0.35], [B[0] + ex * 0.55, t + 0.1, B[1] + ez * 0.55], [A[0] + ex * 0.55, t + 0.1, A[1] + ez * 0.55]], [0, 1, 0], [COPING, COPING, COPING, COPING], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    }
+  }
+  const tex = world.tex.setts, m = new THREE.Mesh(geo.build(), new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.0 }));
+  m.receiveShadow = true; m.castShadow = true; m.renderOrder = 3; scene.add(m); world.canalWalls = m;
+}
 function polyOverlay(items, uvScale) {
   const geo = new Geo(), c = new THREE.Color();
   for (const { rings, color } of items) {
