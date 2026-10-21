@@ -6108,7 +6108,7 @@ function update(dt, t) {
       player.pos.addScaledVector(player.vel, dt);
       const g = Math.max(groundAt(player.pos.x, player.pos.z, player.pos.y), 0);
       if (player.pos.y < g + 0.5) { player.pos.y = g + 0.5; player.vel.y = Math.max(0, player.vel.y); }
-      player.pos.y = Math.min(player.pos.y, 3500);
+      player.pos.y = Math.min(player.pos.y, 5000);   // the flight ceiling
     }
     const hv = Math.hypot(player.vel.x, player.vel.z);
     // animate the character
