@@ -5757,9 +5757,12 @@ function update(dt, t) {
       const speed = fast ? 140 * (1 + 5 * Math.pow(Math.min(player.boostT / 9, 1), 1.6)) : 32;
       _desired.copy(_move).multiplyScalar(speed * mag);
       const up = k(' ', 'e') || pad.up, down = (k('q', 'c') || pad.down) && !up;
-      player.descT = clamp((player.descT || 0) + (down ? dt / 1.8 : -dt / 0.5), 0, 1);   // a descent builds up over ~2 s rather than dropping at once
-      _desired.y = up ? speed * 0.7 : down ? -speed * 0.45 * player.descT * player.descT : 0;
-      player.vel.lerp(_desired, 1 - Math.exp(-dt * 2.5));
+      // climbs and descents ramp up linearly over a second or so: moving from the first frame, but never a jolt; they ramp back down on release
+      player.climbT = clamp((player.climbT || 0) + (up ? dt / 1.3 : -dt / 0.5), 0, 1);
+      player.descT = clamp((player.descT || 0) + (down ? dt / 1.5 : -dt / 0.5), 0, 1);
+      _desired.y = speed * 0.55 * player.climbT - speed * 0.45 * player.descT;
+      const kxz = 1 - Math.exp(-dt * 2.5), ky = 1 - Math.exp(-dt * 6);   // the vertical follows its (already smooth) target quickly, so there is no lag before a climb or descent starts
+      player.vel.x += (_desired.x - player.vel.x) * kxz; player.vel.z += (_desired.z - player.vel.z) * kxz; player.vel.y += (_desired.y - player.vel.y) * ky;
       player.vy = lerp(player.vy, 0, 1 - Math.exp(-dt * 2)); player.vel.y += player.vy * dt * 2;
       player.pos.addScaledVector(player.vel, dt);
       const g = Math.max(groundAt(player.pos.x, player.pos.z, player.pos.y), 0);
