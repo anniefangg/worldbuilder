@@ -3623,10 +3623,10 @@ function poseCharacter(u, { mode, hv, dt, t, phase, vFwd, vSide }) {
     u.arms.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1, sw = Math.cos(phase + (i === 1 ? Math.PI : 0)) * w * (1 - 0.55 * bk);
       const walkT = _ikA2.set(side * 0.1, -0.5, -0.025 + sw * 0.075);
-      // running: forward/back from the shoulder with the elbow held near a right angle, hands travelling from the hip to chest height and drifting slightly in front
-      const th = -0.2 + 0.62 * sw, el = 1.5 + 0.3 * Math.max(sw, 0), ux = side * 0.07;   // upper-arm angle from vertical (forward +), elbow bend
+      // running: forward/back from the shoulder with the elbow held near a right angle, swinging around a point a little behind the shoulder so the hands stay at his sides
+      const th = -0.45 + 0.4 * sw, el = 1.45 + 0.1 * Math.max(sw, 0), ux = side * 0.1;   // upper-arm angle from vertical (forward +), elbow bend
       const ex = ux * u.A1, ey = -Math.cos(th) * u.A1, ez = Math.sin(th) * u.A1;
-      const runT = _ikB2.set(ex - side * 0.03 * Math.max(sw, 0), ey - Math.cos(th + el) * u.A2, ez + Math.sin(th + el) * u.A2);
+      const runT = _ikB2.set(ex, ey - Math.cos(th + el) * u.A2, ez + Math.sin(th + el) * u.A2);
       const elbowDir = _ikC2.set(ex, ey, ez);
       walkT.lerp(runT, P.run);
       solveArm(arm, walkT, _pole.set(side * 0.25, -0.2, -1).lerp(elbowDir.normalize(), P.run), u.A1, u.A2, 0.6);
