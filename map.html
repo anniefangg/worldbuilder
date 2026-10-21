@@ -1773,7 +1773,7 @@ function initBuildingState() {
 }
 function animOf(idx) { let a = anim.get(idx); if (!a) anim.set(idx, a = { sink: 0, hover: 0, sel: 0, mark: 0, wantSink: 0, lastFlag: -1, wantHover: 0, wantSel: 0, wantMark: 0 }); return a; }
 function stepAnim(dt, t) {
-  if (!anim.size) return;
+  if (!anim.size) { if (ghosts.size) stepGhosts(); return; }
   const d = world.stateData; let changed = false;
   for (const [idx, a] of anim) {
     const sinkTarget = a.wantSink && t - a.lastFlag < 0.6 ? 1 : 0;
@@ -1791,8 +1791,40 @@ function stepAnim(dt, t) {
     }
   }
   if (changed) world.stateTex.needsUpdate = true;
+  stepGhosts();
 }
 const isSunk = (idx) => { const a = anim.get(idx); return !!a && a.sink > 0.25; };
+// While a building has sunk out of the way, its foundation stays behind: a low plinth in the building's wall colour around
+// the footprint and a faint tiled floor, so it is clear you are standing (or flying) inside it. Fades with the sink.
+const ghosts = new Map();   // idx → { group, plinth, floor }
+const PLINTH_H = 0.32;
+function ghostOf(idx) {
+  let g = ghosts.get(idx); if (g) return g;
+  const b = world.buildings[idx], wall = new THREE.Color((b.style && b.style.wall) || '#e8dcc8').multiplyScalar(0.82);
+  const pg = new Geo(), up = new THREE.Color(1, 1, 1);
+  for (const r of b.rings) for (let i = 0, n = r.length; i < n; i += 2) {
+    const ax = r[i], az = r[i + 1], bx = r[(i + 2) % n], bz = r[(i + 3) % n], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
+    const ya = H(ax, az) + LIFT - 0.05, yb = H(bx, bz) + LIFT - 0.05, nx = (bz - az) / L, nz = -(bx - ax) / L;
+    const q = pg.count; pg.v(ax, ya, az, nx, 0, nz, up, 0, 0); pg.v(bx, yb, bz, nx, 0, nz, up, L, 0); pg.v(bx, yb + PLINTH_H, bz, nx, 0, nz, up, L, 1); pg.v(ax, ya + PLINTH_H, az, nx, 0, nz, up, 0, 1);
+    pg.i.push(q, q + 1, q + 2, q, q + 2, q + 3);
+  }
+  const fg = new Geo(), tri = triangulate(b.rings), base = fg.count;
+  for (const v of tri.pts) fg.v(v.x, H(v.x, v.y) + LIFT + 0.03, v.y, 0, 1, 0, up, v.x / 1.2, v.y / 1.2);
+  for (const t of tri.tris) fg.triUp(base + t[0], base + t[1], base + t[2]);
+  const plinth = new THREE.Mesh(pg.build(), new THREE.MeshLambertMaterial({ color: wall, side: THREE.DoubleSide, transparent: true, opacity: 0 }));
+  const floor = new THREE.Mesh(fg.build(), new THREE.MeshLambertMaterial({ color: '#b5784c', map: world.tex && world.tex.flags ? world.tex.flags.map : null, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  plinth.renderOrder = 9; floor.renderOrder = 9; plinth.castShadow = false; floor.receiveShadow = true;
+  const group = new THREE.Group(); group.add(floor, plinth); scene.add(group);
+  ghosts.set(idx, g = { group, plinth, floor }); return g;
+}
+function stepGhosts() {
+  for (const [idx, a] of anim) if (a.sink > 0.02 && !ghosts.has(idx)) ghostOf(idx);
+  for (const [idx, g] of ghosts) {
+    const a = anim.get(idx), k = a ? a.sink * a.sink * (3 - 2 * a.sink) : 0;
+    if (k <= 0.001) { scene.remove(g.group); g.plinth.geometry.dispose(); g.plinth.material.dispose(); g.floor.geometry.dispose(); g.floor.material.dispose(); ghosts.delete(idx); continue; }
+    g.plinth.material.opacity = 0.92 * k; g.floor.material.opacity = 0.6 * k;
+  }
+}
 
 function isConvex(r) {
   let sign = 0; const n = r.length;
