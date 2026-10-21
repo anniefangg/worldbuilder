@@ -372,7 +372,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
-    <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area · ⌘-drag (Ctrl-drag) across part of a wall to edit just that segment · ⌘⇧-drag to add more segments</dd>
+    <dt>Shift</dt><dd>Shift-click to add to a selection · Shift-drag (or B) to select an area · Ctrl-drag across part of a wall to edit just that segment · Ctrl⇧-drag to add more segments</dd>
   </dl>
   <p class="credit" style="margin:10px 0 0;font-size:11px;opacity:.7">Character: “BARBOSSA” by ultradeath6700, <a href="https://sketchfab.com/3d-models/barbossa-09f52fb779154652aedcc2b43e4b9175" target="_blank" rel="noopener">Sketchfab</a>, licensed <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
 </div>
@@ -4339,7 +4339,7 @@ function boxSelect2D(x0, y0, x1, y1) {
   if (!out.length) for (const f of world.features) if (layers[f.kind] && f.cx >= wx0 && f.cx <= wx1 && f.cz >= wz0 && f.cz <= wz1) out.push(f.id);
   return out;
 }
-// ⌘⇧-drag: the part of one building wall under the rectangle, as whole bays and whole floors. The wall with the most window cells in the box wins.
+// Ctrl-drag: the part of one building wall under the rectangle, as whole bays and whole floors. The wall with the most window cells in the box wins.
 function segmentPick(x0, y0, x1, y1) {
   const v = new THREE.Vector3(), c = camera.position, inR = (sx, sy) => sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1;
   const toS = (x, y, z) => { v.set(x, y, z).project(camera); return v.z < 1 && v.z > -1 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null; };
@@ -4371,7 +4371,7 @@ function segmentPick(x0, y0, x1, y1) {
   const js = best.cells.map((q) => q[0]), fs = best.cells.map((q) => q[1]), f = best.f;
   return { bId: best.b.id, face: { x: (f.ax + f.bx) / 2, z: (f.az + f.bz) / 2, nx: f.nx, nz: f.nz }, bays: [Math.min(...js), Math.max(...js)], floors: [Math.min(...fs), Math.max(...fs)], nb: best.nb, wallLen: f.L };
 }
-// the picked segments (⌘-drag picks one, ⌘⇧-drag adds more, on any wall or building): highlighted on their walls; the panel's prompt box edits them instead of the whole building
+// the picked segments (Ctrl-drag picks one, Ctrl⇧-drag adds more, on any wall or building): highlighted on their walls; the panel's prompt box edits them instead of the whole building
 const sameSeg = (a, b) => a.bId === b.bId && Math.hypot(a.face.x - b.face.x, a.face.z - b.face.z) < 1.5 && a.bays[0] === b.bays[0] && a.bays[1] === b.bays[1] && a.floors[0] === b.floors[0] && a.floors[1] === b.floors[1];
 function openSegment(sg, add) {
   clearMulti(true);
@@ -4434,8 +4434,8 @@ function attachBoxSelect(el, pick, boxPick) {
   let box = null;
   const show = (x0, y0, x1, y1) => { const b = $('selbox'); b.hidden = false; Object.assign(b.style, { left: x0 + 'px', top: y0 + 'px', width: (x1 - x0) + 'px', height: (y1 - y0) + 'px' }); };
   el.addEventListener('pointerdown', (e) => {
-    const seg = e.metaKey || e.ctrlKey;   // ⌘-drag (Ctrl-drag) picks part of one wall; with Shift it adds another segment to the picked ones
-    if (e.button !== 0 || !(e.shiftKey || ui.boxTool || seg)) return;
+    const seg = e.ctrlKey;   // Ctrl-drag picks part of one wall; Ctrl⇧-drag adds another segment to the picked ones. ⌘ is left to the map controls (orbit)
+    if (!((e.button === 0 && (e.shiftKey || ui.boxTool)) || (seg && e.button !== 1))) return;   // on a Mac a Ctrl-click arrives as a secondary button
     e.stopImmediatePropagation(); e.preventDefault();
     box = { sx: e.clientX, sy: e.clientY, id: e.pointerId, shift: e.shiftKey, seg, moved: false };
     $('selbox').classList.toggle('seg', box.seg);
@@ -4447,12 +4447,13 @@ function attachBoxSelect(el, pick, boxPick) {
     if (Math.hypot(e.clientX - box.sx, e.clientY - box.sy) > 5) box.moved = true;
     if (box.moved) show(Math.min(box.sx, e.clientX), Math.min(box.sy, e.clientY), Math.max(box.sx, e.clientX), Math.max(box.sy, e.clientY));
   }, true);
+  el.addEventListener('contextmenu', (e) => { if (box || e.ctrlKey) e.preventDefault(); }, true);   // a Mac Ctrl-click would otherwise open the context menu
   el.addEventListener('pointerup', (e) => {
     if (!box || e.pointerId !== box.id) return;
     e.stopImmediatePropagation(); $('selbox').hidden = true;
     const b = box; box = null;
     if (b.moved && b.seg) {
-      if (boxPick !== boxSelect3D) { toast('Pick a wall segment in the 3D view: ⌘-drag (Ctrl-drag) across part of a building wall.'); return; }
+      if (boxPick !== boxSelect3D) { toast('Pick a wall segment in the 3D view: Ctrl-drag across part of a building wall.'); return; }
       const sg = segmentPick(Math.min(b.sx, e.clientX), Math.min(b.sy, e.clientY), Math.max(b.sx, e.clientX), Math.max(b.sy, e.clientY));
       if (sg) openSegment(sg, b.shift); else toast('No wall there. Drag across part of a building wall you can see.');
       return;
@@ -4710,12 +4711,12 @@ function renderInfo() {
           kids.push(el('div', { class: 'facts' }, `${segmentWords(sg)}${sg.wallLen ? ` · ${(sg.wallLen / (sg.nb || 1) * (sg.bays[1] - sg.bays[0] + 1)).toFixed(0)} m wide` : ''}${words ? ` · ${words}` : ''}`));
         }
         if (others) kids.push(el('div', { class: 'hint' }, `+ ${others} on other building${others > 1 ? 's' : ''}`));
-        kids.push(el('div', { class: 'hint' }, stored.length ? 'Describe what should change on these parts of the walls.' : 'They look like the rest of the building. Describe what should change on just these parts of the walls. ⌘⇧-drag to add another segment.'),
+        kids.push(el('div', { class: 'hint' }, stored.length ? 'Describe what should change on these parts of the walls.' : 'They look like the rest of the building. Describe what should change on just these parts of the walls. Ctrl⇧-drag to add another segment.'),
           stored.length ? el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => resetSegments(ui.segs) }, stored.length > 1 ? 'Reset segments' : 'Reset segment')) : null,
           promptBox(t, ui.segs));
       } else {
         const n = (doc.segments || []).length;
-        if (n) kids.push(el('div', { class: 'hint' }, `${n} wall segment${n > 1 ? 's' : ''} with its own look. ⌘-drag across part of a wall to pick one.`));
+        if (n) kids.push(el('div', { class: 'hint' }, `${n} wall segment${n > 1 ? 's' : ''} with its own look. Ctrl-drag across part of a wall to pick one.`));
         kids.push(el('hr', { class: 'sep' }), promptBox(t));
       }
     }
