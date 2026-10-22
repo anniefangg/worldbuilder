@@ -722,7 +722,9 @@ function applyWeather() {
   u.uVapour.value = (todState.name === 'dawn' || todState.name === 'dusk') && w.rain === 0 && wx.name !== 'fog' ? (wx.name === 'misty' ? 0.6 : 1) : 0; u.uVap.value.set(t.glow).lerp(new THREE.Color('#c9a3ec'), 0.35);
   if (DECK.mesh) {   // the cloud deck: coverage eases toward the weather's, colours follow the time of day
     DECK.target = w.deck; DECK.baseT = w.deckH;
-    const lit = new THREE.Color(t.cloud), shade = new THREE.Color(t.cloud).multiplyScalar(0.72).lerp(grey, w.grey * 0.6), under = scene.fog.color.clone().multiplyScalar(t.night > 0.6 ? 0.6 : 0.74).lerp(grey, 0.45);   // bellies a clear step darker than the sky behind them
+    const lit = new THREE.Color(t.cloud), shade = new THREE.Color(t.cloud).multiplyScalar(0.72).lerp(grey, w.grey * 0.6), under = todState.name === 'night' ? new THREE.Color('#3c3e4b').lerp(new THREE.Color('#6b4b33'), 0.35).lerp(grey, w.grey * 0.5)   // night: bellies lit from below by the city, a warm grey that stands out against the dark sky
+      : todState.name === 'dusk' ? new THREE.Color('#5a4866').lerp(new THREE.Color(t.glow), 0.22).lerp(grey, w.grey * 0.5)      // dusk: mauve bellies catching the afterglow
+      : scene.fog.color.clone().multiplyScalar(0.74).lerp(grey, 0.45);                                                            // day and dawn: a clear step darker than the sky behind them
     for (const m of DECK.mats) { m.uniforms.uLit.value.copy(lit); m.uniforms.uShade.value.copy(shade); m.uniforms.uUnder.value.copy(under); }
   }
   if (world.cloudMat) {
