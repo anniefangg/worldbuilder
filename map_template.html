@@ -701,12 +701,12 @@ const ICONS = {
 };
 // Weather, layered over the time of day
 const WEATHER = {
-  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0, wind: 1 },
-  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.32, hemiK: 0.9, clouds: 8, grey: 0.35, overcast: 0.6, fogK: 0.7, nearK: 0.6, rain: 0, wind: 1.4 },
-  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1, wind: 1.9 },
-  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true, wind: 3.4 },
-  misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0, wind: 0.7 },
-  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0, wind: 0.5 },
+  sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, deck: 0, deckH: 950, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0, wind: 1 },
+  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.7, hemiK: 0.9, clouds: 8, deck: 0.6, deckH: 950, grey: 0.35, overcast: 0.4, fogK: 0.7, nearK: 0.6, rain: 0, wind: 1.4 },
+  rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, deck: 0.86, deckH: 650, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1, wind: 1.9 },
+  storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, deck: 0.97, deckH: 520, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true, wind: 3.4 },
+  misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, deck: 0.3, deckH: 420, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0, wind: 0.7 },
+  fog: { rough: 0.08, label: 'Fog', sunK: 0.35, hemiK: 1.0, clouds: 0, deck: 0, deckH: 400, grey: 0.3, overcast: 0.9, fogK: 0.022, nearK: 0.003, rain: 0, wind: 0.5 },
 };
 const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'misty', 'fog'];
 const wx = { name: 'sunny', flash: 0, nextFlash: 0, baseHemi: 1 };
@@ -717,8 +717,14 @@ function applyWeather() {
   bounce.color.set(t.bounce[0]); bounce.intensity = t.bounce[1] * (0.45 + 0.55 * w.hemiK) * (0.6 + 0.4 * w.sunK);
   const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
+  wx.fogBase = scene.fog.color.clone();   // the frame loop restores this before any cloud white-out
   u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, misty: 0.6, fog: 0.55 }[wx.name];
   u.uVapour.value = (todState.name === 'dawn' || todState.name === 'dusk') && w.rain === 0 && wx.name !== 'fog' ? (wx.name === 'misty' ? 0.6 : 1) : 0; u.uVap.value.set(t.glow).lerp(new THREE.Color('#c9a3ec'), 0.35);
+  if (DECK.mesh) {   // the cloud deck: coverage eases toward the weather's, colours follow the time of day
+    DECK.target = w.deck; DECK.baseT = w.deckH;
+    const lit = new THREE.Color(t.cloud), shade = new THREE.Color(t.cloud).multiplyScalar(0.72).lerp(grey, w.grey * 0.6), under = scene.fog.color.clone().multiplyScalar(t.night > 0.6 ? 0.6 : 0.74).lerp(grey, 0.45);   // bellies a clear step darker than the sky behind them
+    for (const m of DECK.mats) { m.uniforms.uLit.value.copy(lit); m.uniforms.uShade.value.copy(shade); m.uniforms.uUnder.value.copy(under); }
+  }
   if (world.cloudMat) {
     world.cloudMat.color.set(t.cloud).lerp(new THREE.Color(t.night > 0.6 ? '#2a3142' : '#7d858d'), w.grey);
     world.cloudMat.emissiveIntensity = t.cloudEmI * (1 - w.grey * 0.7);
@@ -3682,7 +3688,90 @@ function addClouds() {
     group.add(c);
   }
   scene.add(group); world.clouds = group;
+  addCloudDeck();
   addRain(); addMist(); addPetals();
+}
+// ─── Cloud deck: a real layer of cloud between the city and the sky (cloudy, rain, storm, a little in mist). Two sheets, base and top,
+// drawn from one tiling fbm texture that the JS side can sample too (the white-out when the camera is inside). The base sheet casts the
+// sun's shadow, so in cloudy weather the city lies in a patchwork of sunlight and cloud shadow that drifts with the wind.
+const DECK = { N: 512, SCALE: 9000, THICK: 320, mesh: null, mats: [], data: null, cov: 0, target: 0, base: 950, baseT: 950, drift: new THREE.Vector2(0.13, 0.57), dens: 0 };
+const CLOUD_WIND = new THREE.Vector2(0.82, 0.48).normalize();
+function cloudNoiseTexture() {
+  const N = DECK.N, d = new Uint8Array(N * N);
+  const tn = (x, z, per) => { const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf), w = (q) => ((q % per) + per) % per;
+    return lerp(lerp(hash2(w(xi), w(zi)), hash2(w(xi + 1), w(zi)), u), lerp(hash2(w(xi), w(zi + 1)), hash2(w(xi + 1), w(zi + 1)), u), v); };   // value noise whose lattice repeats every `per` cells, so the texture tiles
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    let sum = 0, amp = 0.5, f = 6, tot = 0;
+    for (let k = 0; k < 5; k++) { sum += amp * tn(i / N * f + 17 * k, j / N * f + 9 * k, f); tot += amp; amp *= 0.55; f *= 2; }
+    d[j * N + i] = clamp((sum / tot - 0.5) * 2.4 + 0.5, 0, 1) * 255;   // summed octaves crowd the middle: stretch them so the threshold carves real gaps
+  }
+  DECK.data = d;
+  const t = new THREE.DataTexture(d, N, N, THREE.RedFormat, THREE.UnsignedByteType); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true; return t;
+}
+const cloudTh = (cov) => 1 - cov * 0.82;   // noise threshold for a coverage: 0.6 → 0.51 (half the sky), 0.97 → 0.2 (a near-solid ceiling)
+function cloudDens(x, z, extra = 0) {   // 0..1 cloud density over a point, as the shader sees it (used for the camera's white-out)
+  const d = DECK.data; if (!d || DECK.cov <= 0) return 0;
+  const N = DECK.N, u = ((x / DECK.SCALE + DECK.drift.x + 0.5) % 1 + 1) % 1, v = ((z / DECK.SCALE + DECK.drift.y + 0.5) % 1 + 1) % 1, D = d[((v * N) | 0) * N + ((u * N) | 0)] / 255, th = cloudTh(DECK.cov) + extra;
+  return clamp((D - th) / 0.2, 0, 1);
+}
+function addCloudDeck() {
+  const tex = cloudNoiseTexture(), S = EXT * 2.4;
+  const mk = (extraTh, off) => new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    uniforms: { uNoise: { value: tex }, uTh: { value: 1 }, uExtra: { value: extraTh }, uOff: { value: off }, uDrift: { value: DECK.drift }, uSun: { value: SUN_DIR }, uLit: { value: new THREE.Color('#fff') }, uShade: { value: new THREE.Color('#aab') }, uUnder: { value: new THREE.Color('#889') }, uNight: NIGHT },
+    vertexShader: `varying vec2 vUv; varying vec3 vW;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main(){ vUv = uv; vW = (modelMatrix * vec4(position, 1.0)).xyz; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `uniform sampler2D uNoise; uniform float uTh, uExtra; uniform vec2 uDrift, uOff; uniform vec3 uSun, uLit, uShade, uUnder; varying vec2 vUv; varying vec3 vW;
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      void main(){
+        #include <logdepthbuf_fragment>
+        vec2 uv = vUv + uDrift + uOff; float th = uTh + uExtra;
+        float D = texture2D(uNoise, uv).r + 0.05 * (texture2D(uNoise, uv * 5.3 + 0.37).r - 0.5);   // a little fine ruffle on the edges
+        float a = smoothstep(th, th + 0.2, D); if (a < 0.01) discard;
+        vec2 sd = normalize(uSun.xz + 1e-4) * 0.006; float D2 = texture2D(uNoise, uv + sd).r;
+        float lit = clamp(0.45 + (D - D2) * 7.0 + 0.25 * uSun.y, 0.0, 1.0);                      // the sides that face the sun catch it
+        vec3 top = mix(uShade, uLit, lit) * (0.92 + 0.08 * smoothstep(th, th + 0.5, D));
+        vec3 under = mix(uUnder * 1.2, uUnder * 0.72, smoothstep(th, th + 0.45, D));              // the thicker the cloud, the darker its belly
+        vec3 c = gl_FrontFacing ? top : under;
+        float fade = 1.0 - smoothstep(8000.0, 19000.0, distance(cameraPosition, vW));
+        gl_FragColor = vec4(c, a * fade * 0.985);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const geo = new THREE.PlaneGeometry(S, S, 1, 1).rotateX(-Math.PI / 2);
+  geo.attributes.uv.array.forEach((v, i, arr) => { arr[i] = (v - 0.5) * (S / DECK.SCALE); });   // uv in texture tiles, centred, so SCALE metres span one tile
+  DECK.mats = [mk(0, new THREE.Vector2(0, 0)), mk(0.06, new THREE.Vector2(0.004, 0.003))];
+  const group = new THREE.Group();
+  for (let k = 0; k < 2; k++) { const m = new THREE.Mesh(geo, DECK.mats[k]); m.position.y = k * DECK.THICK; m.renderOrder = 9 - k; m.frustumCulled = false; group.add(m); }
+  // the base sheet shadows the city: a depth material that discards where there is no cloud
+  const dep = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  dep.onBeforeCompile = (sh) => {
+    sh.uniforms.uNoise = DECK.mats[0].uniforms.uNoise; sh.uniforms.uTh = DECK.mats[0].uniforms.uTh; sh.uniforms.uDrift = DECK.mats[0].uniforms.uDrift;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vCuv;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCuv = uv;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uNoise; uniform float uTh; uniform vec2 uDrift; varying vec2 vCuv;')
+      .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\nif (smoothstep(uTh, uTh + 0.2, texture2D(uNoise, vCuv + uDrift).r) < 0.4) discard;');
+  };
+  group.children[0].customDepthMaterial = dep; group.children[0].castShadow = true;
+  group.visible = false; group.position.y = DECK.base; scene.add(group); DECK.mesh = group;
+}
+function stepCloudDeck(dt) {
+  if (!DECK.mesh) return;
+  DECK.cov += (DECK.target - DECK.cov) * (1 - Math.exp(-dt * 0.35));   // the deck rolls in or clears over a few seconds
+  DECK.base += (DECK.baseT - DECK.base) * (1 - Math.exp(-dt * 0.3));
+  const on = DECK.cov > 0.01; DECK.mesh.visible = on; if (!on) { DECK.dens = 0; return; }
+  DECK.drift.addScaledVector(CLOUD_WIND, 4.5 * WINDK.value * dt / DECK.SCALE);
+  DECK.mesh.position.y = DECK.base; const th = cloudTh(DECK.cov);
+  for (const m of DECK.mats) m.uniforms.uTh.value = th;
+  DECK.mesh.children[0].castShadow = Q.t.sky > 0;
+  // inside the deck the camera is in cloud: how much, for the fog white-out
+  const y = camera.position.y - DECK.base, inside = y > -40 && y < DECK.THICK + 40 ? 1 - smooth(DECK.THICK / 2 + 20, DECK.THICK / 2 + 50, Math.abs(y - DECK.THICK / 2)) : 0;
+  DECK.dens = inside ? cloudDens(camera.position.x, camera.position.z) * inside : 0;
 }
 
 // ─────────────────────────── character ───────────────────────────
@@ -6434,6 +6523,9 @@ function update(dt, t) {
   const alt = Math.max(0, camera.position.y);
   const W0 = WEATHER[wx.name]; const br = (wx.name === 'fog' || wx.name === 'misty') ? 1 + 0.12 * Math.sin(t * 0.23) + 0.07 * Math.sin(t * 0.41 + 1.3) : 1;   // the mist breathes in and out
   scene.fog.near = (1800 + alt * 3) * W0.nearK * br; scene.fog.far = (24000 + alt * 6) * W0.fogK * br;
+  stepCloudDeck(dt);
+  if (wx.fogBase) scene.fog.color.copy(wx.fogBase);
+  if (DECK.dens > 0) { const k = DECK.dens; scene.fog.near = lerp(scene.fog.near, 3, k); scene.fog.far = lerp(scene.fog.far, 70, k); scene.fog.color.lerp(DECK.mats[0].uniforms.uUnder.value, k * 0.9); }   // flying through the deck: a white-out
   stepWeather(dt, t); stepBoats(dt, t);
   WIND.value = t; WINDK.value += ((WEATHER[wx.name].wind || 1) - WINDK.value) * (1 - Math.exp(-dt * 0.5));   // the wind picks up or dies down over a few seconds
   DUCK.on.value = player.mode === 'walk' || player.mode === 'fly' ? 1 : 0; DUCK.a.value.set(player.pos.x, player.pos.y + 1.2, player.pos.z); DUCK.b.value.copy(camera.position);
