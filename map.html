@@ -1084,15 +1084,25 @@ async function buildWorld() {
     }
     const tex = new THREE.DataTexture(data, WN, WN, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
     // the canals as a signed distance to their walls (0.5 at the wall, 1 at 4 m inside), finer than the depth map, so the deep-blue canal water stops exactly at the stone
-    const CN = 2048, cdata = new Uint8Array(CN * CN);
-    for (let j = 0; j < CN; j++) for (let i = 0; i < CN; i++) cdata[j * CN + i] = clamp(0.5 + canalIn(((i + 0.5) / CN - 0.5) * EXT, ((j + 0.5) / CN - 0.5) * EXT) / 8, 0, 1) * 255;
-    const ctex = new THREE.DataTexture(cdata, CN, CN, THREE.RedFormat, THREE.UnsignedByteType); ctex.magFilter = ctex.minFilter = THREE.LinearFilter; ctex.needsUpdate = true;
+    const CN = 2048, cdata = new Uint8Array(CN * CN * 2);   // R: canals; G: lakes and ponds (the same signed distance to their shore), both still water
+    for (let j = 0; j < CN; j++) for (let i = 0; i < CN; i++) cdata[(j * CN + i) * 2] = clamp(0.5 + canalIn(((i + 0.5) / CN - 0.5) * EXT, ((j + 0.5) / CN - 0.5) * EXT) / 8, 0, 1) * 255;
+    for (const poly of water) {
+      const r = poly[0], edge = Array.from(r); edge.push(r[0], r[1]);   // rings are typed arrays; the shore closes back to its start
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+      const px = (x) => Math.floor((x / EXT + 0.5) * CN);
+      for (let j = Math.max(0, px(z0 - 8)); j <= Math.min(CN - 1, px(z1 + 8)); j++) for (let i = Math.max(0, px(x0 - 8)); i <= Math.min(CN - 1, px(x1 + 8)); i++) {
+        const x = ((i + 0.5) / CN - 0.5) * EXT, z = ((j + 0.5) / CN - 0.5) * EXT, d = distToLine(edge, x, z) * (pointInRings(x, z, poly) ? 1 : -1), k = (j * CN + i) * 2 + 1;
+        cdata[k] = Math.max(cdata[k], clamp(0.5 + d / 8, 0, 1) * 255);
+      }
+    }
+    const ctex = new THREE.DataTexture(cdata, CN, CN, THREE.RGFormat, THREE.UnsignedByteType); ctex.magFilter = ctex.minFilter = THREE.LinearFilter; ctex.needsUpdate = true;
     const mat = new THREE.ShaderMaterial({
       fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
         uTime: { value: 0 }, uDepth: { value: null }, uExt: { value: EXT }, uSun: { value: SUN_DIR },
         uShallow: { value: linear('#1f93ab') }, uMid: { value: linear('#0d5b8c') }, uDeep: { value: linear('#062a55') }, uRough: { value: 0.15 },
-        uSky: { value: linear('#bfe6f4') }, uFoam: { value: linear('#f4fffb') }, uCanalT: { value: null }, uCanal: { value: linear('#1b5cae') }, uRain: { value: 0 },
+        uSky: { value: linear('#bfe6f4') }, uFoam: { value: linear('#f4fffb') }, uCanalT: { value: null }, uCanal: { value: linear('#1b5cae') }, uLake: { value: linear('#2f8a8c') }, uRain: { value: 0 },
       }]),
       vertexShader: `
         #include <common>
@@ -1107,7 +1117,7 @@ async function buildWorld() {
         #include <common>
         #include <fog_pars_fragment>
         #include <logdepthbuf_pars_fragment>
-        uniform float uTime, uExt, uNight, uDark, uRough, uRain; uniform sampler2D uDepth, uCanalT; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam, uCanal; varying vec3 vW;
+        uniform float uTime, uExt, uNight, uDark, uRough, uRain; uniform sampler2D uDepth, uCanalT; uniform vec3 uSun, uShallow, uMid, uDeep, uSky, uFoam, uCanal, uLake; varying vec3 vW;
         float hsh(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
         float vno(vec2 q) { vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(hsh(i), hsh(i + vec2(1, 0)), f.x), mix(hsh(i + vec2(0, 1)), hsh(i + vec2(1, 1)), f.x), f.y); }
@@ -1116,8 +1126,10 @@ async function buildWorld() {
           #include <logdepthbuf_fragment>
           vec2 uv = clamp(vW.xz / uExt + 0.5, 0.002, 0.998);
           vec4 t = texture2D(uDepth, uv);
-          float canal = smoothstep(0.47, 0.53, texture2D(uCanalT, uv).r);   // inside a canal: deep, still, blue water with no surf
-          float d = mix(t.r * 30.0, 26.0, canal); vec2 p = vW.xz; float tm = uTime;
+          vec2 ct = texture2D(uCanalT, uv).rg;
+          float canal = smoothstep(0.47, 0.53, ct.r);   // inside a canal: deep, still, blue water with no surf
+          float lake = smoothstep(0.47, 0.53, ct.g), still = max(canal, lake);   // a park pond: calm, teal-green, no surf either
+          float d = mix(mix(t.r * 30.0, 26.0, canal), 9.0, lake); vec2 p = vW.xz; float tm = uTime;
           float dist = distance(cameraPosition, vW), f1 = 1.0 - smoothstep(300.0, 2500.0, dist), f2 = 1.0 - smoothstep(1500.0, 9000.0, dist);
           // ---- swell rolling in toward the coast: crests follow lines of equal depth and move shoreward
           vec2 e = vec2(1.5 / 1024.0, 0.0);
@@ -1136,7 +1148,7 @@ async function buildWorld() {
           float aw = dot(p, Wd), ac = dot(p, Wp);
           float gust = smoothstep(0.42, 0.78, fbm2((p - Wd * tm * 7.0) * 0.0045 + vec2(3.7, 1.3)));
           float slick = smoothstep(0.62, 0.86, vno(vec2(ac * 0.018, aw * 0.0016 - tm * 0.012))) * (1.0 - gust);
-          float rip = (0.55 + 1.7 * gust) * (1.0 - 0.75 * slick) * (0.8 + 0.6 * uRough) * (1.0 - 0.35 * canal);   // canals are sheltered, but not glassy
+          float rip = (0.55 + 1.7 * gust) * (1.0 - 0.75 * slick) * (0.8 + 0.6 * uRough) * (1.0 - 0.35 * canal) * (1.0 - 0.5 * lake);   // canals and ponds are sheltered, but not glassy
           // ---- surface normal: the swell's faces plus wind ripples
           vec3 n = normalize(vec3(
             sin(p.x*0.045 + tm*0.9)*0.07*f2 + (sin(p.x*0.23 + p.y*0.17 + tm*2.4)*0.05 + sin(p.x*0.9 - p.y*0.6 + tm*3.9)*0.03)*f1*rip, 1.0,
@@ -1160,6 +1172,7 @@ async function buildWorld() {
           vec3 col = mix(uShallow, uMid, smoothstep(0.5, 6.0, d));
           col = mix(col, uDeep, smoothstep(6.0, 24.0, d));
           col = mix(col, uCanal, canal);
+          col = mix(col, uLake, lake * 0.8);
           col *= 1.0 + (crest * 0.18 - trough * 0.12) * shallows * amp;    // light through the wave face, darker troughs
           col *= 1.0 - 0.1 * gust * f2;                       // ruffled patches reflect less sky
           col *= uDark;                                        // the sea darkens toward night
@@ -1173,7 +1186,7 @@ async function buildWorld() {
           float swash = (1.0 - smoothstep(1.4, 2.2 + 0.5 * amp, d)) * smoothstep(0.25, 0.65, lace) * (0.5 + 0.5 * (1.0 - run)) * max(slope, smoothstep(0.35, 0.5, t.g));
           float trail = shallows * (1.0 - smoothstep(0.0, 0.25, w)) * smoothstep(0.6, 0.85, lace) * (1.0 - smoothstep(2.0, 4.0, d)) * 0.5;   // foam left behind a broken wave
           float caps = uRough * smoothstep(0.8 - 0.15 * uRough, 0.95, fbm2(p * 0.02 + tm * vec2(0.03, 0.02))) * smoothstep(6.0, 14.0, d) * f2;   // whitecaps offshore
-          float foam = clamp(max(max(breaking, swash), max(trail, caps)) + coast * 0.45, 0.0, 1.0) * (1.0 - canal);
+          float foam = clamp(max(max(breaking, swash), max(trail, caps)) + coast * 0.45, 0.0, 1.0) * (1.0 - still);
           col = mix(col, uFoam * mix(1.0, 0.5, uNight) * uDark / max(uDark, 0.62), foam * 0.85);
           col += vec3(0.05, 0.06, 0.07) * rainRing * mix(1.0, 0.4, uNight);   // the rings catch a little light
           gl_FragColor = vec4(col, 1.0);
@@ -2781,6 +2794,15 @@ function pathBlend(f) {
   return out.length ? out : null;
 }
 const freeEnds = (f) => { pathBlend(f); return f.free; };
+// A lawn or paving polygon with every lake or pond inside it cut out as a hole, so the water (drawn by the sea shader where the coast mask is carved) shows through instead of being roofed over
+function lakeHoles(f) {
+  const bb = f.bbox; let out = null;
+  for (const g of world.features) {
+    if (g.kind !== 'water' || g === f || g.bbox[0] < bb[0] - 1 || g.bbox[2] > bb[2] + 1 || g.bbox[1] < bb[1] - 1 || g.bbox[3] > bb[3] + 1 || !pointInRings(g.cx, g.cz, f.rings)) continue;
+    (out = out || f.rings.slice()).push(g.rings[0]);
+  }
+  return out || f.rings;
+}
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -2791,7 +2813,7 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: f.rings, color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f) });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f), color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f) });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
@@ -5197,7 +5219,7 @@ function exportSVG() {
     '<g id="Seas"><rect width="3500" height="3500" fill="#afe8dd"/></g>'];
   const polys = (gid, list, fill) => { out.push(`<g id="${gid}">`); for (const p of list) out.push(`<path${p.id ? ` id="${p.id}"` : ''} d="${polyD(p)}" fill="${fill}" fill-rule="evenodd">${title(p.id)}</path>`); out.push('</g>'); };
   const lines = (gid, list, stroke, scale = 1) => { out.push(`<g id="${gid}" fill="none" stroke="${stroke}" stroke-linecap="round" stroke-linejoin="round">`); for (const l of list) out.push(`<path${l.id ? ` id="${l.id}"` : ''} d="${ringD(l.pts, false)}" stroke-width="${f(l.w / 5 * scale)}">${title(l.id)}</path>`); out.push('</g>'); };
-  polys('Island', L.land, '#d8ffd3'); polys('Water', L.water, '#afe8dd'); polys('Parks', L.parks, '#8fd78e'); polys('Pavement', L.pave, '#bebca5');
+  polys('Island', L.land, '#d8ffd3'); polys('Parks', L.parks, '#8fd78e'); polys('Pavement', L.pave, '#bebca5'); polys('Water', L.water, '#afe8dd');
   lines('Canals', L.canals, '#afe8dd'); lines('Streets', L.streets, '#4f5b5e'); lines('Paths', L.paths, '#4f5b5e'); lines('Beaches', L.beaches, '#000000', 0.01);
   out.push('<g id="Built">');
   for (const b of world.buildings) {
@@ -5270,6 +5292,7 @@ function drawPlan() {
   g.strokeStyle = '#efe0b0'; for (const [lw, p] of P.beaches) { g.lineWidth = Math.max(lw, 2 * px); g.stroke(p); }
   g.fillStyle = '#ece3cf'; g.fill(P.pave, 'evenodd');
   g.fillStyle = '#9fd38c'; g.fill(P.parks, 'evenodd');
+  g.fillStyle = '#a9d9e3'; g.fill(P.water, 'evenodd');   // lakes and ponds sit in parks and paving, so they go over them
   g.fillStyle = '#c9c0b0'; g.fill(P.streetAreas, 'evenodd');
   g.strokeStyle = '#c2b8a6'; for (const [lw, p] of P.streets) { g.lineWidth = lw + 1.2 * px; g.stroke(p); }
   g.strokeStyle = '#fbf8f0'; for (const [lw, p] of P.streets) { g.lineWidth = lw; g.stroke(p); }
@@ -6478,6 +6501,7 @@ function drawMinimap(now) {
   g.strokeStyle = '#7fc6d6'; for (const [lw, p] of P.canals) { g.lineWidth = Math.max(lw, 1.5 * px); g.stroke(p); }
   g.fillStyle = '#ece3cf'; g.fill(P.pave, 'evenodd');
   g.fillStyle = '#93cf7f'; g.fill(P.parks, 'evenodd');
+  g.fillStyle = '#7fc6d6'; g.fill(P.water, 'evenodd');
   g.strokeStyle = '#fbf8f0'; for (const [lw, p] of P.streets) { g.lineWidth = Math.max(lw, 1.2 * px); g.stroke(p); }
   for (const [lw, p] of P.kerbs) { g.lineWidth = Math.max(lw, px); g.stroke(p); }
   const half = Math.max(W, Hh) / 2 * px, vis = (bb) => bb[2] > cx - half && bb[0] < cx + half && bb[3] > cz - half && bb[1] < cz + half;
