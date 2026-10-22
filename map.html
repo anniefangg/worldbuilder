@@ -923,8 +923,8 @@ function crtSteer(m, speed, dt, minDepth = 2.5, turn = 0.6) {   // a swimmer: dr
 function crtInit() {
   const rnd = CRT.rnd, F = world.features, lakes = F.filter((f) => f.kind === 'water'), parks = F.filter((f) => f.kind === 'park' && f.size > 1500), beaches = F.filter((f) => f.kind === 'beach');
   const K = CRT_BUILD, pinside = (f, pad) => { for (let t = 0; t < 30; t++) { const x = f.bbox[0] + rnd() * (f.bbox[2] - f.bbox[0]), z = f.bbox[1] + rnd() * (f.bbox[3] - f.bbox[1]); if (pointInRings(x, z, f.rings) && (!pad || !hardAt(x, z, pad))) return [x, z]; } return null; };
-  // -- butterflies: streamed in a box around the camera, low over the ground, fluttering
-  { const k = critterKind('butterfly', { n: 220, build: K.butterfly, rate: 14, amp: 0.9, double: true, box: 70, alt: 90, step(dt, t, k) { crtStream(k, dt, t, (m) => { m.y += Math.sin(t * 2.3 + m.ph) * 0.4 * dt; m.y = clamp(m.y, 0.3, 4); m.yaw += (rnd() - 0.5) * 3 * dt; m.x += Math.sin(m.yaw) * 1.1 * dt; m.z += Math.cos(m.yaw) * 1.1 * dt; }, 1); } });
+  // -- butterflies: fairly uncommon: a couple of dozen streamed in a 70 m box around the camera, low over the ground, fluttering
+  { const k = critterKind('butterfly', { n: 26, build: K.butterfly, rate: 14, amp: 0.9, double: true, box: 70, alt: 90, step(dt, t, k) { crtStream(k, dt, t, (m) => { m.y += Math.sin(t * 2.3 + m.ph) * 0.4 * dt; m.y = clamp(m.y, 0.3, 4); m.yaw += (rnd() - 0.5) * 3 * dt; m.x += Math.sin(m.yaw) * 1.1 * dt; m.z += Math.cos(m.yaw) * 1.1 * dt; }, 1); } });
     const cols = ['#f5a623', '#f7d33a', '#4f8ff0', '#ffffff', '#e9743c', '#c98cf2', '#f2f0c0'];
     for (let i = 0; i < k.n; i++) { k.list.push({ x: (rnd() - 0.5) * 70, z: (rnd() - 0.5) * 70, y: 0.4 + rnd() * 2.5, yaw: rnd() * 6.28, ph: rnd() * 6.28, s: 1.4 + rnd() * 0.9 }); k.mesh.setColorAt(i, CRT.col.set(cols[(rnd() * cols.length) | 0])); } }
   // -- hummingbirds: near the camera too, hovering at flower height and darting between spots
