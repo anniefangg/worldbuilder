@@ -399,6 +399,21 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   </div>
 </div>
 
+<script>
+// A module that fails before boot() (a blocked CDN import, no WebGL) would otherwise leave the loader stuck on its first label
+(function () {
+  const say = (msg) => { const l = document.getElementById('load-label'); if (l && document.getElementById('loader')) { l.textContent = msg; l.style.lineHeight = '1.5'; } };
+  const why = (e) => (e && e.message) || String(e || 'unknown error');
+  addEventListener('error', (e) => {
+    if (window.__mapBoot) return;
+    if (e instanceof ErrorEvent) say('Could not start the map: ' + why(e.error || e));
+    else if (e.target && e.target.tagName === 'SCRIPT') say('Could not download the 3D engine (three.js from cdn.jsdelivr.net). An ad blocker, network filter or dropped connection can stop it. Reload to try again.');
+  }, true);
+  addEventListener('unhandledrejection', (e) => { if (!window.__mapBoot) say('Could not start the map: ' + why(e.reason)); });
+  setTimeout(() => { if (!window.__mapBoot) say('The 3D engine has not loaded. A blocked or slow cdn.jsdelivr.net (an ad blocker or network filter) or WebGL turned off in the browser stops it. Reload to try again.'); }, 20000);
+})();
+</script>
+
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -505,6 +520,7 @@ function pickWeighted(list, r) { let t = 0; for (const [, w] of list) t += w; le
 
 // ─────────────────────────── renderer & scene ───────────────────────────
 const canvas = $('scene');
+if (!document.createElement('canvas').getContext('webgl2')) throw new Error('this browser has WebGL 2 turned off or unavailable. In Chrome, switch on "Use graphics acceleration when available" (Settings → System) and relaunch.');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.setSize(innerWidth, innerHeight);
@@ -6896,6 +6912,7 @@ store.on((what, ids) => {
   renderTray();
 });
 (async function boot() {
+  window.__mapBoot = true;   // from here on errors are reported by the catch below
   try {
     try { if (localStorage.getItem('amparacan-map-help') === '1') { $('help').dataset.collapsed = 'true'; $('help-toggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
     applyQuality();
