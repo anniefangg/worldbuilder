@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "map",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-I", "-c", "import os,sys,http.server,functools;d=os.environ.get('MAP_PREVIEW_DIR','/tmp/amparacan-map-preview');os.makedirs(d,exist_ok=True);os.chdir(d);http.server.ThreadingHTTPServer(('127.0.0.1',int(os.environ.get('PORT','8765'))),http.server.SimpleHTTPRequestHandler).serve_forever()"],
+      "port": 8765
+    }
+  ]
+}

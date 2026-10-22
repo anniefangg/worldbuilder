@@ -1,0 +1,11 @@
+Model Information:
+* title:	BARBOSSA
+* source:	https://sketchfab.com/3d-models/barbossa-09f52fb779154652aedcc2b43e4b9175
+* author:	ultradeath6700 (https://sketchfab.com/ultradeath6700)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "BARBOSSA" (https://sketchfab.com/3d-models/barbossa-09f52fb779154652aedcc2b43e4b9175) by ultradeath6700 (https://sketchfab.com/ultradeath6700) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
