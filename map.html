@@ -702,7 +702,7 @@ const ICONS = {
 // Weather, layered over the time of day
 const WEATHER = {
   sunny: { rough: 0.15, label: 'Sunny', sunK: 1, hemiK: 1, clouds: 0, deck: 0, deckH: 950, grey: 0, overcast: 0, fogK: 1, nearK: 1, rain: 0, wind: 1 },
-  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.7, hemiK: 0.9, clouds: 8, deck: 0.6, deckH: 950, grey: 0.35, overcast: 0.4, fogK: 0.7, nearK: 0.6, rain: 0, wind: 1.4 },
+  cloudy: { rough: 0.35, label: 'Cloudy', sunK: 0.55, hemiK: 0.95, clouds: 8, deck: 0.94, deckH: 950, grey: 0.35, overcast: 0.85, fogK: 0.7, nearK: 0.6, rain: 0, wind: 1.4 },   // a near-solid deck: the whole sky is cloud, no stars
   rain: { rough: 0.6, label: 'Rain', sunK: 0.1, hemiK: 0.72, clouds: 26, deck: 0.86, deckH: 650, grey: 0.62, overcast: 0.88, fogK: 0.3, nearK: 0.07, rain: 1, wind: 1.9 },
   storm: { rough: 1, label: 'Storm', sunK: 0.04, hemiK: 0.55, clouds: 40, deck: 0.97, deckH: 520, grey: 0.85, overcast: 1, fogK: 0.2, nearK: 0.04, rain: 1.8, storm: true, wind: 3.4 },
   misty: { rough: 0.12, label: 'Misty', sunK: 0.6, hemiK: 1.0, clouds: 2, deck: 0.3, deckH: 420, grey: 0.12, overcast: 0.5, fogK: 0.2, nearK: 0.05, rain: 0, wind: 0.7 },
@@ -1071,7 +1071,8 @@ function stepMeteors(dt, t) {
         c += uGlow * (pow(s, 6.0) * mix(0.25, 0.7, uNight) * (1.0 - smoothstep(0.0, 0.5, h)));     // warm band toward the sun
         c += mix(vec3(1.0, 0.86, 0.6) * pow(s, 900.0) * mix(6.0, 2.0, uNight), vec3(0.9, 0.93, 1.0) * (smoothstep(0.99985, 0.99992, s) * 1.6 + pow(s, 60.0) * 0.12), uMilky);   // sun, or the moon at night
         vec3 g = floor(d * 420.0); float st = hash(g);
-        c += vec3(0.9, 0.95, 1.0) * step(mix(0.9965, 0.988, uMilky), st) * smoothstep(0.08, 0.4, h) * uNight * (0.5 + 0.5 * hash(g + 3.1));   // stars
+        float clearSky = (1.0 - uOvercast) * (1.0 - uOvercast);   // under an overcast the stars and the Milky Way are gone, not just dimmed
+        c += vec3(0.9, 0.95, 1.0) * step(mix(0.9965, 0.988, uMilky), st) * smoothstep(0.08, 0.4, h) * uNight * (0.5 + 0.5 * hash(g + 3.1)) * clearSky;   // stars
         if (uMilky > 0.0) {
           // the Milky Way: a bright, mottled band along a tilted great circle, with dark dust lanes
           vec3 axis = normalize(vec3(0.74, 0.14, 0.66));   // the band arcs overhead, from horizon to horizon
@@ -1080,7 +1081,7 @@ function stepMeteors(dt, t) {
           float glowMW = band * (0.55 + 0.45 * cloud) * (1.0 - 0.7 * dust * smoothstep(0.2, 1.0, core));
           vec3 g2 = floor(d * 900.0); float dense = step(1.0 - 0.06 * band, hash(g2)) * (0.4 + 0.6 * hash(g2 + 1.7));
           vec3 mw = vec3(0.55, 0.62, 0.85) * glowMW * 0.55 + vec3(0.95, 0.85, 0.7) * core * cloud * 0.25 + vec3(0.9, 0.95, 1.0) * dense * band * 0.9;
-          c += mw * uMilky * smoothstep(0.02, 0.3, h);
+          c += mw * uMilky * smoothstep(0.02, 0.3, h) * clearSky;
         }
         // meteors: each slot is a streak from a (its start, uMetA.xyz) along the tangent v (uMetB.xyz); p = progress, b = brightness; a short tail trails the head and fades
         if (uNight > 0.0 && h > 0.0) {
