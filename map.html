@@ -402,15 +402,17 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <script>
 // A module that fails before boot() (a blocked CDN import, no WebGL) would otherwise leave the loader stuck on its first label
 (function () {
-  const say = (msg) => { const l = document.getElementById('load-label'); if (l && document.getElementById('loader')) { l.textContent = msg; l.style.lineHeight = '1.5'; } };
+  let said = false;
+  const say = (msg) => { const l = document.getElementById('load-label'); if (l && document.getElementById('loader')) { said = true; l.textContent = msg; l.style.lineHeight = '1.5'; } };
   const why = (e) => (e && e.message) || String(e || 'unknown error');
   addEventListener('error', (e) => {
-    if (window.__mapBoot) return;
+    if (window.amparacanBooted) return;
     if (e instanceof ErrorEvent) say('Could not start the map: ' + why(e.error || e));
     else if (e.target && e.target.tagName === 'SCRIPT') say('Could not download the 3D engine (three.js from cdn.jsdelivr.net). An ad blocker, network filter or dropped connection can stop it. Reload to try again.');
   }, true);
-  addEventListener('unhandledrejection', (e) => { if (!window.__mapBoot) say('Could not start the map: ' + why(e.reason)); });
-  setTimeout(() => { if (!window.__mapBoot) say('The 3D engine has not loaded. A blocked or slow cdn.jsdelivr.net (an ad blocker or network filter) or WebGL turned off in the browser stops it. Reload to try again.'); }, 20000);
+  addEventListener('unhandledrejection', (e) => { if (!window.amparacanBooted) say('Could not start the map: ' + why(e.reason)); });
+  // module scripts run before DOMContentLoaded, so by then boot() has started unless the module failed (a timer would fire early while the 8 MB page is still downloading)
+  addEventListener('DOMContentLoaded', () => { if (!window.amparacanBooted && !said) say('The 3D engine has not loaded. A blocked cdn.jsdelivr.net (an ad blocker or network filter) or WebGL turned off in the browser stops it. Reload to try again.'); });
 })();
 </script>
 
@@ -7112,7 +7114,7 @@ store.on((what, ids) => {
   renderTray();
 });
 (async function boot() {
-  window.__mapBoot = true;   // from here on errors are reported by the catch below
+  window.amparacanBooted = true;   // from here on errors are reported by the catch below
   try {
     try { if (localStorage.getItem('amparacan-map-help') === '1') { $('help').dataset.collapsed = 'true'; $('help-toggle').setAttribute('aria-expanded', 'false'); } } catch (e) {}
     applyQuality();
