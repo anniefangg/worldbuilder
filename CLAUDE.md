@@ -35,6 +35,7 @@ PY
 node --check <(...)                            # sanity-check the appcode block
 ```
 Then publish `wiki.html` via the Artifact tool (same file path keeps the URL).
+Vercel (project `worldbuilder`, linked to the GitHub repo) deploys every push; `main` is production at https://worldbuilder-three.vercel.app. `vercel.json` turns on clean URLs, so the map is at `/map` (and `/map.html` redirects there); the wiki is `index.html` at `/`.
 Editing persists via the `artifact` capability (`publish(html)`), with a
 `localStorage` fallback for read-only viewers.
 
