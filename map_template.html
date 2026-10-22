@@ -820,13 +820,41 @@ function stepWeather(dt, t) {
   hemi.intensity = wx.baseHemi * (1 + wx.flash * 6); u.uFlash.value = wx.flash;
 }
 
+// Meteor showers (night only, clear sky): every 5–10 minutes a shower of shooting stars from one radiant, 25–50 s long; `window.amparacan.meteors()` starts one now
+const MET = { A: [], B: [], slots: [], next: 0, until: 0, spawn: 0, rad: new THREE.Vector3(0, 1, 0), rnd: mulberry(99), t: 0, showers: 0 };
+for (let k = 0; k < 8; k++) { MET.A.push(new THREE.Vector4(0, 1, 0, 0)); MET.B.push(new THREE.Vector4(1, 0, 0, 0)); MET.slots.push(null); }
+function stepMeteors(dt, t) {
+  MET.t = t; const u = camera.userData.sky.material.uniforms, rnd = MET.rnd;
+  const clear = todState.name === 'night' && WEATHER[wx.name].rain === 0 && wx.name !== 'fog' && u.uOvercast.value < 0.5;
+  if (!clear) { MET.next = 0; MET.until = 0; for (let k = 0; k < 8; k++) { MET.slots[k] = null; MET.B[k].w = 0; } return; }
+  if (!MET.next) MET.next = t + 60 + rnd() * 60;   // the first shower a minute or two into the night, then every 5–10 minutes
+  if (t >= MET.next && t >= MET.until) {
+    MET.until = t + 25 + rnd() * 25; MET.next = MET.until + 300 + rnd() * 300; MET.spawn = t; MET.showers++;
+    const az = rnd() * Math.PI * 2, el = 0.5 + rnd() * 0.35; MET.rad.set(Math.cos(az) * Math.sqrt(1 - el * el), el, Math.sin(az) * Math.sqrt(1 - el * el));   // the radiant, high in the sky
+  }
+  if (t < MET.until && t >= MET.spawn) {
+    MET.spawn = t + 0.25 + rnd() * 1.1;
+    const k = MET.slots.findIndex((s) => !s);
+    if (k >= 0) {
+      const R = MET.rad, n = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).cross(R).normalize(), th = 0.12 + rnd() * 0.55;
+      const a = R.clone().multiplyScalar(Math.cos(th)).addScaledVector(n, Math.sin(th)), v = a.clone().multiplyScalar(a.dot(R)).sub(R).normalize();   // start 7–38° from the radiant, heading away from it
+      if (a.y > 0.12 && a.clone().addScaledVector(v, 0.45).y > 0.06) MET.slots[k] = { a, v, t0: t, dur: 0.45 + rnd() * 0.9, b: 0.5 + rnd() * 0.7 };
+    }
+  }
+  for (let k = 0; k < 8; k++) {
+    const m = MET.slots[k]; if (!m) { MET.B[k].w = 0; continue; }
+    const p = (t - m.t0) / m.dur;
+    if (p * 0.45 > 0.45 + 0.11) { MET.slots[k] = null; MET.B[k].w = 0; continue; }
+    MET.A[k].set(m.a.x, m.a.y, m.a.z, p); MET.B[k].set(m.v.x, m.v.y, m.v.z, m.b);
+  }
+}
 // Sky dome
 {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(80000, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 }, uTime: { value: 0 }, uCover: { value: 0.5 }, uVapour: { value: 0 }, uVap: { value: new THREE.Color() }, uClLit: { value: new THREE.Color('#fff') }, uClShade: { value: new THREE.Color('#889') } },
+    uniforms: { uSun: { value: SUN_DIR }, uTop: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() }, uNight: { value: 1 }, uMilky: { value: 0 }, uOvercast: { value: 0 }, uOver: { value: new THREE.Color() }, uFlash: { value: 0 }, uTime: { value: 0 }, uCover: { value: 0.5 }, uVapour: { value: 0 }, uVap: { value: new THREE.Color() }, uClLit: { value: new THREE.Color('#fff') }, uClShade: { value: new THREE.Color('#889') }, uMetA: { value: MET.A }, uMetB: { value: MET.B } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w * 0.9999; }`,
-    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver, uClLit, uClShade; uniform float uNight, uMilky, uOvercast, uFlash, uTime, uCover, uVapour; uniform vec3 uVap; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uSun, uTop, uMid, uHor, uGlow, uOver, uClLit, uClShade; uniform float uNight, uMilky, uOvercast, uFlash, uTime, uCover, uVapour; uniform vec3 uVap; uniform vec4 uMetA[8], uMetB[8]; varying vec3 vDir;
       float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
@@ -849,6 +877,21 @@ function stepWeather(dt, t) {
           vec3 g2 = floor(d * 900.0); float dense = step(1.0 - 0.06 * band, hash(g2)) * (0.4 + 0.6 * hash(g2 + 1.7));
           vec3 mw = vec3(0.55, 0.62, 0.85) * glowMW * 0.55 + vec3(0.95, 0.85, 0.7) * core * cloud * 0.25 + vec3(0.9, 0.95, 1.0) * dense * band * 0.9;
           c += mw * uMilky * smoothstep(0.02, 0.3, h);
+        }
+        // meteors: each slot is a streak from a (its start, uMetA.xyz) along the tangent v (uMetB.xyz); p = progress, b = brightness; a short tail trails the head and fades
+        if (uNight > 0.0 && h > 0.0) {
+          const float span = 0.45, tl = 0.11;
+          for (int k = 0; k < 8; k++) {
+            float b = uMetB[k].w; if (b <= 0.0) continue;
+            vec3 a = uMetA[k].xyz, v = uMetB[k].xyz; float p = uMetA[k].w;
+            float sHead = min(p, 1.0) * span, sTail = max(p * span - tl, 0.0);
+            float sc = clamp(dot(d - a, v), sTail, sHead);
+            vec3 q = normalize(a + v * sc); float dist = length(d - q), along = (sc - sTail) / max(sHead - sTail, 1e-3);
+            float streak = exp(-dist * dist / 0.0000035) * along * along + 0.3 * exp(-dist * dist / 0.00004) * along;
+            vec3 hd = d - normalize(a + v * sHead); float head = exp(-dot(hd, hd) / 0.000012) * step(p, 1.0);
+            vec3 tint = mix(vec3(0.85, 0.92, 1.0), vec3(0.72, 1.0, 0.82), step(0.75, hash(vec3(float(k), 2.0, 5.0))));
+            c += tint * (streak * 1.6 + head * 3.0) * b * uNight;
+          }
         }
         // towering painterly cumulus: a layer of fbm-sculpted clouds, lit from the sun's side with a bright silver edge and cool underbellies
         #ifndef SKY_LOW
@@ -6399,6 +6442,7 @@ function update(dt, t) {
   updateFurniture();
   post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
+  stepMeteors(dt, t);
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -6704,6 +6748,7 @@ function initSearch() {
   refreshLit();
 }
 window.amparacan = {
+  meteors() { MET.next = MET.t; MET.until = 0; return todState.name === 'night' ? 'shower starting' : 'only at night'; },
   audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), thunders: AUD.thunders || 0, env: AUD.env || null }; },
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
   doorOf(id) { const r = world.byId.get(id), d = r && doorsOf(r)[0]; if (!d) return null; const f = d.f, t = d.u / f.L; return { x: f.ax + (f.bx - f.ax) * t, z: f.az + (f.bz - f.az) * t, nx: f.nx, nz: f.nz, y: r.base }; },
