@@ -35,7 +35,7 @@ PY
 node --check <(...)                            # sanity-check the appcode block
 ```
 Then publish `wiki.html` via the Artifact tool (same file path keeps the URL).
-Vercel (project `worldbuilder`, linked to the GitHub repo) deploys every push; `main` is production at https://worldbuilder-three.vercel.app. `vercel.json` turns on clean URLs, so the map is at `/map` (and `/map.html` redirects there); the wiki is `index.html` at `/`.
+Vercel (project `worldbuilder`, linked to the GitHub repo) deploys every push; `main` is production at https://worldbuilder-three.vercel.app. `vercel.json` turns on clean URLs, so the map is at `/map` (and `/map.html` redirects there); the wiki is `index.html` at `/`. The wiki's sidebar has a **3D map** link (`MAP_URL` in `wiki_template.html`): `/map` on the website, the map's Claude artifact (new tab) when the wiki runs inside Claude or as a file; building pages deep-link to `MAP_URL#<map_id>`. Rebuild `wiki.html` and `index.html` together after any template change (`scripts/build_html.py` has stale absolute paths; the inline snippet above works).
 Editing persists via the `artifact` capability (`publish(html)`), with a
 `localStorage` fallback for read-only viewers.
 

@@ -402,7 +402,9 @@ DATA.chronology=DATA.chronology||[];
 const TYPE_LABEL={person:'Person',place:'Place',street:'Street',political_party:'Political party',organisation:'Organisation',building:'Building'};
 const TYPE_PLURAL={person:'People',place:'Places',street:'Streets',political_party:'Political parties',organisation:'Organisations',building:'Buildings'};
 // companion 3D map artifact; building pages deep-link to MAP_URL#<map_id>
-const MAP_URL='https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdecz';
+// inside Claude (or opened as a file) the map is its own artifact; on the website (Vercel) it is the sibling page /map
+const IN_CLAUDE=/claude/i.test(location.hostname)||location.protocol==='file:';
+const MAP_URL=IN_CLAUDE?'https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdecz':'/map';
 const mapHref=e=>MAP_URL+'#'+encodeURIComponent(e.map_id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // real-world topics → Wikipedia (auto-linked inside free text)
@@ -519,8 +521,10 @@ function renderNav(){
     ['#/timeline','Heads of state',DATA.heads_of_state.length],
     ['#/seasons','Seasons','11'],
     ['#/random','Random article',''],
+    [MAP_URL,'3D map',''],
   ];
-  const row=([href,label,ct])=>`<a href="${href}" class="${href==='#/'?(h===''||h==='#/'?'active':''):(h.startsWith(href)?'active':'')}">${esc(label)}${ct!==''?`<span class="ct">${ct}</span>`:''}</a>`;
+  const row=([href,label,ct])=>{ const out=href[0]!=='#', blank=out&&IN_CLAUDE;   // the map: a page of its own (a new tab when it is a separate artifact)
+    return `<a href="${esc(href)}"${blank?' target="_blank" rel="noopener noreferrer"':''} class="${out?'':href==='#/'?(h===''||h==='#/'?'active':''):(h.startsWith(href)?'active':'')}">${esc(label)}${blank?'<span class="ct">↗</span>':ct!==''?`<span class="ct">${ct}</span>`:''}</a>`; };
   document.getElementById('nav').innerHTML=
     `<div class="navlabel">Browse</div>`+items.map(row).join('')+
     `<div class="navlabel">Discover</div>`+items2.map(row).join('');
