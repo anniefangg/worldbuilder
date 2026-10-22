@@ -2816,7 +2816,7 @@ function overlayMesh(geo, tex, order, dim = null, fade = false) {
     sh.uniforms.uNight = NIGHT; if (dim) { sh.uniforms.uDim = dim; sh.uniforms.uDeep = world.parkCanopy; }
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight;' + (fade ? '\nvarying float vFade;' : '') + (dim ? '\nuniform vec3 uDim; uniform float uDeep;' : ''))
       .replace('#include <color_fragment>', '#include <color_fragment>' + (fade ? '\ndiffuseColor.a *= vFade;' : '') + (dim ? '\n{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb * uDim, vec3(0.07, 0.3, 0.1) * (0.7 + lum), uDeep * 0.92); }' : ''))
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + (dim ? '' : '\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.68, 0.42) * 0.2 * uNight;'));   // paving glows warm under the lamps at night; lawns (dim) stay dark
   };
   const m = new THREE.Mesh(geo.build(), mat);
   m.renderOrder = order; m.receiveShadow = true; scene.add(m); return m;
