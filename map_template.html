@@ -820,6 +820,202 @@ function stepWeather(dt, t) {
   hemi.intensity = wx.baseHemi * (1 + wx.flash * 6); u.uFlash.value = wx.flash;
 }
 
+// ─────────────────────────── animals ───────────────────────────
+// One InstancedMesh per kind, built from boxes and ellipsoids with a part id per vertex (aPart: 0 body, 1/2 wings or flippers,
+// 3 tail, 4 head, 5 fluke, 6 fish tail); a shared vertex shader flaps, swishes, bobs and beats them from a per-instance phase.
+// Static kinds (cats, flamingos, pelicans, toucans) set their matrices once; movers update every frame near the camera.
+// Sea animals are only what breaks the surface (the water is opaque) plus a dark flat silhouette just above it for the body beneath.
+const CRT = { t: { value: 0 }, kinds: {}, ready: false, rnd: mulberry(4242), tmp: new THREE.Object3D(), col: new THREE.Color() };
+const CRT_TIER = { Low: 0.35, Medium: 0.7, High: 1 };
+function cbox(g, part, cx, cy, cz, sx, sy, sz, col) {   // axis-aligned box, centred
+  const hx = sx / 2, hy = sy / 2, hz = sz / 2, F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  for (const n of F) {
+    const u = n[1] || n[2] ? [1, 0, 0] : [0, 1, 0], v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+    const s0 = g.count;
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.v(cx + (n[0] + u[0] * a + v[0] * b) * hx, cy + (n[1] + u[1] * a + v[1] * b) * hy, cz + (n[2] + u[2] * a + v[2] * b) * hz, n[0], n[1], n[2], col); g.extra.aPart.push(part); }
+    const P = g.p, e1 = [P[(s0 + 1) * 3] - P[s0 * 3], P[(s0 + 1) * 3 + 1] - P[s0 * 3 + 1], P[(s0 + 1) * 3 + 2] - P[s0 * 3 + 2]], e2 = [P[(s0 + 2) * 3] - P[s0 * 3], P[(s0 + 2) * 3 + 1] - P[s0 * 3 + 1], P[(s0 + 2) * 3 + 2] - P[s0 * 3 + 2]];
+    const cx_ = e1[1] * e2[2] - e1[2] * e2[1], cy_ = e1[2] * e2[0] - e1[0] * e2[2], cz_ = e1[0] * e2[1] - e1[1] * e2[0];
+    if (cx_ * n[0] + cy_ * n[1] + cz_ * n[2] >= 0) g.i.push(s0, s0 + 1, s0 + 2, s0, s0 + 2, s0 + 3); else g.i.push(s0, s0 + 2, s0 + 1, s0, s0 + 3, s0 + 2);
+  }
+}
+function cell(g, part, cx, cy, cz, rx, ry, rz, col, nLat = 4, nLon = 8) {   // low-poly ellipsoid
+  const s0 = g.count;
+  for (let j = 0; j <= nLat; j++) { const th = j / nLat * Math.PI, sy = Math.cos(th), r = Math.sin(th); for (let i = 0; i <= nLon; i++) { const ph = i / nLon * Math.PI * 2, nx = r * Math.cos(ph), nz = r * Math.sin(ph); g.v(cx + nx * rx, cy + sy * ry, cz + nz * rz, nx, sy, nz, col); g.extra.aPart.push(part); } }
+  for (let j = 0; j < nLat; j++) for (let i = 0; i < nLon; i++) { const a = s0 + j * (nLon + 1) + i, b = a + nLon + 1; g.i.push(a, a + 1, b, a + 1, b + 1, b); }
+}
+function critterMaterial(k) {
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: k.double ? THREE.DoubleSide : THREE.FrontSide, transparent: !!k.opacity, opacity: k.opacity || 1, depthWrite: !k.opacity });
+  m.customProgramCacheKey = () => 'critter';
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uT = CRT.t; sh.uniforms.uRate = { value: k.rate || 1 }; sh.uniforms.uAmp = { value: k.amp || 0 }; sh.uniforms.uTail = { value: k.tail || 0 }; sh.uniforms.uBob = { value: k.bob || 0 };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aPart; attribute float aPh; attribute float aRate; uniform float uT, uRate, uAmp, uTail, uBob;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      { float ph = uT * uRate * aRate + aPh;
+        if (aPart > 0.5 && aPart < 2.5) { float s = sin(ph); transformed.y += s * uAmp * abs(position.x); transformed.x *= 1.0 - 0.18 * abs(s); }   // wings, flippers
+        else if (aPart > 2.5 && aPart < 3.5) { transformed.x += sin(ph * 0.5) * uTail * max(-position.z, 0.0); }                                     // tail swish
+        else if (aPart > 3.5 && aPart < 4.5) { transformed.y += sin(ph * 0.6) * uBob; }                                                           // head bob
+        else if (aPart > 4.5 && aPart < 5.5) { transformed.y += sin(ph) * uAmp * max(-position.z, 0.0); }                                         // fluke: up and down
+        else if (aPart > 5.5) { transformed.x += sin(ph) * uTail * max(-position.z, 0.0); } }`);                                                  // fish tail: side to side
+  };
+  return m;
+}
+const CRT_SHADE = new THREE.MeshBasicMaterial({ color: '#07202c', transparent: true, opacity: 0.42, depthWrite: false });
+function critterKind(name, k) {   // k: { n, build(g), rate, amp, tail, bob, double, opacity, shade: [rx, rz], step(dt, t, kind) }
+  const g = new Geo([['aPart', 1]]); k.build(g); const geo = g.build();
+  const N = k.n, ph = new Float32Array(N), rate = new Float32Array(N);
+  for (let i = 0; i < N; i++) { ph[i] = CRT.rnd() * 6.2832; rate[i] = 0.85 + CRT.rnd() * 0.3; }
+  geo.setAttribute('aPh', new THREE.InstancedBufferAttribute(ph, 1)); geo.setAttribute('aRate', new THREE.InstancedBufferAttribute(rate, 1));
+  const mesh = new THREE.InstancedMesh(geo, critterMaterial(k), N); mesh.frustumCulled = false; mesh.castShadow = !!k.shadow; mesh.receiveShadow = false; mesh.renderOrder = k.opacity ? 3 : 10; mesh.visible = false; scene.add(mesh);
+  const kind = Object.assign(k, { name, mesh, list: [], nShow: N });
+  if (k.shade) { const sg = new THREE.CircleGeometry(1, 10).rotateX(-Math.PI / 2).scale(k.shade[0], 1, k.shade[1]); kind.shadeMesh = new THREE.InstancedMesh(sg, CRT_SHADE, N); kind.shadeMesh.frustumCulled = false; kind.shadeMesh.renderOrder = 2; kind.shadeMesh.visible = false; scene.add(kind.shadeMesh); }
+  CRT.kinds[name] = kind; return kind;
+}
+function critterPlace(kind, i, x, y, z, yaw, s = 1, pitch = 0, roll = 0) {
+  const o = CRT.tmp; o.position.set(x, y, z); o.rotation.set(pitch, yaw, roll, 'YXZ'); o.scale.setScalar(s); o.updateMatrix(); kind.mesh.setMatrixAt(i, o.matrix);
+}
+function critterShade(kind, i, x, z, yaw, s, on) {
+  const o = CRT.tmp, sea = world.sea ? world.sea.position.y : 0; o.position.set(x, sea + 0.05, z); o.rotation.set(0, yaw, 0); o.scale.setScalar(on ? s : 0.0001); o.updateMatrix(); kind.shadeMesh.setMatrixAt(i, o.matrix);
+}
+const CRT_C = (h) => new THREE.Color(h);
+// ---- builders (forward is +z, up is +y, sizes in metres)
+const CRT_BUILD = {
+  butterfly(g) { const w = CRT_C('#ffffff'); cbox(g, 1, -0.045, 0, 0, 0.09, 0.004, 0.07, w); cbox(g, 2, 0.045, 0, 0, 0.09, 0.004, 0.07, w); cbox(g, 0, 0, 0, 0, 0.012, 0.012, 0.07, CRT_C('#2b2420')); },
+  cat(g) { const w = CRT_C('#ffffff'); cell(g, 0, 0, 0.17, -0.02, 0.1, 0.17, 0.19, w, 4, 7); cell(g, 4, 0, 0.36, 0.13, 0.085, 0.08, 0.085, w, 3, 7); cbox(g, 4, -0.045, 0.44, 0.12, 0.04, 0.05, 0.02, w); cbox(g, 4, 0.045, 0.44, 0.12, 0.04, 0.05, 0.02, w); cbox(g, 3, 0.07, 0.05, -0.1, 0.035, 0.035, 0.3, w); cbox(g, 0, -0.05, 0.05, 0.1, 0.05, 0.1, 0.06, w); cbox(g, 0, 0.05, 0.05, 0.1, 0.05, 0.1, 0.06, w); },
+  flamingo(g) { const p = CRT_C('#f08aa8'), d = CRT_C('#e8607f'), k = CRT_C('#1a1414'); cell(g, 0, 0, 0.78, 0, 0.14, 0.15, 0.26, p, 4, 8); cbox(g, 0, -0.045, 0.37, 0.02, 0.025, 0.76, 0.025, d); cbox(g, 0, 0.045, 0.37, 0.02, 0.025, 0.76, 0.025, d); cbox(g, 4, 0, 1.0, 0.2, 0.05, 0.3, 0.05, p); cbox(g, 4, 0, 1.17, 0.18, 0.05, 0.12, 0.05, p); cell(g, 4, 0, 1.24, 0.17, 0.055, 0.05, 0.065, p, 3, 6); cbox(g, 4, 0, 1.2, 0.26, 0.04, 0.08, 0.1, k); cbox(g, 1, -0.11, 0.84, -0.02, 0.1, 0.03, 0.22, d); cbox(g, 2, 0.11, 0.84, -0.02, 0.1, 0.03, 0.22, d); },
+  pelican(g) { const w = CRT_C('#efe9dc'), b = CRT_C('#8a7f6e'), o = CRT_C('#e8a040'); cell(g, 0, 0, 0.36, 0, 0.2, 0.22, 0.34, w, 4, 8); cbox(g, 0, -0.17, 0.4, -0.04, 0.12, 0.08, 0.5, b); cbox(g, 0, 0.17, 0.4, -0.04, 0.12, 0.08, 0.5, b); cbox(g, 4, 0, 0.6, 0.2, 0.08, 0.28, 0.08, w); cell(g, 4, 0, 0.78, 0.22, 0.09, 0.08, 0.1, w, 3, 6); cbox(g, 4, 0, 0.74, 0.46, 0.06, 0.05, 0.4, o); cbox(g, 4, 0, 0.69, 0.4, 0.07, 0.05, 0.3, CRT_C('#d98a2f')); cbox(g, 0, -0.06, 0.1, 0.05, 0.04, 0.2, 0.04, o); cbox(g, 0, 0.06, 0.1, 0.05, 0.04, 0.2, 0.04, o); },
+  coati(g) { const b = CRT_C('#6f4a2c'), d = CRT_C('#3d2a18'), c = CRT_C('#c9a070'); cell(g, 0, 0, 0.22, 0, 0.11, 0.12, 0.3, b, 4, 7); cell(g, 4, 0, 0.26, 0.3, 0.07, 0.07, 0.12, b, 3, 6); cbox(g, 4, 0, 0.23, 0.42, 0.035, 0.035, 0.12, d); for (const [x, z] of [[-0.06, 0.17], [0.06, 0.17], [-0.06, -0.15], [0.06, -0.15]]) cbox(g, 0, x, 0.09, z, 0.04, 0.18, 0.04, d); for (let k = 0; k < 6; k++) cbox(g, 3, 0, 0.3 + k * 0.07, -0.26 - k * 0.04, 0.045, 0.08, 0.05, k % 2 ? c : d); },
+  gull(g) { const w = CRT_C('#f4f4f2'), gr = CRT_C('#b9bec4'), k = CRT_C('#2a2a2a'); cell(g, 0, 0, 0, 0, 0.07, 0.07, 0.19, w, 3, 7); cbox(g, 0, 0, 0.02, 0.2, 0.05, 0.05, 0.08, w); cbox(g, 0, 0, 0.01, 0.26, 0.02, 0.02, 0.06, CRT_C('#e8b030')); cbox(g, 1, -0.24, 0.02, 0.0, 0.46, 0.012, 0.13, gr); cbox(g, 2, 0.24, 0.02, 0.0, 0.46, 0.012, 0.13, gr); cbox(g, 1, -0.49, 0.02, -0.01, 0.06, 0.012, 0.1, k); cbox(g, 2, 0.49, 0.02, -0.01, 0.06, 0.012, 0.1, k); cbox(g, 0, 0, 0, -0.22, 0.12, 0.01, 0.1, w); },
+  frigate(g) { const k = CRT_C('#17171a'), r = CRT_C('#d81f3a'); cell(g, 0, 0, 0, 0, 0.06, 0.07, 0.24, k, 3, 7); cell(g, 0, 0, -0.03, 0.12, 0.05, 0.05, 0.07, r, 3, 6); cbox(g, 0, 0, 0, 0.3, 0.02, 0.02, 0.12, k); cbox(g, 1, -0.3, 0.03, 0.02, 0.58, 0.01, 0.12, k); cbox(g, 2, 0.3, 0.03, 0.02, 0.58, 0.01, 0.12, k); cbox(g, 1, -0.78, 0.0, -0.06, 0.4, 0.01, 0.08, k); cbox(g, 2, 0.78, 0.0, -0.06, 0.4, 0.01, 0.08, k); cbox(g, 0, -0.05, 0, -0.3, 0.03, 0.01, 0.26, k); cbox(g, 0, 0.05, 0, -0.3, 0.03, 0.01, 0.26, k); },
+  parrot(g, body, wing, tailC) { const b = CRT_C(body), w = CRT_C(wing), t = CRT_C(tailC || body); cell(g, 0, 0, 0, 0, 0.055, 0.06, 0.13, b, 3, 7); cell(g, 4, 0, 0.03, 0.14, 0.05, 0.05, 0.05, b, 3, 6); cbox(g, 4, 0, 0.02, 0.19, 0.03, 0.035, 0.04, CRT_C('#4a4a4a')); cbox(g, 1, -0.14, 0.02, 0, 0.26, 0.012, 0.1, w); cbox(g, 2, 0.14, 0.02, 0, 0.26, 0.012, 0.1, w); cbox(g, 3, 0, 0, -0.2, 0.05, 0.012, 0.2, t); },
+  humming(g) { const gr = CRT_C('#2fa66a'), r = CRT_C('#e0306a'); cell(g, 0, 0, 0, 0, 0.022, 0.025, 0.045, gr, 3, 6); cell(g, 4, 0, 0.012, 0.05, 0.018, 0.018, 0.02, r, 2, 6); cbox(g, 4, 0, 0.012, 0.085, 0.004, 0.004, 0.05, CRT_C('#222')); cbox(g, 1, -0.045, 0.01, -0.005, 0.08, 0.004, 0.03, CRT_C('#9fd9b8')); cbox(g, 2, 0.045, 0.01, -0.005, 0.08, 0.004, 0.03, CRT_C('#9fd9b8')); cbox(g, 3, 0, 0, -0.06, 0.025, 0.004, 0.05, gr); },
+  toucan(g) { const k = CRT_C('#141416'), w = CRT_C('#f6e27a'), o = CRT_C('#f0932b'), y = CRT_C('#f6c324'); cell(g, 0, 0, 0.16, 0, 0.09, 0.13, 0.18, k, 4, 7); cell(g, 0, 0, 0.15, 0.09, 0.06, 0.09, 0.09, w, 3, 6); cell(g, 4, 0, 0.32, 0.1, 0.07, 0.07, 0.08, k, 3, 6); cbox(g, 4, 0, 0.32, 0.26, 0.07, 0.08, 0.28, o); cbox(g, 4, 0, 0.35, 0.3, 0.075, 0.04, 0.2, y); cbox(g, 3, 0, 0.1, -0.22, 0.06, 0.02, 0.18, k); cbox(g, 0, 0, 0.03, 0.02, 0.06, 0.06, 0.08, CRT_C('#3a66c9')); },
+  fish(g) { const w = CRT_C('#ffffff'); cell(g, 0, 0, 0, 0, 0.012, 0.045, 0.07, w, 3, 6); cbox(g, 6, 0, 0, -0.09, 0.008, 0.06, 0.05, w); cbox(g, 0, 0, 0.055, -0.01, 0.006, 0.03, 0.06, w); },
+  dolphin(g) { const gr = CRT_C('#5f6f7c'), li = CRT_C('#c7d1d8'); cell(g, 0, 0, 0, 0.1, 0.22, 0.24, 1.05, gr, 4, 8); cell(g, 0, 0, -0.1, 0.1, 0.19, 0.17, 1.0, li, 4, 8); cbox(g, 0, 0, 0.06, 1.2, 0.12, 0.12, 0.4, gr); cbox(g, 0, 0, 0.42, -0.05, 0.04, 0.42, 0.3, gr); cbox(g, 5, 0, 0, -1.25, 0.6, 0.05, 0.3, gr); cbox(g, 1, -0.25, -0.06, 0.25, 0.3, 0.04, 0.2, gr); cbox(g, 2, 0.25, -0.06, 0.25, 0.3, 0.04, 0.2, gr); },
+  turtle(g) { const s = CRT_C('#5c6b3a'), d = CRT_C('#3f4a2a'), f = CRT_C('#6f7a4a'); cell(g, 0, 0, 0, 0, 0.42, 0.18, 0.5, s, 4, 8); cell(g, 0, 0, 0.1, 0, 0.3, 0.1, 0.36, d, 3, 8); cell(g, 4, 0, 0.03, 0.6, 0.11, 0.1, 0.16, f, 3, 6); cbox(g, 1, -0.5, -0.02, 0.2, 0.5, 0.05, 0.22, f); cbox(g, 2, 0.5, -0.02, 0.2, 0.5, 0.05, 0.22, f); cbox(g, 0, -0.35, -0.02, -0.4, 0.25, 0.05, 0.18, f); cbox(g, 0, 0.35, -0.02, -0.4, 0.25, 0.05, 0.18, f); },
+  manta(g) { const k = CRT_C('#1f2a33'), w = CRT_C('#cfd6dc'); cell(g, 0, 0, 0, 0, 0.5, 0.18, 0.9, k, 3, 8); cbox(g, 1, -0.95, 0.04, -0.1, 1.5, 0.06, 1.1, k); cbox(g, 2, 0.95, 0.04, -0.1, 1.5, 0.06, 1.1, k); cbox(g, 1, -1.85, 0.04, -0.3, 0.5, 0.05, 0.6, k); cbox(g, 2, 1.85, 0.04, -0.3, 0.5, 0.05, 0.6, k); cbox(g, 0, -0.3, 0.02, 0.95, 0.18, 0.08, 0.4, w); cbox(g, 0, 0.3, 0.02, 0.95, 0.18, 0.08, 0.4, w); cbox(g, 3, 0, 0, -1.5, 0.05, 0.04, 1.4, k); },
+  whaleShark(g) { const k = CRT_C('#4a5660'), s = CRT_C('#8a9aa6'); cell(g, 0, 0, 0, 0, 1.1, 1.0, 4.6, k, 4, 10); cell(g, 0, 0, 0.1, 2.0, 0.9, 0.7, 2.4, k, 3, 8); cbox(g, 0, 0, 1.45, -0.3, 0.12, 1.2, 1.3, k); cbox(g, 1, -1.9, -0.3, 0.8, 1.8, 0.1, 0.9, k); cbox(g, 2, 1.9, -0.3, 0.8, 1.8, 0.1, 0.9, k); cbox(g, 6, 0, 0.6, -5.6, 0.12, 2.8, 1.2, k); for (let i = 0; i < 26; i++) cbox(g, 0, Math.sin(i * 2.4) * 0.7, 0.72 + Math.cos(i * 1.7) * 0.25, -2.5 + i * 0.22, 0.14, 0.14, 0.14, s); },
+};
+// ---- placement helpers
+function crtSeaPoint(rnd, nearShore = 350, minDepth = 2.5) {   // a sea point within nearShore metres of land
+  const b = world.bounds;
+  for (let t = 0; t < 200; t++) {
+    const x = b.minX - 300 + rnd() * (b.maxX - b.minX + 600), z = b.minZ - 300 + rnd() * (b.maxZ - b.minZ + 600);
+    if (H(x, z) > -minDepth) continue;
+    let land = false; for (let k = 0; k < 8 && !land; k++) { const a = k / 8 * 6.2832; for (const d of [60, 120, 200, nearShore]) if (H(x + Math.cos(a) * d, z + Math.sin(a) * d) > 0.3) { land = true; break; } }
+    if (land) return [x, z];
+  }
+  return null;
+}
+function crtSteer(m, speed, dt, minDepth = 2.5, turn = 0.6) {   // a swimmer: drifts its heading, turns away from the shallows
+  m.yaw += m.turn * dt; if (CRT.rnd() < dt * 0.3) m.turn = (CRT.rnd() - 0.5) * turn;
+  const ax = m.x + Math.sin(m.yaw) * speed * 6, az = m.z + Math.cos(m.yaw) * speed * 6;
+  if (H(ax, az) > -minDepth) { m.turn = 0; m.yaw += 1.4 * dt * 4; }
+  m.x += Math.sin(m.yaw) * speed * dt; m.z += Math.cos(m.yaw) * speed * dt;
+}
+function crtInit() {
+  const rnd = CRT.rnd, F = world.features, lakes = F.filter((f) => f.kind === 'water'), parks = F.filter((f) => f.kind === 'park' && f.size > 1500), beaches = F.filter((f) => f.kind === 'beach');
+  const K = CRT_BUILD, pinside = (f, pad) => { for (let t = 0; t < 30; t++) { const x = f.bbox[0] + rnd() * (f.bbox[2] - f.bbox[0]), z = f.bbox[1] + rnd() * (f.bbox[3] - f.bbox[1]); if (pointInRings(x, z, f.rings) && (!pad || !hardAt(x, z, pad))) return [x, z]; } return null; };
+  // -- butterflies: streamed in a box around the camera, low over the ground, fluttering
+  { const k = critterKind('butterfly', { n: 220, build: K.butterfly, rate: 14, amp: 0.9, double: true, box: 70, alt: 90, step(dt, t, k) { crtStream(k, dt, t, (m) => { m.y += Math.sin(t * 2.3 + m.ph) * 0.4 * dt; m.y = clamp(m.y, 0.3, 4); m.yaw += (rnd() - 0.5) * 3 * dt; m.x += Math.sin(m.yaw) * 1.1 * dt; m.z += Math.cos(m.yaw) * 1.1 * dt; }, 1); } });
+    const cols = ['#f5a623', '#f7d33a', '#4f8ff0', '#ffffff', '#e9743c', '#c98cf2', '#f2f0c0'];
+    for (let i = 0; i < k.n; i++) { k.list.push({ x: (rnd() - 0.5) * 70, z: (rnd() - 0.5) * 70, y: 0.4 + rnd() * 2.5, yaw: rnd() * 6.28, ph: rnd() * 6.28, s: 1.4 + rnd() * 0.9 }); k.mesh.setColorAt(i, CRT.col.set(cols[(rnd() * cols.length) | 0])); } }
+  // -- hummingbirds: near the camera too, hovering at flower height and darting between spots
+  { const k = critterKind('humming', { n: 48, build: K.humming, rate: 60, amp: 1.2, box: 60, alt: 60, step(dt, t, k) { crtStream(k, dt, t, (m) => { if (!m.tx || (t > m.until)) { m.tx = m.x + (rnd() - 0.5) * 10; m.tz = m.z + (rnd() - 0.5) * 10; m.ty = 1.2 + rnd() * 1.8; m.until = t + 1 + rnd() * 3; } m.x += (m.tx - m.x) * Math.min(1, 6 * dt); m.z += (m.tz - m.z) * Math.min(1, 6 * dt); m.y += (m.ty - m.y) * Math.min(1, 6 * dt); m.yaw = Math.atan2(m.tx - m.x, m.tz - m.z); }, 1, true); } });
+    for (let i = 0; i < k.n; i++) k.list.push({ x: (rnd() - 0.5) * 60, z: (rnd() - 0.5) * 60, y: 1.5, yaw: 0, s: 1 }); }
+  // -- cats: on window sills and parapets of ~10% of buildings
+  { const k = critterKind('cat', { n: 3400, build: K.cat, rate: 1.3, tail: 0.5, alt: 260, shadow: true }), cols = ['#1d1b1b', '#d9842f', '#8a8a8a', '#f2efe6', '#6b4a2e', '#c9b9a2'];
+    let i = 0; for (const rec of world.buildings) { if (i >= k.n || ((rec.seed >>> 11) % 100) >= 10) continue; const fs = facadesOf(rec); if (!fs.length) continue; const f = fs[(rec.seed >>> 3) % fs.length], s = rec.style || styleOf(rec), nb = Math.max(1, Math.floor(f.L / 3.4)), bay = (rec.seed >>> 5) % nb, u = (bay + 0.5) * f.L / nb; const up = rec.top != null && (rec.seed >>> 7) % 3 === 0;
+      const fl = 1 + ((rec.seed >>> 9) % Math.max(1, Math.min(s.floors - 1, 3))), y = up ? (rec.top || rec.base + 4 + (s.floors - 1) * 3.3) + 0.9 : rec.base + 4 + (fl - 1) * 3.3 + 0.26 * 3.3 - 0.08, out = up ? -0.2 : 0.17;
+      critterPlace(k, i, f.ax + (f.bx - f.ax) / f.L * u + f.nx * out, y, f.az + (f.bz - f.az) / f.L * u + f.nz * out, Math.atan2(f.nx, f.nz) + ((rec.seed >>> 13) % 2 ? 0.5 : -0.5), 0.9 + ((rec.seed >>> 15) % 20) / 100); k.mesh.setColorAt(i, CRT.col.set(cols[(rec.seed >>> 17) % cols.length])); i++; }
+    k.mesh.count = i; k.n = i; }
+  // -- flamingos: standing in the shallows of some lakes
+  { const k = critterKind('flamingo', { n: 160, build: K.flamingo, rate: 0.5, bob: 0.03, amp: 0.05, alt: 400, shadow: true }); let i = 0;
+    for (const f of lakes) { if (((f.seed >>> 4) % 100) >= 40) continue; const r = f.rings[0], n = 6 + ((f.seed >>> 8) % 9), R = mulberry(f.seed);
+      for (let j = 0; j < n && i < k.n; j++) { const e = ((R() * r.length / 2) | 0) * 2, e2 = (e + 2) % r.length, t = R(), x0 = r[e] + (r[e2] - r[e]) * t, z0 = r[e + 1] + (r[e2 + 1] - r[e + 1]) * t, dx = f.cx - x0, dz = f.cz - z0, L = Math.hypot(dx, dz) || 1, d = 3 + R() * 9, x = x0 + dx / L * d, z = z0 + dz / L * d, h = H(x, z); if (h > 0.1) continue; critterPlace(k, i++, x, Math.max(h, -0.5), z, R() * 6.28, 0.9 + R() * 0.2); } }   // standing in the shallows, legs in the water
+    k.mesh.count = i; k.n = i; }
+  // -- pelicans: on the beach sand, facing the sea
+  { const k = critterKind('pelican', { n: 140, build: K.pelican, rate: 0.6, bob: 0.02, alt: 400, shadow: true }); let i = 0;
+    for (const f of beaches) { const R = mulberry(f.seed), n = 3 + ((f.seed >>> 6) % 6), P = f.pts; for (let j = 0; j < n && i < k.n; j++) { const q = pointAlong(P, R() * f.size), x = q[0] + (R() - 0.5) * 8, z = q[1] + (R() - 0.5) * 8, h = H(x, z); if (h < 0.15 || h > 1.2 || roadAt(x, z)) continue; let yaw = R() * 6.28; for (let a = 0; a < 8; a++) { const an = a / 8 * 6.28; if (H(x + Math.sin(an) * 20, z + Math.cos(an) * 20) < 0) { yaw = an; break; } } critterPlace(k, i++, x, h + 0.05, z, yaw + (R() - 0.5) * 0.6, 0.9 + R() * 0.25); } }
+    k.mesh.count = i; k.n = i; }
+  // -- coatis: a few, nosing slowly around park lawns
+  { const k = critterKind('coati', { n: 30, build: K.coati, rate: 2.5, tail: 0.25, bob: 0.01, alt: 120, shadow: true, step(dt, t, k) { for (let i = 0; i < k.n; i++) { const m = k.list[i]; m.yaw += m.turn * dt; if (rnd() < dt * 0.4) m.turn = (rnd() - 0.5) * 1.6; const nx = m.x + Math.sin(m.yaw) * 0.55 * dt, nz = m.z + Math.cos(m.yaw) * 0.55 * dt; if (pointInRings(nx, nz, m.park.rings) && !hardAt(nx, nz, 0.5) && buildingAt(nx, nz) < 0) { m.x = nx; m.z = nz; } else m.yaw += 2.2 * dt * 3; critterPlace(k, i, m.x, H(m.x, m.z) + LIFT, m.z, m.yaw, m.s); } } });
+    let i = 0; for (let tries = 0; tries < 300 && i < k.n && parks.length; tries++) { const f = parks[(rnd() * parks.length) | 0], p = pinside(f, 0.8); if (!p) continue; k.list.push({ x: p[0], z: p[1], park: f, yaw: rnd() * 6.28, turn: 0, s: 0.9 + rnd() * 0.3 }); i++; } k.mesh.count = i; k.n = i; }
+  // -- gulls: everywhere, circling in the air around the camera
+  { const k = critterKind('gull', { n: 170, build: K.gull, rate: 5, amp: 0.55, double: true, box: 320, alt: 900, step(dt, t, k) { crtStream(k, dt, t, (m) => { m.a += m.w * dt; const ox = m.x, oz = m.z; m.cx += 1.2 * dt; m.x = m.cx + Math.cos(m.a) * m.r; m.z = m.cz + Math.sin(m.a) * m.r; m.yaw = Math.atan2(m.x - ox, m.z - oz); m.y = m.h + Math.sin(t * 0.7 + m.ph) * 2; }, 0, false, true); } });
+    for (let i = 0; i < k.n; i++) { const r = 12 + rnd() * 40; k.list.push({ cx: (rnd() - 0.5) * 320, cz: (rnd() - 0.5) * 320, r, a: rnd() * 6.28, w: (0.5 + rnd() * 0.5) * (rnd() < 0.5 ? 1 : -1) * 9 / r, h: 14 + rnd() * 50, ph: rnd() * 6.28, x: 0, z: 0, y: 20, yaw: 0, s: 0.9 + rnd() * 0.3, glide: rnd() }); } }
+  // -- frigatebirds: soaring in slow circles high over the beaches, wings held still
+  { const k = critterKind('frigate', { n: 64, build: K.frigate, rate: 0.3, amp: 0.04, double: true, alt: 2500, step(dt, t, k) { for (let i = 0; i < k.n; i++) { const m = k.list[i]; m.a += m.w * dt; const x = m.cx + Math.cos(m.a) * m.r, z = m.cz + Math.sin(m.a) * m.r; critterPlace(k, i, x, m.h + Math.sin(t * 0.3 + m.ph) * 4, z, Math.atan2(x - m.x, z - m.z), m.s, 0, m.w > 0 ? -0.35 : 0.35); m.x = x; m.z = z; } } });
+    let i = 0; for (const f of beaches) { const R = mulberry(f.seed ^ 77), n = 2 + ((f.seed >>> 5) % 4); for (let j = 0; j < n && i < k.n; j++) { const q = pointAlong(f.pts, R() * f.size), r = 30 + R() * 60; k.list.push({ cx: q[0] + (R() - 0.5) * 80, cz: q[1] + (R() - 0.5) * 80, r, a: R() * 6.28, w: (R() < 0.5 ? 1 : -1) * 7 / r, h: 60 + R() * 70, ph: R() * 6.28, x: 0, z: 0, s: 1 + R() * 0.3 }); i++; } } k.mesh.count = i; k.n = i; }
+  // -- parrots and macaws: flocks that fly from park to park and circle over the trees
+  const flocks = (name, build, nFlock, per, speed, h0, scale, rate, amp) => {
+    const k = critterKind(name, { n: nFlock * per, build, rate, amp, double: true, alt: 700, step(dt, t, k) {
+      for (const fl of k.flocks) {
+        const dx = fl.tx - fl.x, dz = fl.tz - fl.z, d = Math.hypot(dx, dz);
+        if (d < 25) { if (!fl.rest) fl.rest = t + 8 + rnd() * 20; fl.a += 0.5 * dt; fl.x = fl.tx + Math.cos(fl.a) * 18; fl.z = fl.tz + Math.sin(fl.a) * 18; if (t > fl.rest) { fl.rest = 0; const cand = parks.filter((p) => Math.hypot(p.cx - fl.x, p.cz - fl.z) < 700 && p !== fl.park); const p = cand.length ? cand[(rnd() * cand.length) | 0] : parks[(rnd() * parks.length) | 0]; fl.park = p; fl.tx = p.cx; fl.tz = p.cz; } }
+        else { fl.x += dx / d * speed * dt; fl.z += dz / d * speed * dt; }
+        const yaw = Math.atan2(fl.x - fl.px, fl.z - fl.pz) || fl.yaw; fl.yaw = yaw; fl.px = fl.x; fl.pz = fl.z;
+        for (let j = 0; j < fl.m.length; j++) { const m = fl.m[j], x = fl.x + m.ox, z = fl.z + m.oz; critterPlace(k, m.i, x, Math.max(H(x, z) + 6, fl.h + m.oy + Math.sin(t * 1.3 + m.ph)), z, yaw, m.s); }
+      } } });
+    k.flocks = []; let i = 0;
+    for (let f = 0; f < nFlock && parks.length; f++) { const p = parks[(rnd() * parks.length) | 0], fl = { x: p.cx + 20, z: p.cz, px: p.cx, pz: p.cz, tx: p.cx, tz: p.cz, park: p, h: h0 + rnd() * 10, a: rnd() * 6.28, rest: 0, yaw: 0, m: [] }; for (let j = 0; j < per; j++) fl.m.push({ i: i++, ox: (rnd() - 0.5) * 9, oz: (rnd() - 0.5) * 9, oy: (rnd() - 0.5) * 4, ph: rnd() * 6.28, s: scale * (0.9 + rnd() * 0.2) }); k.flocks.push(fl); }
+    k.mesh.count = i; k.n = i; return k;
+  };
+  flocks('parrotGreen', (g) => K.parrot(g, '#3fb24a', '#2f8f3c', '#2a7a30'), 20, 6, 9, 16, 1, 9, 0.7);
+  flocks('parrotBlue', (g) => K.parrot(g, '#3a7bd5', '#2b5fb0', '#5aa0e8'), 8, 5, 9, 18, 1, 9, 0.7);
+  flocks('macaw', (g) => K.parrot(g, '#d8262e', '#2a63c4', '#e3b325'), 15, 2, 8, 20, 1.7, 7, 0.6);
+  // -- toucans: perched in park trees
+  { const k = critterKind('toucan', { n: 22, build: K.toucan, rate: 0.6, bob: 0.03, alt: 150, shadow: true }); let i = 0; const M = new THREE.Matrix4(), P = new THREE.Vector3(), Qt = new THREE.Quaternion(), S = new THREE.Vector3();
+    const byGeo = new Map(); for (const [key, g] of Object.entries(world.treeGeos || {})) byGeo.set(g, key);
+    const trees = []; for (const ms of (world.parkTrees || new Map()).values()) for (const m of ms) { if (!m.isInstancedMesh || m.userData.role !== 'near') continue; const sp = byGeo.get(m.geometry), S0 = SPECIES[sp]; if (!S0 || S0.form !== 'crown' || S0.h < 7) continue; for (let j = 0; j < m.count; j += 7) { m.getMatrixAt(j, M); M.decompose(P, Qt, S); trees.push([P.x, P.y + S0.h * S.y * 0.62, P.z, S0.o.crownR * S.y * 0.5]); } }
+    for (let tries = 0; tries < 400 && i < k.n && trees.length; tries++) { const tr = trees[(rnd() * trees.length) | 0], a = rnd() * 6.28; critterPlace(k, i++, tr[0] + Math.cos(a) * tr[3], tr[1] + (rnd() - 0.5) * 1.5, tr[2] + Math.sin(a) * tr[3], rnd() * 6.28, 1); }
+    k.mesh.count = i; k.n = i; }
+  // -- tropical fish: shoals seen through the surface of shallow water
+  { const SH = 55, PER = 14, k = critterKind('fish', { n: SH * PER, build: K.fish, rate: 9, tail: 0.5, opacity: 0.55, alt: 120, step(dt, t, k) { for (const sh of k.shoals) { sh.a += 0.25 * dt; sh.x = sh.cx + Math.cos(sh.a) * 6; sh.z = sh.cz + Math.sin(sh.a) * 6; const yaw = sh.a + Math.PI / 2; for (const m of sh.m) { const x = sh.x + m.ox + Math.sin(t * 1.5 + m.ph) * 0.4, z = sh.z + m.oz + Math.cos(t * 1.1 + m.ph) * 0.4; critterPlace(k, m.i, x, (world.sea ? world.sea.position.y : 0) + 0.04, z, yaw + Math.sin(t + m.ph) * 0.3, m.s, 0, Math.PI / 2); } } } });
+    const cols = ['#f2c230', '#2f8fe0', '#f06a2c', '#5fd0d8', '#e8e8e8', '#9b59d6']; k.shoals = []; let i = 0;
+    for (let tries = 0; tries < 2500 && k.shoals.length < SH; tries++) { const p = crtSeaPoint(rnd, 90, 0.8); if (!p || H(p[0], p[1]) < -7) continue; const sh = { cx: p[0], cz: p[1], x: p[0], z: p[1], a: rnd() * 6.28, m: [] }, c = cols[(rnd() * cols.length) | 0]; for (let j = 0; j < PER; j++) { sh.m.push({ i, ox: (rnd() - 0.5) * 4, oz: (rnd() - 0.5) * 4, ph: rnd() * 6.28, s: 1.2 + rnd() * 0.8 }); k.mesh.setColorAt(i, CRT.col.set(c).multiplyScalar(0.9)); i++; } k.shoals.push(sh); }
+    k.mesh.count = i; k.n = i; }
+  // -- dolphins: pods porpoising along the coast
+  { const k = critterKind('dolphin', { n: 36, build: K.dolphin, rate: 3, amp: 0.25, shade: [0.7, 1.4], alt: 900, step(dt, t, k) { for (const pod of k.pods) { crtSteer(pod, 3.2, dt, 3, 0.5); for (const m of pod.m) { m.ph += dt * m.rate; const c = Math.cos(m.ph), s = Math.sin(m.ph), x = pod.x + Math.sin(pod.yaw + Math.PI / 2) * m.o + Math.sin(pod.yaw) * m.back, z = pod.z + Math.cos(pod.yaw + Math.PI / 2) * m.o + Math.cos(pod.yaw) * m.back, y = -0.9 + 1.35 * s; critterPlace(k, m.i, x, y, z, pod.yaw, m.s, -c * 0.7); critterShade(k, m.i, x, z, pod.yaw, m.s, y < -0.1); } } } });
+    k.pods = []; let i = 0; for (let p = 0; p < 9; p++) { const q = crtSeaPoint(rnd, 400, 4); if (!q) continue; const pod = { x: q[0], z: q[1], yaw: rnd() * 6.28, turn: 0, m: [] }; const n = 3 + ((rnd() * 3) | 0); for (let j = 0; j < n && i < k.n; j++) pod.m.push({ i: i++, o: (j - n / 2) * 2.2, back: rnd() * 3, ph: rnd() * 6.28, rate: 0.9 + rnd() * 0.3, s: 0.9 + rnd() * 0.25 }); k.pods.push(pod); } k.mesh.count = i; k.n = i; }
+  // -- sea turtles: paddling slowly, surfacing for a breath now and then
+  { const k = critterKind('turtle', { n: 26, build: K.turtle, rate: 1.1, amp: 0.3, shade: [0.9, 1.0], alt: 500, step(dt, t, k) { for (let i = 0; i < k.n; i++) { const m = k.list[i]; crtSteer(m, 0.5, dt, 1.2, 0.4); const y = -0.55 + 0.5 * Math.max(0, Math.sin(t * 0.12 + m.ph)) ** 3; critterPlace(k, i, m.x, y, m.z, m.yaw, m.s, 0.05); critterShade(k, i, m.x, m.z, m.yaw, m.s, y < -0.15); } } });
+    for (let i = 0; i < k.n; i++) { const q = crtSeaPoint(rnd, 250, 1.5); if (!q) break; k.list.push({ x: q[0], z: q[1], yaw: rnd() * 6.28, turn: 0, ph: rnd() * 6.28, s: 0.9 + rnd() * 0.4 }); } k.mesh.count = k.n = k.list.length; }
+  // -- manta rays: gliding just under the surface, wing tips breaking it
+  { const k = critterKind('manta', { n: 18, build: K.manta, rate: 0.9, amp: 0.35, shade: [2.2, 1.6], alt: 700, step(dt, t, k) { for (let i = 0; i < k.n; i++) { const m = k.list[i]; crtSteer(m, 1.1, dt, 2.5, 0.3); const y = -0.42 + 0.2 * Math.sin(t * 0.3 + m.ph); critterPlace(k, i, m.x, y, m.z, m.yaw, m.s); critterShade(k, i, m.x, m.z, m.yaw, m.s, true); } } });
+    for (let i = 0; i < k.n; i++) { const q = crtSeaPoint(rnd, 350, 3); if (!q) break; k.list.push({ x: q[0], z: q[1], yaw: rnd() * 6.28, turn: 0, ph: rnd() * 6.28, s: 0.9 + rnd() * 0.5 }); } k.mesh.count = k.n = k.list.length; }
+  // -- whale sharks: two, cruising the deeper water, dorsal fin and tail above the surface
+  { const k = critterKind('whaleShark', { n: 2, build: K.whaleShark, rate: 0.7, tail: 0.6, shade: [1.4, 5.5], alt: 1200, step(dt, t, k) { for (let i = 0; i < k.n; i++) { const m = k.list[i]; crtSteer(m, 0.9, dt, 5, 0.2); critterPlace(k, i, m.x, -1.75, m.z, m.yaw, m.s); critterShade(k, i, m.x, m.z, m.yaw, m.s, true); } } });
+    for (let i = 0; i < k.n; i++) { const q = crtSeaPoint(rnd, 500, 6); if (!q) break; k.list.push({ x: q[0], z: q[1], yaw: rnd() * 6.28, turn: 0, s: 1 + rnd() * 0.3 }); } k.mesh.count = k.n = k.list.length; }
+  for (const k of Object.values(CRT.kinds)) { k.mesh.instanceMatrix.needsUpdate = true; if (k.mesh.instanceColor) k.mesh.instanceColor.needsUpdate = true; k.nMax = k.n; }
+  CRT.ready = true;
+}
+// movers that live in a box around the camera (wrapped like the petals): fn moves each in box-local coordinates
+function crtStream(k, dt, t, fn, groundY, over, air) {
+  const c = camera.position, B = k.box, gy = Math.max(0, H(c.x, c.z));
+  for (let i = 0; i < k.n; i++) {
+    const m = k.list[i]; fn(m);
+    if (m.x > B / 2) m.x -= B; if (m.x < -B / 2) m.x += B; if (m.z > B / 2) m.z -= B; if (m.z < -B / 2) m.z += B;
+    if (m.cx != null) { if (m.cx > B / 2) m.cx -= B; }
+    const wx = c.x + ((m.x - c.x + B * 1000.5) % B) - B / 2, wz = c.z + ((m.z - c.z + B * 1000.5) % B) - B / 2;
+    const h = H(wx, wz), y = air ? Math.max(h, 0) + m.y : (groundY != null ? h + LIFT + m.y : m.y);
+    const ok = air || (h > 0.2 && (!over || !roadAt(wx, wz)) && buildingAt(wx, wz) < 0);
+    critterPlace(k, i, wx, y, wz, m.yaw, ok ? m.s : 0.0001);
+  }
+}
+function stepCritters(dt, t) {
+  if (!world.features || !world.parkTrees) return;
+  if (!CRT.ready) { crtInit(); return; }
+  CRT.t.value = t;
+  const c = camera.position, alt = c.y - Math.max(0, H(c.x, c.z)), tier = CRT_TIER[Q.t.name] || 1, rain = WEATHER[wx.name].rain > 0;
+  for (const k of Object.values(CRT.kinds)) {
+    const on = alt < k.alt && !(rain && (k.name === 'butterfly' || k.name === 'humming'));
+    k.mesh.visible = on; if (k.shadeMesh) k.shadeMesh.visible = on;
+    if (!on) continue;
+    k.n = Math.max(1, Math.round(k.nMax * tier)); k.mesh.count = k.n; if (k.shadeMesh) k.shadeMesh.count = k.n;
+    if (k.step) { k.step(dt, t, k); k.mesh.instanceMatrix.needsUpdate = true; if (k.shadeMesh) k.shadeMesh.instanceMatrix.needsUpdate = true; }
+  }
+}
+
 // Meteor showers (night only, clear sky): every 5–10 minutes a shower of shooting stars from one radiant, 25–50 s long; `window.amparacan.meteors()` starts one now
 const MET = { A: [], B: [], slots: [], next: 0, until: 0, spawn: 0, rad: new THREE.Vector3(0, 1, 0), rnd: mulberry(99), t: 0, showers: 0 };
 for (let k = 0; k < 8; k++) { MET.A.push(new THREE.Vector4(0, 1, 0, 0)); MET.B.push(new THREE.Vector4(1, 0, 0, 0)); MET.slots.push(null); }
@@ -6443,6 +6639,7 @@ function update(dt, t) {
   post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
+  stepCritters(dt, t);
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
