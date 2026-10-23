@@ -4813,12 +4813,12 @@ Feature: ${JSON.stringify(info)}
 The author's request: ${JSON.stringify(text)}
 ${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
-Only if the request asks for it, you may also set attributes: name, ${t.kind === 'building' ? 'address, ' : ''}tags (array of strings), history, details.
+A request like "make this a pharmacy" or "turn it into a school" means "style it like one": change only the look. Set "attributes" (name, ${t.kind === 'building' ? 'address, ' : ''}tags as an array of strings, history, details) only for what the request explicitly asks for in words such as name, call, rename, tag, categorise, history or details. Never invent or propose a name. When the request implies a use but doesn't ask for tags, you may propose tags in "suggest" instead ({"tags": ["pharmacy"]}); the author is asked before they are added.
 
 Also classify the change: "category" is one of ${CATEGORIES.filter((c) => c !== 'Revert').map((c) => `"${c}"`).join(', ')}, and "changeTags" are 1-4 short lowercase tags describing what it was for (style references, themes, purpose).
 
 Reply with only JSON in this shape:
-{"style": {...}, "attributes": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
+{"style": {...}, "attributes": {...}, "suggest": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
 }
 function promptForSegments(segs, text, nImages = 0) {
   const info = segs.map((sg) => {
@@ -4863,6 +4863,23 @@ async function applySegmentPrompt(pid, p, nImages, opts) {
   if (changed && ui.segs.length) refreshSegmentFx();
   return true;
 }
+const ASKS_NAME = /\b(name|names|named|call|called|rename|title)\b/i, ASKS_TAGS = /\b(tag|tags|tagged|categori[sz]e|category|categories|label)\b/i;
+// Ask before adding the tags Claude proposed (never a name); nothing changes unless the author says yes
+function offerTags(id, sug) {
+  const doc = docFor(id);
+  const tags = (sug.tags || []).map((x) => x.toLowerCase()).filter((x) => !(doc.tags || []).map((y) => y.toLowerCase()).includes(x)).slice(0, 4);
+  if (!tags.length) return;
+  const box = $('toast'); clearTimeout(toastTimer);
+  const yes = () => {
+    box.hidden = true; const before = docFor(id), after = { ...before, tags: [...(before.tags || []), ...tags], updatedAt: new Date().toISOString() };
+    saveTarget(id, after, 0);
+    logChange({ id, source: 'prompt', summary: `Tagged ${tags.join(', ')}`, category: 'Details', tags: ['tags'], before, after });
+  };
+  box.replaceChildren(el('span', {}, `Restyled. Also tag it ${tags.map((x) => `“${x}”`).join(', ')}?`), ' ',
+    el('button', { class: 'btn primary small', type: 'button', style: 'width:auto;margin-left:8px', onclick: yes }, 'Yes'),
+    el('button', { class: 'btn small', type: 'button', style: 'width:auto;margin-left:6px', onclick: () => { box.hidden = true; } }, 'No'));
+  box.hidden = false; toastTimer = setTimeout(() => { box.hidden = true; }, 20000);
+}
 async function applyPrompt(pid) {
   const p = store.prompts.get(pid), t = p && targetOf(p.bId);
   if (!t && !(p && p.bIds)) return false;
@@ -4883,8 +4900,11 @@ async function applyPrompt(pid) {
     const before = docFor(t.id);
     if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
-    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
-    const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
+    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes), sug = cleanAttrs(r && r.suggest);
+    // "make this a pharmacy" means style it like one: an unasked name is dropped, unasked tags are only offered
+    if (attrs.name != null && !ASKS_NAME.test(p.text)) delete attrs.name;
+    if (attrs.tags && !ASKS_TAGS.test(p.text)) { sug.tags = sug.tags || attrs.tags; delete attrs.tags; }
+    const after ={ ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
     markOwn(after, Object.keys(style));
     saveTarget(t.id, after, 0);
     const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || 'Applied').slice(0, 300);
@@ -4893,6 +4913,7 @@ async function applyPrompt(pid) {
     if (needs) { const q = newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued'); if (p.images) patchPrompt(q, { images: p.images }); }
     if (t.kind === 'building') { const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400); }
     rememberFocus(t.id);
+    offerTags(t.id, sug);
     return true;
   } catch (e) {
     const msg = { not_granted: 'Claude access wasn’t allowed for this map, so the prompt stays in your batch.', rate_limited: 'Too many requests at once. Wait a moment and try again.', invalid_json: 'Claude’s answer couldn’t be read. Try rephrasing the prompt.' }[e && e.code] || 'That edit didn’t go through. Try again.';
@@ -5341,13 +5362,6 @@ function renderInfo() {
         el('span', { class: 'floors', 'aria-live': 'polite' }, String(fl)),
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
-      if (styleFor(t).facade !== 'neoclassical') {
-        const dn = doorsOf(t.b).length;
-        kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Front doors'),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a door', disabled: dn <= 0, onclick: () => changeDoors(id, -1) }, '−'),
-          el('span', { class: 'floors', 'aria-live': 'polite' }, String(dn)),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a door', disabled: dn >= DOORS_MAX, onclick: () => changeDoors(id, 1) }, '+')));
-      }
     }
     if (store.canEdit && t.kind === 'street') {
       const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
@@ -5401,22 +5415,6 @@ function changeFloors(id, delta) {
   pend.timer = setTimeout(() => {
     floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
     if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
-  }, 1500);
-}
-// Front doors: like floors, each click rebuilds at once and a burst is logged as one change. A wall with no room for another door caps the count.
-const doorEdits = new Map();
-function changeDoors(id, delta) {
-  const t = targetOf(id); if (!t || t.kind !== 'building' || !store.canEdit) return;
-  const cur = doorsOf(t.b).length, next = clamp(cur + delta, 0, DOORS_MAX); if (next === cur) return;
-  const doc = docFor(id); let pend = doorEdits.get(id);
-  if (!pend) doorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
-  doc.style = { ...doc.style, doors: next }; markOwn(doc, ['doors']); doc.updatedAt = new Date().toISOString();
-  saveTarget(id, doc, 400);
-  if (delta > 0 && doorsOf(t.b).length === cur) toast('No room for another door on the street walls.');
-  clearTimeout(pend.timer);
-  pend.timer = setTimeout(() => {
-    doorEdits.delete(id); const after = docFor(id), to = doorsOf(t.b).length;
-    if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Added' : 'Removed'} front doors: ${pend.from} → ${to}`, category: 'Façade', tags: ['doors'], before: pend.before, after });
   }, 1500);
 }
 // Tree canopy slider: applies on release; a burst of changes is logged as one history entry

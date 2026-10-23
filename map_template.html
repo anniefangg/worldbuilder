@@ -5362,13 +5362,6 @@ function renderInfo() {
         el('span', { class: 'floors', 'aria-live': 'polite' }, String(fl)),
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
-      if (styleFor(t).facade !== 'neoclassical') {
-        const dn = doorsOf(t.b).length;
-        kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Front doors'),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a door', disabled: dn <= 0, onclick: () => changeDoors(id, -1) }, '−'),
-          el('span', { class: 'floors', 'aria-live': 'polite' }, String(dn)),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a door', disabled: dn >= DOORS_MAX, onclick: () => changeDoors(id, 1) }, '+')));
-      }
     }
     if (store.canEdit && t.kind === 'street') {
       const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
@@ -5422,22 +5415,6 @@ function changeFloors(id, delta) {
   pend.timer = setTimeout(() => {
     floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
     if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
-  }, 1500);
-}
-// Front doors: like floors, each click rebuilds at once and a burst is logged as one change. A wall with no room for another door caps the count.
-const doorEdits = new Map();
-function changeDoors(id, delta) {
-  const t = targetOf(id); if (!t || t.kind !== 'building' || !store.canEdit) return;
-  const cur = doorsOf(t.b).length, next = clamp(cur + delta, 0, DOORS_MAX); if (next === cur) return;
-  const doc = docFor(id); let pend = doorEdits.get(id);
-  if (!pend) doorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
-  doc.style = { ...doc.style, doors: next }; markOwn(doc, ['doors']); doc.updatedAt = new Date().toISOString();
-  saveTarget(id, doc, 400);
-  if (delta > 0 && doorsOf(t.b).length === cur) toast('No room for another door on the street walls.');
-  clearTimeout(pend.timer);
-  pend.timer = setTimeout(() => {
-    doorEdits.delete(id); const after = docFor(id), to = doorsOf(t.b).length;
-    if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Added' : 'Removed'} front doors: ${pend.from} → ${to}`, category: 'Façade', tags: ['doors'], before: pend.before, after });
   }, 1500);
 }
 // Tree canopy slider: applies on release; a burst of changes is logged as one history entry
