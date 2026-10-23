@@ -754,7 +754,7 @@ function applyWeather() {
   }
   if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; world.water.uniforms.uRain.value = clamp(w.rain / 1.8, 0, 1); }
   if (world.rain) {
-    world.rain.visible = w.rain > 0; world.rain.geometry.instanceCount = Math.round(RAIN.N * Math.min(1, w.rain / 1.8) * (w.storm ? 1 : 1.3));
+    world.rain.visible = w.rain > 0; world.rain.geometry.instanceCount = Math.round(RAIN.N * Math.min(1, w.rain / 1.8) * (w.storm ? 1 : 1.6));
     const ru = world.rain.material.uniforms;   // gentle rain: slow, soft drops tinted by the sky; a storm falls faster, longer and brighter
     ru.uColor.value.copy(scene.fog.color).lerp(new THREE.Color(t.night > 0.6 ? '#aab6d6' : '#f2f5fb'), t.night > 0.6 ? 0.55 : 0.6);
     ru.uOpacity.value = w.storm ? 0.62 : 0.5; ru.uLen.value = w.storm ? 1.7 : 1.15; RAIN.speed = w.storm ? 17 : 10.5;
@@ -778,7 +778,7 @@ function addRain() {
   g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
   g.instanceCount = N;
   const mat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, fog: false,
+    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,   // the billboard's side vector mirrors its winding, so both faces must draw
     uniforms: { uCam: { value: new THREE.Vector3() }, uGround: { value: 0 }, uFall: { value: 0 }, uSlant: { value: new THREE.Vector2(0.12, 0.04) },
       uColor: { value: new THREE.Color('#dfe6f2') }, uOpacity: { value: 0.3 }, uLen: { value: 1.2 }, uTime: { value: 0 } },
     vertexShader: `
