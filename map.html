@@ -735,7 +735,7 @@ function applyWeather() {
   if (!t || !u) return;
   sun.intensity = t.sunI * w.sunK; hemi.intensity = wx.baseHemi = t.hemiI * w.hemiK;
   bounce.color.set(t.bounce[0]); bounce.intensity = t.bounce[1] * (0.45 + 0.55 * w.hemiK) * (0.6 + 0.4 * w.sunK);
-  const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
+  const grey = new THREE.Color(wx.name === 'rain' ? (t.night > 0.6 ? '#1d2238' : t.night > 0.2 ? '#77738f' : '#a9afc7') : t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');   // gentle rain reads blue-lavender and dreamy, a storm stays slate grey
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
   wx.fogBase = scene.fog.color.clone();   // the frame loop restores this before any cloud white-out
   u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, misty: 0.6, fog: 0.55 }[wx.name];
@@ -753,26 +753,71 @@ function applyWeather() {
     world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds + (Q.t.sky ? 0 : 14); });
   }
   if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; world.water.uniforms.uRain.value = clamp(w.rain / 1.8, 0, 1); }
-  if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
+  if (world.rain) {
+    world.rain.visible = w.rain > 0; world.rain.geometry.instanceCount = Math.round(RAIN.N * Math.min(1, w.rain / 1.8) * (w.storm ? 1 : 1.6));
+    const ru = world.rain.material.uniforms;   // gentle rain: slow, soft drops tinted by the sky; a storm falls faster, longer and brighter
+    ru.uColor.value.copy(scene.fog.color).lerp(new THREE.Color(t.night > 0.6 ? '#aab6d6' : '#f2f5fb'), t.night > 0.6 ? 0.55 : 0.6);
+    ru.uOpacity.value = w.storm ? 0.62 : 0.5; ru.uLen.value = w.storm ? 1.7 : 1.15; RAIN.speed = w.storm ? 17 : 10.5;
+  }
   const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
   const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
   if (b) { b.innerHTML = ICONS[wx.name === 'sunny' && t.night > 0.6 ? 'clear' : wx.name]; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
 }
 function setWeather(name) { wx.name = WEATHER[name] ? name : 'sunny'; wx.nextFlash = 0; applyWeather(); }
 function toggleWeather() { AUTO.wx = false; const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
-// Rain: streaks recycled in a box that travels with the camera
+// Rain: soft, slow, slanting streaks drawn on the GPU. Each drop is a thin billboard that tapers to a faint tail, takes its colour
+// from the sky, fades out close to the eye and into the distance, and now and then catches the light. The drops live in a 100 m box
+// that wraps round the camera; RAIN.fall (metres fallen so far) and the wind slant are uniforms, so nothing is updated per drop on the CPU.
+const RAIN = { N: 12000, fall: 0, speed: 0 };
 function addRain() {
-  const N = world.rainN = 12000, pos = new Float32Array(N * 6), rnd = mulberry(99);
-  world.rainDrops = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) { world.rainDrops[i * 3] = (rnd() - 0.5) * 100; world.rainDrops[i * 3 + 1] = rnd() * 60; world.rainDrops[i * 3 + 2] = (rnd() - 0.5) * 100; }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#e4ecf5', transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+  const N = RAIN.N, rnd = mulberry(99), seed = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) seed.set([(rnd() - 0.5) * 100, rnd() * 60, (rnd() - 0.5) * 100, rnd()], i * 4);
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0]), 3));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
+  g.instanceCount = N;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,   // the billboard's side vector mirrors its winding, so both faces must draw
+    uniforms: { uCam: { value: new THREE.Vector3() }, uGround: { value: 0 }, uFall: { value: 0 }, uSlant: { value: new THREE.Vector2(0.12, 0.04) },
+      uColor: { value: new THREE.Color('#dfe6f2') }, uOpacity: { value: 0.3 }, uLen: { value: 1.2 }, uTime: { value: 0 } },
+    vertexShader: `
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute vec4 aSeed; uniform vec3 uCam; uniform float uGround, uFall, uLen, uTime; uniform vec2 uSlant;
+      varying float vAlong, vAcross, vFade, vGlint;
+      void main() {
+        float B = 100.0, y = mod(aSeed.y - uFall * (0.85 + 0.3 * aSeed.w), 60.0);
+        vec3 base = vec3(uCam.x + mod(aSeed.x - uCam.x + B * 0.5, B) - B * 0.5, uGround - 6.0 + y + max(0.0, uCam.y - uGround - 25.0), uCam.z + mod(aSeed.z - uCam.z + B * 0.5, B) - B * 0.5);
+        vec3 dir = normalize(vec3(uSlant.x, 1.0, uSlant.y));                  // a drop's streak points back up along its slanting path
+        float len = uLen * (0.65 + 0.7 * fract(aSeed.w * 7.13));
+        vec3 view = base - cameraPosition, side = normalize(cross(dir, view));
+        float d = length(view);
+        vec3 p = base + dir * len * position.y + side * position.x * (0.026 + d * 0.0012);   // a touch wider far off so distant rain stays a soft veil, not aliased hairs
+        vAlong = position.y; vAcross = position.x * 2.0;
+        vFade = smoothstep(1.2, 4.0, d) * (1.0 - smoothstep(18.0, 48.0, d));
+        vGlint = pow(max(0.0, sin(uTime * (1.3 + aSeed.w) + aSeed.w * 40.0)), 24.0);   // now and then a drop catches the light
+        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uColor; uniform float uOpacity; varying float vAlong, vAcross, vFade, vGlint;
+      void main() {
+        #include <logdepthbuf_fragment>
+        float a = (1.0 - abs(vAcross)) * smoothstep(0.0, 0.25, vAlong) * pow(1.0 - vAlong, 1.6);   // soft across, a bright head (bottom) easing to a faint tail
+        gl_FragColor = vec4(uColor * (1.0 + vGlint * 0.9), a * vFade * uOpacity * (1.0 + vGlint * 1.5));
+      }`,
+  });
+  const m = new THREE.Mesh(g, mat);
   m.frustumCulled = false; m.renderOrder = 13; m.visible = false; scene.add(m); world.rain = m;
 }
 // Mist banks: soft puffs that drift with the wind around the camera and swell and thin as they go
 function addMist() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), rn = mulberry(31);
   for (let k = 0; k < 14; k++) { const px = 64 + (rn() - 0.5) * 56, py = 64 + (rn() - 0.5) * 40, r = 22 + rn() * 26, g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); }
+  { const m = x.createRadialGradient(64, 64, 20, 64, 64, 63); m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)'); x.globalCompositeOperation = 'destination-in'; x.fillStyle = m; x.fillRect(0, 0, 128, 128); x.globalCompositeOperation = 'source-over'; }   // fade every puff out before the square's edge (they used to be cut off in a hard line)
   const tex = new THREE.CanvasTexture(c), N = world.mistN = 90, rnd = mulberry(77); world.mist = [];
   for (let i = 0; i < N; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 }));
@@ -808,7 +853,7 @@ function stepPetals(dt, t) {
   m.geometry.attributes.position.needsUpdate = true;
 }
 function stepMist(dt, t) {
-  const w = WEATHER[wx.name], amt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : 0, c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
+  const w = WEATHER[wx.name], amt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : wx.name === 'storm' ? 0.4 : wx.name === 'rain' ? 0.32 : 0, c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
   const alt = c.y - gy, vis = amt > 0 && alt < 500, fade = clamp(1 - (alt - 250) / 250, 0, 1);
   const col = scene.fog.color;
   for (let i = 0; i < world.mist.length; i++) {
@@ -827,17 +872,12 @@ function stepWeather(dt, t) {
   if (world.mist) stepMist(dt, t);
   if (world.petalMesh) stepPetals(dt, t);
   if (world.rain && w.rain > 0) {
-    const r = world.rain, P = r.geometry.attributes.position.array, D = world.rainDrops, c = camera.position, fall = 30 * dt * (w.storm ? 1.25 : 1), n = world.rainN;
-    r.visible = c.y - H(c.x, c.z) < 450;                          // from high above, rain is just haze
-    const B = 100, ox = Math.floor(c.x / B) * B, oz = Math.floor(c.z / B) * B, gy = H(c.x, c.z);
-    for (let i = 0; i < n; i++) {
-      let y = D[i * 3 + 1] - fall; if (y < 0) y += 60; D[i * 3 + 1] = y;
-      let x = ox + D[i * 3]; if (x < c.x - B / 2) x += B; else if (x > c.x + B / 2) x -= B;
-      let z = oz + D[i * 3 + 2]; if (z < c.z - B / 2) z += B; else if (z > c.z + B / 2) z -= B;
-      const yy = gy - 6 + y + Math.max(0, c.y - gy - 25);
-      const k = i * 6; P[k] = x; P[k + 1] = yy; P[k + 2] = z; P[k + 3] = x + 0.35; P[k + 4] = yy + 1.9; P[k + 5] = z + 0.12;
-    }
-    r.geometry.attributes.position.needsUpdate = true;
+    const r = world.rain, c = camera.position, gy = H(c.x, c.z), ru = r.material.uniforms;
+    r.visible = c.y - gy < 450;                                   // from high above, rain is just haze
+    RAIN.fall += RAIN.speed * dt; if (RAIN.fall > 2e5) RAIN.fall = 0;   // never wrapped sooner: drops fall at slightly different speeds, so a wrap makes them jump
+    const wk = WINDK.value, sway = 0.12 + 0.05 * Math.sin(t * 0.21);   // the slant leans with the wind and sways slowly
+    ru.uCam.value.copy(c); ru.uGround.value = gy; ru.uFall.value = RAIN.fall; ru.uTime.value = t;
+    ru.uSlant.value.set(sway * Math.min(2.2, wk), 0.05 * Math.min(2.2, wk));
   }
   const u = camera.userData.sky.material.uniforms;
   if (w.storm) {                                                  // lightning: a bright double flash every few seconds
@@ -7455,7 +7495,7 @@ window.amparacan = {
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.instanceCount, fall: +RAIN.fall.toFixed(1), speed: RAIN.speed } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
