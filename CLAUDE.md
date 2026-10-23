@@ -93,6 +93,11 @@ Illustrator map. Live artifact: https://claude.ai/artifact/3nuiTaptoGSx7TYf7cdec
   implement each `queued` prompt (style fields via the target's doc, anything bigger in
   `map_template.html`), set the prompt to `status: "done"` + a short `result`, and add a
   `changes` entry with `source: "claude-code"`, a category and tags.
+- **"Make this a pharmacy" means style it like a pharmacy.** Never suggest or set a name unless the
+  author asks in words (name, call, rename). Tags (categories) only when asked (tag, categorise);
+  otherwise, in a batch, restyle and you may ask the author whether to tag it. In the page,
+  "Apply now" does the same: an unasked name is dropped (`ASKS_NAME`), unasked tags go to
+  `suggest {tags}` (`ASKS_TAGS`) and `offerTags` asks "Also tag it …?" in the toast.
 - Reopening: the page remembers the last selected/edited feature (localStorage) and flies
   back to it after a reload; `#<id>` deep-links any feature.
 - **Re-importing from Illustrator**: `python3 scripts/build_map.py --source ~/path/new.ai`.

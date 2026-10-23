@@ -4706,12 +4706,12 @@ Feature: ${JSON.stringify(info)}
 The author's request: ${JSON.stringify(text)}
 ${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
-Only if the request asks for it, you may also set attributes: name, ${t.kind === 'building' ? 'address, ' : ''}tags (array of strings), history, details.
+A request like "make this a pharmacy" or "turn it into a school" means "style it like one": change only the look. Set "attributes" (name, ${t.kind === 'building' ? 'address, ' : ''}tags as an array of strings, history, details) only for what the request explicitly asks for in words such as name, call, rename, tag, categorise, history or details. Never invent or propose a name. When the request implies a use but doesn't ask for tags, you may propose tags in "suggest" instead ({"tags": ["pharmacy"]}); the author is asked before they are added.
 
 Also classify the change: "category" is one of ${CATEGORIES.filter((c) => c !== 'Revert').map((c) => `"${c}"`).join(', ')}, and "changeTags" are 1-4 short lowercase tags describing what it was for (style references, themes, purpose).
 
 Reply with only JSON in this shape:
-{"style": {...}, "attributes": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
+{"style": {...}, "attributes": {...}, "suggest": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
 }
 function promptForSegments(segs, text, nImages = 0) {
   const info = segs.map((sg) => {
@@ -4756,6 +4756,23 @@ async function applySegmentPrompt(pid, p, nImages, opts) {
   if (changed && ui.segs.length) refreshSegmentFx();
   return true;
 }
+const ASKS_NAME = /\b(name|names|named|call|called|rename|title)\b/i, ASKS_TAGS = /\b(tag|tags|tagged|categori[sz]e|category|categories|label)\b/i;
+// Ask before adding the tags Claude proposed (never a name); nothing changes unless the author says yes
+function offerTags(id, sug) {
+  const doc = docFor(id);
+  const tags = (sug.tags || []).map((x) => x.toLowerCase()).filter((x) => !(doc.tags || []).map((y) => y.toLowerCase()).includes(x)).slice(0, 4);
+  if (!tags.length) return;
+  const box = $('toast'); clearTimeout(toastTimer);
+  const yes = () => {
+    box.hidden = true; const before = docFor(id), after = { ...before, tags: [...(before.tags || []), ...tags], updatedAt: new Date().toISOString() };
+    saveTarget(id, after, 0);
+    logChange({ id, source: 'prompt', summary: `Tagged ${tags.join(', ')}`, category: 'Details', tags: ['tags'], before, after });
+  };
+  box.replaceChildren(el('span', {}, `Restyled. Also tag it ${tags.map((x) => `“${x}”`).join(', ')}?`), ' ',
+    el('button', { class: 'btn primary small', type: 'button', style: 'width:auto;margin-left:8px', onclick: yes }, 'Yes'),
+    el('button', { class: 'btn small', type: 'button', style: 'width:auto;margin-left:6px', onclick: () => { box.hidden = true; } }, 'No'));
+  box.hidden = false; toastTimer = setTimeout(() => { box.hidden = true; }, 20000);
+}
 async function applyPrompt(pid) {
   const p = store.prompts.get(pid), t = p && targetOf(p.bId);
   if (!t && !(p && p.bIds)) return false;
@@ -4776,8 +4793,11 @@ async function applyPrompt(pid) {
     const before = docFor(t.id);
     if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
-    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
-    const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
+    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes), sug = cleanAttrs(r && r.suggest);
+    // "make this a pharmacy" means style it like one: an unasked name is dropped, unasked tags are only offered
+    if (attrs.name != null && !ASKS_NAME.test(p.text)) delete attrs.name;
+    if (attrs.tags && !ASKS_TAGS.test(p.text)) { sug.tags = sug.tags || attrs.tags; delete attrs.tags; }
+    const after ={ ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
     markOwn(after, Object.keys(style));
     saveTarget(t.id, after, 0);
     const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || 'Applied').slice(0, 300);
@@ -4786,6 +4806,7 @@ async function applyPrompt(pid) {
     if (needs) { const q = newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued'); if (p.images) patchPrompt(q, { images: p.images }); }
     if (t.kind === 'building') { const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400); }
     rememberFocus(t.id);
+    offerTags(t.id, sug);
     return true;
   } catch (e) {
     const msg = { not_granted: 'Claude access wasn’t allowed for this map, so the prompt stays in your batch.', rate_limited: 'Too many requests at once. Wait a moment and try again.', invalid_json: 'Claude’s answer couldn’t be read. Try rephrasing the prompt.' }[e && e.code] || 'That edit didn’t go through. Try again.';
