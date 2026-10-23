@@ -1518,7 +1518,7 @@ async function buildWorld() {
   buildCanalWalls(canals);
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
-  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r, color: '#7d8083' })), 4), world.tex.setts, 3);
+  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083' })), 4), world.tex.setts, 3);
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
   await progress('Raising buildings', 44);
@@ -3231,6 +3231,24 @@ function buildCanalWalls(canals) {
   const tex = world.tex.setts, m = new THREE.Mesh(geo.build(), new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.0 }));
   m.receiveShadow = true; m.castShadow = true; m.renderOrder = 3; scene.add(m); world.canalWalls = m;
 }
+// Paving corners eased into short curves: each corner that turns by more than ~15° becomes a quadratic fillet set back up to `rad` metres
+// (never more than 40% of either side, so small and narrow shapes keep their shape), more segments the sharper the turn.
+const PAVE_R = 1.8;
+function softRing(r, rad = PAVE_R) {
+  const n = r.length / 2; if (n < 3) return r;
+  const out = [], at = (k) => ((k % n) + n) % n * 2;
+  for (let k = 0; k < n; k++) {
+    const p = at(k - 1), v = at(k), q = at(k + 1), vx = r[v], vz = r[v + 1];
+    const L1 = Math.hypot(vx - r[p], vz - r[p + 1]), L2 = Math.hypot(r[q] - vx, r[q + 1] - vz);
+    if (L1 < 0.05 || L2 < 0.05) { out.push(vx, vz); continue; }
+    const d1x = (vx - r[p]) / L1, d1z = (vz - r[p + 1]) / L1, d2x = (r[q] - vx) / L2, d2z = (r[q + 1] - vz) / L2;
+    const turn = Math.acos(clamp(d1x * d2x + d1z * d2z, -1, 1)), d = Math.min(rad, L1 * 0.4, L2 * 0.4);
+    if (turn < 0.26 || d < 0.15) { out.push(vx, vz); continue; }
+    const ax = vx - d1x * d, az = vz - d1z * d, bx = vx + d2x * d, bz = vz + d2z * d, seg = Math.max(2, Math.ceil(turn / 0.3));
+    for (let s = 0; s <= seg; s++) { const t = s / seg, w = 1 - t; out.push(w * w * ax + 2 * w * t * vx + t * t * bx, w * w * az + 2 * w * t * vz + t * t * bz); }
+  }
+  return out;
+}
 function polyOverlay(items, uvScale) {
   const geo = new Geo(), c = new THREE.Color();
   for (const { rings, color } of items) {
@@ -3246,7 +3264,7 @@ function ribbonOverlay(items) {
   const geo = new Geo([['aFade', 1]]), c = new THREE.Color();
   const V = (x, y, z, col, u, w, fade) => { const i = geo.v(x, y, z, 0, 1, 0, col, u, w); geo.extra.aFade.push(fade); return i; };   // aFade: 1 opaque, 0 clear
   const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
-  for (const { pts, w, color, blend, free } of items) {
+  for (const { pts, w, color, blend, free, fans } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
     const P = []; // densify so ribbons follow the terrain
     for (let i = 0; i < pts.length - 2; i += 2) {
@@ -3273,15 +3291,74 @@ function ribbonOverlay(items) {
       geo.triUp(a0, a1, b0); geo.triUp(a1, b1, b0);
     }
     let acc = 0;
-    if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints
+    if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints, in the colour the ribbon has there (an untinted disc showed as an octagon where the colour blends)
       if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
       const fd = fadeAt(acc); if (fd < 0.02) continue;
-      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, ctr = V(x, h, z, c, x / 4, z / 4, fd), first = geo.count;
-      for (let s = 0; s < 8; s++) { const a = s / 8 * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, h, pz, c, px / 4, pz / 4, fd); }
-      for (let s = 0; s < 8; s++) geo.triUp(ctr, first + s, first + (s + 1) % 8);
+      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
+      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, h, pz, cj, px / 4, pz / 4, fd); }
+      for (let s = 0; s < NJ; s++) geo.triUp(ctr, first + s, first + (s + 1) % NJ);
+    }
+    // rounded inside corners where this ribbon meets another (junctionFillets): a fan from the corner point to the arc
+    for (const fan of fans || []) {
+      const h0 = H(fan[0], fan[1]) + LIFT, ctr = V(fan[0], h0, fan[1], c, fan[0] / 4, fan[1] / 4, 1), first = geo.count, m = fan.length / 2 - 1;
+      for (let s = 1; s <= m; s++) { const x = fan[s * 2], z = fan[s * 2 + 1]; V(x, H(x, z) + LIFT, z, c, x / 4, z / 4, 1); }
+      for (let s = 0; s < m - 1; s++) geo.triUp(ctr, first + s, first + s + 1);
     }
   }
   return geo;
+}
+// Street and path junctions: where two ribbons meet, each inside corner (between the two kerb lines, outside both ribbons) is
+// filled with a quadratic-free circular fillet so the junction reads as a rounded kerb rather than a sharp notch.
+// Computed once from the geometry; the fan is drawn by the street over a path, else by the wider ribbon, in its own colour.
+const KERB_R = 2.4;
+function junctionFillets() {
+  if (world.fillets) return;
+  world.fillets = true;
+  const list = world.features.filter((f) => f.kind === 'street' || f.kind === 'path');
+  for (const f of list) f.fans = [];
+  const seen = [];
+  const near = (x, z) => seen.some((p) => Math.abs(p[0] - x) < 0.6 && Math.abs(p[1] - z) < 0.6);
+  for (let ia = 0; ia < list.length; ia++) for (let ib = ia + 1; ib < list.length; ib++) {
+    const fa = list[ia], fb = list[ib], A = fa.bbox, B = fb.bbox, pad = 6;
+    if (A[2] + pad < B[0] || B[2] + pad < A[0] || A[3] + pad < B[1] || B[3] + pad < A[1]) continue;
+    const ha = fa.w / 2, hb = fb.w / 2, own = fa.kind !== fb.kind ? (fa.kind === 'street' ? fa : fb) : fa.w >= fb.w ? fa : fb;
+    const R = clamp(0.5 * Math.min(fa.w, fb.w), 1.2, KERB_R);
+    const PA = fa.pts, PB = fb.pts;
+    for (let i = 0; i < PA.length - 2; i += 2) for (let j = 0; j < PB.length - 2; j += 2) {
+      const ax = PA[i], az = PA[i + 1], adx = PA[i + 2] - ax, adz = PA[i + 3] - az, aL = Math.hypot(adx, adz);
+      const bx = PB[j], bz = PB[j + 1], bdx = PB[j + 2] - bx, bdz = PB[j + 3] - bz, bL = Math.hypot(bdx, bdz);
+      if (aL < 0.5 || bL < 0.5) continue;
+      const dax = adx / aL, daz = adz / aL, dbx = bdx / bL, dbz = bdz / bL, cr = dax * dbz - daz * dbx;
+      if (Math.abs(cr) < 0.26) continue;                                        // near-parallel: no corner to round
+      // where the centrelines cross (an end segment may stop short of, or just past, the other ribbon)
+      const t = ((bx - ax) * dbz - (bz - az) * dbx) / cr, u = ((bx - ax) * daz - (bz - az) * dax) / cr;
+      const ea0 = i === 0 ? hb + 4 : 0.01, ea1 = i === PA.length - 4 ? hb + 4 : 0.01, eb0 = j === 0 ? ha + 4 : 0.01, eb1 = j === PB.length - 4 ? ha + 4 : 0.01;
+      if (t < -ea0 || t > aL + ea1 || u < -eb0 || u > bL + eb1) continue;
+      const X = ax + dax * t, Z = az + daz * t, nax = -daz, naz = dax, nbx = -dbz, nbz = dbx;
+      for (const s of [-1, 1]) for (const q of [-1, 1]) {
+        // the corner where a's kerb (side s) meets b's kerb (side q); the fillet sits in the quadrant leading away along both kerbs
+        const ox = X + nax * s * ha, oz = Z + naz * s * ha, px = X + nbx * q * hb, pz = Z + nbz * q * hb;
+        const det = dax * dbz - daz * dbx, k1 = ((px - ox) * dbz - (pz - oz) * dbx) / det;
+        const cx = ox + dax * k1, cz = oz + daz * k1;
+        const sa = Math.sign(dax * nbx + daz * nbz) * q, sb = Math.sign(dbx * nax + dbz * naz) * s;
+        const uax = dax * sa, uaz = daz * sa, ubx = dbx * sb, ubz = dbz * sb;
+        const th = Math.acos(clamp(uax * ubx + uaz * ubz, -1, 1)); if (th < 0.5 || th > 2.8) continue;
+        const r = Math.min(R, 5 * Math.tan(th / 2)), kk = r / Math.tan(th / 2);
+        const t1x = cx + uax * kk, t1z = cz + uaz * kk, t2x = cx + ubx * kk, t2z = cz + ubz * kk;
+        // both kerbs must really run on past the tangent points (a T-junction has only two corners), and the corner must be open ground
+        if (distToLine(PA, t1x - nax * s * 0.3, t1z - naz * s * 0.3) > ha || distToLine(PB, t2x - nbx * q * 0.3, t2z - nbz * q * 0.3) > hb) continue;
+        let bisx = uax + ubx, bisz = uaz + ubz; const bl = Math.hypot(bisx, bisz) || 1; bisx /= bl; bisz /= bl;
+        const dc = r / Math.sin(th / 2), Ox = cx + bisx * dc, Oz = cz + bisz * dc, mx = cx + bisx * (dc - r) * 0.5, mz = cz + bisz * (dc - r) * 0.5;
+        if (buildingAt(mx, mz) >= 0 || H(mx, mz) < 0.2 || near(cx, cz)) continue;
+        seen.push([cx, cz]);
+        let a1 = Math.atan2(t1z - Oz, t1x - Ox), a2 = Math.atan2(t2z - Oz, t2x - Ox), da = a2 - a1;
+        while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        const fan = [cx, cz], nSeg = Math.max(3, Math.ceil(Math.abs(da) / 0.2));
+        for (let m2 = 0; m2 <= nSeg; m2++) { const a = a1 + da * m2 / nSeg; fan.push(Ox + Math.cos(a) * r, Oz + Math.sin(a) * r); }
+        own.fans.push(fan);
+      }
+    }
+  }
 }
 function overlayMesh(geo, tex, order, dim = null, fade = false) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex.map, bumpMap: tex.bump, bumpScale: 2.5, depthWrite: false, transparent: fade });
@@ -3320,25 +3397,28 @@ function pathBlend(f) {
 }
 const freeEnds = (f) => { pathBlend(f); return f.free; };
 // A lawn or paving polygon with every lake or pond inside it cut out as a hole, so the water (drawn by the sea shader where the coast mask is carved) shows through instead of being roofed over
-function lakeHoles(f) {
+function lakeHoles(f, rings = f.rings) {
   const bb = f.bbox; let out = null;
   for (const g of world.features) {
     if (g.kind !== 'water' || g === f || g.bbox[0] < bb[0] - 1 || g.bbox[2] > bb[2] + 1 || g.bbox[1] < bb[1] - 1 || g.bbox[3] > bb[3] + 1 || !pointInRings(g.cx, g.cz, f.rings)) continue;
-    (out = out || f.rings.slice()).push(g.rings[0]);
+    (out = out || rings.slice()).push(g.rings[0]);
   }
-  return out || f.rings;
+  return out || rings;
 }
+// a plaza's paving with its corners softened (cached; the lake holes added after stay exact)
+const softRings = (f) => f.soft || (f.soft = f.rings.map((r) => softRing(r)));
 function buildGround(kind) {
   world.ground = world.ground || {};
   for (const m of world.ground[kind] || []) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
   const groups = new Map(), list = world.features.filter((f) => f.kind === kind);
   if (kind === 'beach') { buildBeaches(list); for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f)); world.ground[kind] = []; return; }
   if (kind === 'plaza') buildChinampas(list.filter((f) => featureStyle(f).use === 'chinampa'));
+  if (kind === 'street' || kind === 'path') junctionFillets();
   for (const f of list) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f), color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f) });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
@@ -4133,7 +4213,7 @@ function updateFurniture() {
 }
 function featureShape(f, color, opacity) {
   const sand = f.kind === 'beach' && f.sandRings && f.sandRings.hl && f.sandRings.hl.idx.length;   // a beach lights up as a whole: promenade line and all the golden sand
-  const base = KINDS[f.kind].geom === 'poly' ? polyOverlay([{ rings: f.rings, color: '#ffffff' }], 6) : ribbonOverlay([{ pts: f.pts, w: f.w + 1.6, color: '#ffffff' }]);
+  const base = KINDS[f.kind].geom === 'poly' ? polyOverlay([{ rings: f.kind === 'plaza' ? softRings(f) : f.rings, color: '#ffffff' }], 6) : ribbonOverlay([{ pts: f.pts, w: f.w + 1.6, color: '#ffffff' }]);
   for (let i = 1; i < base.p.length; i += 3) base.p[i] += 0.25;
   let geo = base.build();
   if (sand) {
