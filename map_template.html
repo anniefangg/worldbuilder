@@ -144,6 +144,8 @@ body {
 #info dt { color: var(--ink-soft); }
 #info dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.dbl-edit { cursor: text; user-select: none; border-radius: 4px; }
+.dbl-edit:hover { background: rgba(31, 87, 168, 0.06); }
 .chip { font: 600 11px/1 var(--font-ui); padding: 4px 8px; border-radius: 999px; background: rgba(31, 87, 168, 0.1); color: var(--azulejo); }
 .hint { font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
 .field { display: grid; gap: 4px; }
@@ -5336,7 +5338,13 @@ function renderInfo() {
   if (!t) { box.hidden = true; box.replaceChildren(); return; }
   const doc = docFor(id), pinned = !!ui.selected, label = labelOf(t.kind);
   box.dataset.pinned = String(pinned); box.hidden = false;
-  const title = el('h3', {}, doc.name || `Unnamed ${label.toLowerCase()}`);
+  // double-click the name or the tags to jump straight into editing that field
+  const editable = pinned && store.canEdit && !ui.editing;
+  const editAt = (fid) => editable ? { title: 'Double-click to edit', class: 'dbl-edit', ondblclick: (e) => {
+    e.preventDefault(); getSelection().removeAllRanges(); startEditing(); renderInfo();
+    const f = $(fid); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+  } } : {};
+  const title = el('h3', editAt('f-name'), doc.name || `Unnamed ${label.toLowerCase()}`);
   const head = el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, `${label} · ${id}`), title, el('div', { class: 'facts' }, facts(t))),
     pinned ? el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => select(null) }, '×') : null);
   const kids = [head];
@@ -5350,7 +5358,7 @@ function renderInfo() {
   } else {
     const rows = [];
     if (doc.address) rows.push(['Address', doc.address]);
-    if (doc.tags.length) rows.push(['Tags', el('div', { class: 'chips' }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
+    if (doc.tags.length) rows.push(['Tags', el('div', { ...editAt('f-tags'), class: 'chips' + (editable ? ' dbl-edit' : '') }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
     if (doc.history) rows.push(['History', doc.history]);
     if (doc.details) rows.push(['Details', doc.details]);
     for (const [k, v] of Object.entries(doc.attrs || {})) if (k) rows.push([k, String(v)]);
