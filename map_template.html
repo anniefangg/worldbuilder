@@ -1217,6 +1217,12 @@ class Geo {
     return g;
   }
 }
+// a Geo that keeps nothing: lets emitBuilding run one half (main mesh or fine detail) without building the other
+class NullGeo {
+  constructor() { const sink = { length: 0, push() {} }; this.count = 0; this.i = sink; this.extra = {}; for (const [k] of EX) this.extra[k] = sink; }
+  v() { return this.count++; }
+  triUp() {}
+}
 function triangulate(rings) {
   const loops = rings.map((r) => { const pts = []; for (let i = 0; i < r.length; i += 2) pts.push(new THREE.Vector2(r[i], r[i + 1])); return pts; });
   const contour = loops[0], holes = loops.slice(1);
@@ -1591,7 +1597,23 @@ function styleOf(rec) {
   if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
   if (o.windows in WINDOWS) s.windows = o.windows;
   if (FACADES.includes(o.facade)) s.facade = o.facade;
+  if (Number.isFinite(+o.doors)) s.doors = clamp(Math.round(+o.doors), 0, DOORS_MAX);
+  const fs = cleanFloorStyles(o.floorStyles); if (fs) s.floorStyles = fs;
   return s;
+}
+// Floor bands (style.floorStyles): [{from, to, wall?, shutters?, windows?, groundFloor?}], floors counted from 0 = ground, each band painted round every outer wall.
+function cleanFloorStyles(a) {
+  if (!Array.isArray(a)) return null;
+  const out = [];
+  for (const b of a.slice(0, 12)) {
+    if (!b || typeof b !== 'object' || !Number.isFinite(+b.from)) continue;
+    const from = clamp(Math.round(+b.from), 0, 39), to = clamp(Math.round(Number.isFinite(+b.to) ? +b.to : from), from, 39), o = { from, to };
+    for (const k of ['wall', 'shutters']) if (typeof b[k] === 'string' && HEX.test(b[k].trim())) o[k] = b[k].trim().toLowerCase();
+    if (b.windows === 'none' || b.windows in WINDOWS) o.windows = b.windows;
+    if (from === 0 && b.groundFloor in GROUND) o.groundFloor = b.groundFloor;
+    if (Object.keys(o).length > 2) out.push(o);
+  }
+  return out.length ? out : null;
 }
 const _cW = new THREE.Color(), _cR = new THREE.Color(), _cS = new THREE.Color(), _cP = new THREE.Color(), _cT = new THREE.Color();
 const IRON = new THREE.Color('#1c1f22'), BLOOMS = ['#c2378f', '#d94aa0', '#b8327f', '#e0609f', '#a8306f'].map((c) => new THREE.Color(c)), LEAF = new THREE.Color('#3e7f34');
@@ -1647,21 +1669,26 @@ function balcony(geo, f, y, t0, t1, col) {
 }
 // Bougainvillea and leaf clumps: three overlapping, randomly turned octahedra read as one irregular bush; the shader dapples them
 function blossom(geo, x, y, z, r, col) {
+  const T = BLOSSOM[Math.abs(Math.floor(x * 31 + z * 17 + y * 13)) % 7], P = T.p, Nn = T.n, s0 = geo.count, aw = geo.extra.aWall, as = geo.extra.aShut;
+  for (let j = 0; j < 216; j += 3) { geo.v(x + P[j] * r, y + P[j + 1] * r, z + P[j + 2] * r, Nn[j], Nn[j + 1], Nn[j + 2], col); aw.push(0, 0, -7, 0); as.push(0, 0, 0); }
+  for (let j = 0; j < 72; j++) geo.i.push(s0 + j);
+}
+// its seven shapes at unit radius (everything scales with r, so only the variant k matters): 3 octahedra × 8 faces, flat normals
+const BLOSSOM = Array.from({ length: 7 }, (_, k) => {
   const V0 = [[1, 0, 0], [-1, 0, 0], [0, 0.8, 0], [0, -0.8, 0], [0, 0, 1], [0, 0, -1]];
   const F = [[0, 2, 4], [4, 2, 1], [1, 2, 5], [5, 2, 0], [4, 3, 0], [1, 3, 4], [5, 3, 1], [0, 3, 5]];
-  const k = Math.abs(Math.floor(x * 31 + z * 17 + y * 13)) % 7;
+  const p = new Float32Array(216), n = new Float32Array(216); let o = 0;
   for (let c = 0; c < 3; c++) {
-    const rr = r * (c ? 0.62 : 0.85), ang = (k + c * 2.1) * 0.9, ca = Math.cos(ang), sa = Math.sin(ang), ox = c ? Math.cos(c * 2.4 + k) * r * 0.55 : 0, oz = c ? Math.sin(c * 2.4 + k) * r * 0.55 : 0, oy = c ? (c - 1.5) * r * 0.3 : 0;
+    const rr = c ? 0.62 : 0.85, ang = (k + c * 2.1) * 0.9, ca = Math.cos(ang), sa = Math.sin(ang), ox = c ? Math.cos(c * 2.4 + k) * 0.55 : 0, oz = c ? Math.sin(c * 2.4 + k) * 0.55 : 0, oy = c ? (c - 1.5) * 0.3 : 0;
     const V = V0.map(([px, py, pz]) => [px * ca * rr - pz * sa * rr * 1.1 + ox, py * rr * (1 + 0.15 * c) + oy, px * sa * rr + pz * ca * rr * 1.1 + oz]);
     for (const [a, b, d] of F) {
       const A = V[a], B = V[b], C = V[d], e1 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-      let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]; const l = Math.hypot(...n) || 1; n = n.map((q) => q / l);
-      const s0 = geo.count;
-      for (const P of [A, B, C]) { geo.v(x + P[0], y + P[1], z + P[2], n[0], n[1], n[2], col); geo.extra.aWall.push(0, 0, -7, 0); geo.extra.aShut.push(0, 0, 0); }
-      geo.i.push(s0, s0 + 1, s0 + 2);
+      const nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0], l = Math.hypot(nx, ny, nz) || 1;
+      for (const Q of [A, B, C]) { p.set(Q, o); n.set([nx / l, ny / l, nz / l], o); o += 3; }
     }
   }
-}
+  return { p, n };
+});
 // The façade that faces a street or plaza (preferring long ones): where a portico or main entrance goes
 function mainFacade(rec, facades) {
   let best = null, bs = -1;
@@ -1770,8 +1797,12 @@ function ringEdge(R, i) {
 }
 // Front doors: one on each of the (up to two) longest street-facing walls, in a bay picked from the building's seed.
 // The façade shader draws the door from the bay index packed into aWall.w; the stoop, lantern and pots are real geometry.
+// A `doors` count set on the building (style.doors) spreads that many doors over the street walls instead.
 function doorsOf(rec) {
-  if (rec.doors) return rec.doors;
+  const want = (store.buildings.get(rec.id) || {}).style, n = want && Number.isFinite(+want.doors) ? clamp(Math.round(+want.doors), 0, DOORS_MAX) : -1;
+  if (rec.doors && rec.doorsN === n) return rec.doors;
+  rec.doorsN = n;
+  if (n >= 0) return (rec.doors = doorsCounted(rec, n));
   const R = roundedRings(rec)[0], cand = [];
   for (let i = 0; i < R.pts.length; i += 2) {
     const f = ringEdge(R, i); if (f.L < 4) continue;
@@ -1790,6 +1821,29 @@ function doorsOf(rec) {
     if (out.length >= (cand.length > 1 && cand[1].f.L >= 7 ? 2 : 1)) break;
   }
   return (rec.doors = out);
+}
+const DOORS_MAX = 24;
+// n doors: one per street wall in turn (longest first), then more on the same walls, spread evenly over the bays where the street meets the ground floor
+function doorsCounted(rec, n) {
+  if (!n) return [];
+  const R = roundedRings(rec)[0], walls = [];
+  for (let i = 0; i < R.pts.length; i += 2) {
+    const f = ringEdge(R, i); if (f.L < 3.4) continue;
+    const px = (f.ax + f.bx) / 2 + f.nx * 2.5, pz = (f.az + f.bz) / 2 + f.nz * 2.5;
+    if (buildingAt(px, pz) >= 0 || H(px, pz) <= 0.3) continue;
+    const nb = bayCount(f.L), dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, bays = [];
+    for (let bay = 0; bay < nb; bay++) { const u = (bay + 0.5) * f.L / nb; if (H(f.ax + dx * u + f.nx * 1.2, f.az + dz * u + f.nz * 1.2) + LIFT - rec.base < 0.75) bays.push(bay); }
+    if (bays.length) walls.push({ i, f, nb, bays, k: 0 });
+  }
+  walls.sort((p, q) => q.f.L - p.f.L);
+  for (let left = n, more = true; left > 0 && more;) { more = false; for (const w of walls) if (left > 0 && w.k < w.bays.length) { w.k++; left--; more = true; } }
+  const out = [];
+  for (const w of walls) for (let j = 0; j < w.k; j++) {
+    // one door keeps the bay picked from the seed, so a 1-door wall looks as it did; more are spread across the wall
+    const bay = w.k === 1 ? w.bays[(rec.seed >>> 3) % w.bays.length] : w.bays[Math.min(w.bays.length - 1, Math.floor((j + 0.5) * w.bays.length / w.k))];
+    out.push({ i: w.i, f: w.f, bay, u: (bay + 0.5) * w.f.L / w.nb });
+  }
+  return out;
 }
 // an upright box in a wall-local frame (t along f, d outward, y up); aw marks it for the shader
 function boxW(geo, f, t0, t1, d0, d1, y0, y1, col, aw = Z4) {
@@ -1987,7 +2041,9 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
   const neo = s.facade === 'neoclassical';
   const start = geo.count, dstart = dg.count, pitched = s.roofType === 'hip' && !neo, parapet = pitched ? 0 : neo ? 1.1 : 0.9;
-  const doors = neo ? [] : doorsOf(rec), doorBay = new Map(doors.map((d) => [d.i, d.bay]));
+  const doors = neo ? [] : doorsOf(rec), doorBay = new Map();   // the wall carries its first door; any more on that wall are patches (below)
+  for (const d of doors) if (!doorBay.has(d.i)) doorBay.set(d.i, d.bay);
+  const detail = !(dg instanceof NullGeo);   // the load pass leaves the fine detail to buildDetail
   const y0 = base - 2.5, y1 = top + parapet, hgt = top - base, cTrim = _cF.copy(cWall).lerp(WHITE_LIME, 0.65);
   for (const R of RR) {
     const P = R.pts, N = P.length, isOuter = R === RR[0];
@@ -2049,9 +2105,9 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     rec.solar = false;
     if (!s.roof && !rec.roofKind && area > 45 && ((rec.seed >>> 17) % 100) < SOLAR_PCT) rec.solar = solarPanels(geo, dg, rec, top);
   }
-  roofClutter(dg, rec, s, top, pitched, ridge);
+  if (detail) roofClutter(dg, rec, s, top, pitched, ridge);
   // front doors: a stone stoop and a wrought-iron lantern over each
-  for (const d of doors) {
+  if (detail) for (const d of doors) {
     const f = d.f, stone = _cK.copy(cWall).lerp(new THREE.Color(0.7, 0.68, 0.64), 0.7);
     boxW(dg, f, d.u - 0.95, d.u + 0.95, 0, 0.75, base - 0.3, base + 0.16, stone);
     boxW(dg, f, d.u - 0.8, d.u + 0.8, 0, 0.4, base + 0.16, base + 0.32, stone);
@@ -2062,42 +2118,66 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
   // balconies on the main street façades, one per upper floor
   const facades = s.windows === 'balconies' || rec.flowers || neo ? facadesOf(rec) : [];
   if (neo) portico(geo, rec, mainFacade(rec, facades), base, top, s);
-  else if (s.windows === 'balconies' && s.floors > 1) {
+  else if (detail && s.windows === 'balconies' && s.floors > 1) {
     _cT.copy(cWall).lerp(new THREE.Color(1, 0.97, 0.92), 0.7);
     for (const f of facades.slice(0, f2(facades))) {
       const span = Math.min(f.L * 0.7, 9), t0 = (f.L - span) / 2;
       for (let fl = 1; fl < Math.min(s.floors, 5); fl++) balcony(dg, f, base + gf + (fl - 1) * fh + 0.08, t0, t0 + span, _cT);
     }
   }
-  if (rec.flowers && facades.length) {
+  if (detail && rec.flowers && facades.length) {
     const f = facades[0], rnd = mulberry(rec.seed ^ 0x5bd1e995);
     for (let k = 0; k < rec.flowers; k++) {
       const t = 0.15 + rnd() * 0.7, x = f.ax + (f.bx - f.ax) * t + f.nx * 0.45, z = f.az + (f.bz - f.az) * t + f.nz * 0.45;
       for (let y = top - 0.6, m = 0; y > base + 2.5 && m < 4; y -= 1.3 + rnd(), m++) for (let b = 0; b < 3; b++) blossom(dg, x + (rnd() - 0.5) * 1.2, y + (rnd() - 0.5) * 0.6, z + (rnd() - 0.5) * 0.3, 0.32 + rnd() * 0.3, m === 3 && b === 0 ? LEAF : BLOOMS[(rnd() * BLOOMS.length) | 0]);
     }
   }
-  if (!neo) buildingExtras(dg, rec, s, base, top, gf, fh, cWall, cShut, doors);
+  if (detail && !neo) buildingExtras(dg, rec, s, base, top, gf, fh, cWall, cShut, doors);
   const g = neo ? 3 : GROUND[s.groundFloor], w = neo ? 3 : WINDOWS[s.windows];
   for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
   if (dg !== geo) for (let i = dstart; i < dg.count; i++) { dg.extra.aBid.push(rec.idx); dg.extra.aStyle.push(g, w); }
-  // wall segments edited on their own (Cmd+Shift-drag): a patch of wall 3 cm proud of the façade with its own colours, window style, or no openings at all
-  const segs = segmentsOf(rec); rec.lastSegs = segs ? JSON.stringify(segs) : '';
-  if (segs) for (const sg of segs) {
-    const R0 = RR[0], e = segmentEdge(R0, sg); if (!e) continue;
-    const { i, f } = e, box = segmentBox(f, base, top, sg); if (!box) continue;
-    const ss = sg.style || {}, blank = ss.windows === 'none', k1 = ((i + 2) % R0.pts.length) >> 1, n0 = R0.nrm[i >> 1] || [f.nx, f.nz], n1 = R0.nrm[k1] || [f.nx, f.nz];
-    const cw = HEX.test(ss.wall || '') ? _cSeg.copy(linear(ss.wall)) : cWall, cs = HEX.test(ss.shutters || '') ? linear(ss.shutters) : cShut;
-    const wv = hgt + 1000 * ((doorBay.has(i) ? doorBay.get(i) : -1) + 1) + (blank ? 100000 : 0);
-    const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (u, y) => [f.ax + dx * u + f.nx * 0.03, y, f.az + dz * u + f.nz * 0.03];
-    const q0 = geo.count, corners = [[box.u0, box.y0], [box.u1, box.y0], [box.u1, box.y1], [box.u0, box.y1]];
+  // a patch of wall d metres proud of edge i of the outer ring, with its own colours and styles (wv: the aWall.w code, door bay and flags)
+  const R0 = RR[0];
+  const patch = (i, f, u0, u1, y0p, y1p, d, cw, cs, wv, gs, ws) => {
+    const k1 = ((i + 2) % R0.pts.length) >> 1, n0 = R0.nrm[i >> 1] || [f.nx, f.nz], n1 = R0.nrm[k1] || [f.nx, f.nz];
+    const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (u, y) => [f.ax + dx * u + f.nx * d, y, f.az + dz * u + f.nz * d];
+    const q0 = geo.count, corners = [[u0, y0p], [u1, y0p], [u1, y1p], [u0, y1p]];
     for (const [u, y] of corners) { const tt = u / f.L, nx = n0[0] + (n1[0] - n0[0]) * tt, nz = n0[1] + (n1[1] - n0[1]) * tt, nl = Math.hypot(nx, nz) || 1, pp = P(u, y); geo.v(pp[0], pp[1], pp[2], nx / nl, 0, nz / nl, cw); geo.extra.aWall.push(u, y - base, f.L, wv); geo.extra.aShut.push(cs.r, cs.g, cs.b); }
     if (R0.sgn > 0) geo.i.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2); else geo.i.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3);
-    const gs = ss.groundFloor in GROUND ? GROUND[ss.groundFloor] : g, ws = ss.windows in WINDOWS ? WINDOWS[ss.windows] : w;
     for (let k = 0; k < 4; k++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(gs, ws); }
+  };
+  const doorCode = (i) => 1000 * ((doorBay.has(i) ? doorBay.get(i) : -1) + 1);
+  const fyOf = (k) => base + (k <= 0 ? 0 : gf + (k - 1) * fh);
+  // floor bands (style.floorStyles): one floor or a run of floors with its own look, a patch 2 cm proud of every outer wall
+  const bands = neo ? null : s.floorStyles;
+  if (bands) for (const b of bands) {
+    const by0 = fyOf(b.from), by1 = Math.min(top, fyOf(b.to + 1)); if (by1 - by0 < 0.3) continue;
+    const cw = HEX.test(b.wall || '') ? new THREE.Color().copy(linear(b.wall)) : cWall, cs = HEX.test(b.shutters || '') ? linear(b.shutters) : cShut;
+    const gs = b.groundFloor in GROUND ? GROUND[b.groundFloor] : g, ws = b.windows in WINDOWS ? WINDOWS[b.windows] : w, blank = b.windows === 'none' ? 100000 : 0;
+    for (let i = 0; i < R0.pts.length; i += 2) { const f = ringEdge(R0, i); if (f.L >= 1) patch(i, f, 0, f.L, by0, by1, 0.02, cw, cs, hgt + doorCode(i) + blank, gs, ws); }
+  }
+  // wall segments edited on their own (Ctrl-drag): a patch of wall 3 cm proud of the façade with its own colours, window style, or no openings at all
+  const segs = segmentsOf(rec); rec.lastSegs = segs ? JSON.stringify(segs) : '';
+  if (segs) for (const sg of segs) {
+    const e = segmentEdge(R0, sg); if (!e) continue;
+    const { i, f } = e, box = segmentBox(f, base, top, sg); if (!box) continue;
+    const ss = sg.style || {}, blank = ss.windows === 'none';
+    const cw = HEX.test(ss.wall || '') ? _cSeg.copy(linear(ss.wall)) : cWall, cs = HEX.test(ss.shutters || '') ? linear(ss.shutters) : cShut;
+    const gs = ss.groundFloor in GROUND ? GROUND[ss.groundFloor] : g, ws = ss.windows in WINDOWS ? WINDOWS[ss.windows] : w;
+    patch(i, f, box.u0, box.u1, box.y0, box.y1, 0.03, cw, cs, hgt + doorCode(i) + (blank ? 100000 : 0), gs, ws);
+  }
+  // further doors on a wall that already has one: a one-bay ground-floor patch 4 cm proud carrying that bay as its door, in the look of whatever covers that spot
+  for (const d of doors) {
+    if (doorBay.get(d.i) === d.bay) continue;
+    const nb = bayCount(d.f.L), bw = d.f.L / nb, mid = { x: (d.f.ax + d.f.bx) / 2, z: (d.f.az + d.f.bz) / 2 };
+    const band = bands && bands.find((b) => b.from === 0), sg = segs && segs.find((q) => q.floors[0] === 0 && d.bay >= q.bays[0] && d.bay <= q.bays[1] && Math.hypot(q.face.x - mid.x, q.face.z - mid.z) < 2.5 && q.face.nx * d.f.nx + q.face.nz * d.f.nz > 0.5);
+    const ls = { ...(band || {}), ...((sg && sg.style) || {}) };
+    const cw = HEX.test(ls.wall || '') ? new THREE.Color().copy(linear(ls.wall)) : cWall, cs = HEX.test(ls.shutters || '') ? linear(ls.shutters) : cShut;
+    patch(d.i, d.f, d.bay * bw, (d.bay + 1) * bw, base, Math.min(top, base + gf), 0.04, cw, cs, hgt + 1000 * (d.bay + 1), ls.groundFloor in GROUND ? GROUND[ls.groundFloor] : g, ls.windows in WINDOWS ? WINDOWS[ls.windows] : w);
   }
   // a painted mural across one wall of about 1% of buildings: a quad 3 cm proud of the wall, flagged 2 in aWall.w's hundred-thousands (no openings; the shader paints it)
   rec.mural = null;
-  const mw = segs ? null : muralWall(rec, RR, doorBay, s, neo);
+  const mw = segs || bands || doors.length > doorBay.size ? null : muralWall(rec, RR, doorBay, s, neo);
   if (mw) {
     const { i, f } = mw, R0 = RR[0], k1 = ((i + 2) % R0.pts.length) >> 1, n0 = R0.nrm[i >> 1] || [f.nx, f.nz], n1 = R0.nrm[k1] || [f.nx, f.nz];
     const wv = hgt + 200000, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (u, y) => [f.ax + dx * u + f.nx * 0.03, y, f.az + dz * u + f.nz * 0.03];
@@ -2145,11 +2225,11 @@ function segmentBox(f, base, top, sg) {   // the segment's extent along the wall
 const f2 = (fs) => (fs.length > 1 && fs[1].L >= 7 ? 2 : 1);
 const DCELL = 250;   // detail cells tile exactly into the 1750 m building tiles
 function rebuildTile(tk) {
-  const geo = new Geo(EX), cells = new Map();
+  const geo = new Geo(EX), none = new NullGeo(), cells = new Map();
   for (const idx of world.tileList.get(tk)) {
-    const rec = world.buildings[idx], ck = Math.floor(rec.cx / DCELL) * 4096 + Math.floor(rec.cz / DCELL);
-    let dg = cells.get(ck); if (!dg) cells.set(ck, dg = new Geo(EX));
-    emitBuilding(geo, rec, dg);
+    const rec = world.buildings[idx], ix = Math.floor(rec.cx / DCELL), iz = Math.floor(rec.cz / DCELL), ck = ix * 4096 + iz;
+    let c = cells.get(ck); if (!c) cells.set(ck, c = { idxs: [], cx: (ix + 0.5) * DCELL, cz: (iz + 0.5) * DCELL, mesh: null, job: null, empty: false }); c.idxs.push(idx);
+    emitBuilding(geo, rec, none);
   }
   const g = geo.build(); g.computeBoundsTree();
   let m = world.tileMeshes.get(tk);
@@ -2158,27 +2238,50 @@ function rebuildTile(tk) {
     m = new THREE.Mesh(g, world.bMat); m.customDepthMaterial = world.bDepth;
     m.castShadow = m.receiveShadow = true; m.renderOrder = 10; scene.add(m); world.tileMeshes.set(tk, m);
   }
-  // fine detail (balconies, vines, pipes, awnings, stoops, rooftop clutter, laundry…) in 250 m cells that only draw near the camera
-  world.detail = world.detail || new Map();
-  for (const dm of world.tileCells ? world.tileCells.get(tk) || [] : []) { scene.remove(dm); dm.geometry.dispose(); }
-  world.tileCells = world.tileCells || new Map(); const mine = [];
-  for (const [ck, dg] of cells) {
-    if (!dg.count) continue;
-    const dm = new THREE.Mesh(dg.build(), world.bMat); dm.customDepthMaterial = world.bDepth;
-    dm.castShadow = Q.t.detailShadow; dm.receiveShadow = true; dm.renderOrder = 10; dm.visible = false;
-    dm.userData.cx = (Math.floor(ck / 4096) + 0.5) * DCELL; dm.userData.cz = (ck % 4096 + 0.5) * DCELL;
-    scene.add(dm); mine.push(dm);
-  }
-  world.tileCells.set(tk, mine);
+  // fine detail (balconies, vines, pipes, awnings, stoops, rooftop clutter, laundry…) in 250 m cells, built only when the camera comes near (updateDetail):
+  // all of it at once was ~52 million vertices and ~5 GB, most of the load time
+  world.tileCells = world.tileCells || new Map();
+  for (const d of world.tileCells.get(tk) || []) { dropDetail(d); d.dead = true; }
+  world.tileCells.set(tk, [...cells.values()]);
 }
-// show only the detail cells near the camera (and none from high above)
+const DETAIL_MS = 6;   // per frame spent building detail cells, so walking into a new area never hitches
+function dropDetail(d) { if (d.mesh) { scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh = null; } d.job = null; }
+// build a cell's detail a few buildings at a time; true while the frame's budget isn't spent
+function buildDetail(d, t0) {
+  const job = d.job || (d.job = { dg: new Geo(EX), none: new NullGeo(), k: 0 });
+  while (job.k < d.idxs.length) { emitBuilding(job.none, world.buildings[d.idxs[job.k++]], job.dg); if (performance.now() - t0 > DETAIL_MS) return false; }
+  d.job = null;
+  if (!job.dg.count) { d.empty = true; return true; }
+  const dm = d.mesh = new THREE.Mesh(job.dg.build(), world.bMat); dm.customDepthMaterial = world.bDepth;
+  dm.castShadow = Q.t.detailShadow; dm.receiveShadow = true; dm.renderOrder = 10; dm.visible = false;
+  scene.add(dm);
+  return performance.now() - t0 < DETAIL_MS;
+}
+// show only the detail cells near the camera (and none from high above); build the nearest missing ones, free the far ones
 function updateDetail() {
   if (!world.tileCells) return;
-  const p = camera.position, high = p.y - H(p.x, p.z) > Q.t.cullAlt, R = Q.t.detailR + DCELL * 0.75;
-  for (const list of world.tileCells.values()) for (const m of list) {
-    const vis = !high && Math.hypot(m.userData.cx - p.x, m.userData.cz - p.z) < R;
-    if (m.visible !== vis) m.visible = vis;
-    if (m.castShadow !== Q.t.detailShadow) m.castShadow = Q.t.detailShadow;
+  const p = camera.position, high = p.y - H(p.x, p.z) > Q.t.cullAlt, R = Q.t.detailR + DCELL * 0.75, keep = R + DCELL * 2, want = [];
+  for (const list of world.tileCells.values()) for (const d of list) {
+    const dist = Math.hypot(d.cx - p.x, d.cz - p.z), vis = !high && dist < R;
+    if (d.mesh) {
+      if (dist > keep) { dropDetail(d); continue; }
+      if (d.mesh.visible !== vis) d.mesh.visible = vis;
+      if (d.mesh.castShadow !== Q.t.detailShadow) d.mesh.castShadow = Q.t.detailShadow;
+    } else if (vis && !d.empty) want.push([dist, d]);
+    else if (d.job && dist > keep) d.job = null;
+  }
+  world.detailWant = want.sort((a, b) => a[0] - b[0]).map((w) => w[1]);
+}
+// every frame: build the nearest cells updateDetail asked for, within the frame budget
+function stepDetail() {
+  const want = world.detailWant; if (!want || !want.length) return;
+  const t0 = performance.now();
+  while (want.length) {
+    const d = want[0]; if (d.dead) { want.shift(); continue; }
+    const more = buildDetail(d, t0);
+    if (d.job) break;                                   // budget spent part-way through this cell
+    want.shift(); if (d.mesh) d.mesh.visible = true;
+    if (!more) break;
   }
 }
 const dirtyTiles = new Set();
@@ -4618,15 +4721,15 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
 const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
-  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting', segments: 'Façade' };
+  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting', segments: 'Façade', doors: 'Façade', floorStyles: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments' };
+  trees: 'tree density', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks' };
 function diffDocs(a, b) {
   const out = [];
   for (const k of ['name', 'address', 'tags', 'history', 'details', 'attrs']) if (JSON.stringify(a[k] || '') !== JSON.stringify(b[k] || '')) out.push(k);
   const sa = a.style || {}, sb = b.style || {};
-  for (const k of new Set([...Object.keys(sa), ...Object.keys(sb)])) if (sa[k] !== sb[k]) out.push(k);
+  for (const k of new Set([...Object.keys(sa), ...Object.keys(sb)])) if (JSON.stringify(sa[k]) !== JSON.stringify(sb[k])) out.push(k);
   if (JSON.stringify(a.segments || []) !== JSON.stringify(b.segments || [])) out.push('segments');
   return out;
 }
@@ -4654,6 +4757,8 @@ function cleanStyleFor(kind, o) {
     if (o.groundFloor in GROUND) s.groundFloor = o.groundFloor;
     if (o.windows in WINDOWS) s.windows = o.windows;
     if (FACADES.includes(o.facade)) s.facade = o.facade;
+    if (Number.isFinite(+o.doors)) s.doors = clamp(Math.round(+o.doors), 0, DOORS_MAX);
+    if (Array.isArray(o.floorStyles)) s.floorStyles = cleanFloorStyles(o.floorStyles) || [];
     return s;
   }
   for (const [k, spec] of Object.entries(FSTYLE[kind] || {})) {
@@ -4677,7 +4782,9 @@ const STYLE_DOCS = {
 - floors: whole number 1-40
 - groundFloor: "arches" (arcade), "shopfront" (wide shop windows with striped awnings) or "plain"
 - windows: "shutters", "plain" or "balconies" (French doors with wrought-iron balconies on the street fronts)
-- facade: "standard" or "neoclassical" (civic stone palace like the MUNAL or a museum: giant-order columned portico with a pediment on the street front, tall arched gallery windows, rusticated base, balustrade)`,
+- facade: "standard" or "neoclassical" (civic stone palace like the MUNAL or a museum: giant-order columned portico with a pediment on the street front, tall arched gallery windows, rusticated base, balustrade)
+- doors: the number of front doors on the ground floor, whole number 0-24. They go on the street-facing walls, one per wall first (longest wall first), then more spread evenly along the same walls, one per 3.4 m window bay at most.
+- floorStyles: a different look for particular floors, all the way round the building. An array of bands, each {"from": first floor, "to": last floor, then any of "wall" ("#rrggbb"), "shutters" ("#rrggbb"), "windows" ("shutters", "plain", "balconies" or "none" = no windows on those floors), "groundFloor" (only on a band that starts at the ground floor)}. Floors are counted from 0 = the ground floor, so the top floor is floors - 1. Give the whole list (it replaces the current one); [] removes every band. Fields left out of a band follow the building's own style. Example, a blue ground floor and plain windows on the top two floors of a 5-floor building: [{"from": 0, "to": 0, "wall": "#3a6ea5"}, {"from": 3, "to": 4, "windows": "plain"}]`,
   park: `- grass: lawn colour, "#rrggbb"
 - trees: "none", "sparse", "normal" or "dense"
 - treeType: "palms", "broadleaf" (ceibas and flamboyants) or "mixed"`,
@@ -4696,7 +4803,7 @@ const STYLE_DOCS = {
 function promptFor(t, doc, text, nImages = 0) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
-    current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows } });
+    current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [] } });
   else Object.assign(info, KINDS[t.kind].geom === 'poly' ? { area_m2: Math.round(t.f.size) } : { length_m: Math.round(t.f.size), width_m: t.f.w }, { current_style: cur });
   const fields = STYLE_DOCS[t.kind];
   return `You edit one ${labelOf(t.kind).toLowerCase()} in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean. Its look blends Latin American colonial and Mediterranean towns (Havana, San Juan, Cartagena, Campeche, Oaxaca, Guanajuato, Querétaro, Seville, Cádiz, Granada, Barcelona, Arles, Monaco, Amalfi, Venice, Istanbul): lime-washed and pastel walls, terracotta roofs, blue-white cobbles, palms and bougainvillea, at dusk under string lights.
@@ -5255,6 +5362,13 @@ function renderInfo() {
         el('span', { class: 'floors', 'aria-live': 'polite' }, String(fl)),
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
+      if (styleFor(t).facade !== 'neoclassical') {
+        const dn = doorsOf(t.b).length;
+        kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Front doors'),
+          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a door', disabled: dn <= 0, onclick: () => changeDoors(id, -1) }, '−'),
+          el('span', { class: 'floors', 'aria-live': 'polite' }, String(dn)),
+          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a door', disabled: dn >= DOORS_MAX, onclick: () => changeDoors(id, 1) }, '+')));
+      }
     }
     if (store.canEdit && t.kind === 'street') {
       const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
@@ -5308,6 +5422,22 @@ function changeFloors(id, delta) {
   pend.timer = setTimeout(() => {
     floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
     if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
+  }, 1500);
+}
+// Front doors: like floors, each click rebuilds at once and a burst is logged as one change. A wall with no room for another door caps the count.
+const doorEdits = new Map();
+function changeDoors(id, delta) {
+  const t = targetOf(id); if (!t || t.kind !== 'building' || !store.canEdit) return;
+  const cur = doorsOf(t.b).length, next = clamp(cur + delta, 0, DOORS_MAX); if (next === cur) return;
+  const doc = docFor(id); let pend = doorEdits.get(id);
+  if (!pend) doorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
+  doc.style = { ...doc.style, doors: next }; markOwn(doc, ['doors']); doc.updatedAt = new Date().toISOString();
+  saveTarget(id, doc, 400);
+  if (delta > 0 && doorsOf(t.b).length === cur) toast('No room for another door on the street walls.');
+  clearTimeout(pend.timer);
+  pend.timer = setTimeout(() => {
+    doorEdits.delete(id); const after = docFor(id), to = doorsOf(t.b).length;
+    if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Added' : 'Removed'} front doors: ${pend.from} → ${to}`, category: 'Façade', tags: ['doors'], before: pend.before, after });
   }, 1500);
 }
 // Tree canopy slider: applies on release; a burst of changes is logged as one history entry
@@ -6768,7 +6898,7 @@ function update(dt, t) {
   WIND.value = t; WINDK.value += ((WEATHER[wx.name].wind || 1) - WINDK.value) * (1 - Math.exp(-dt * 0.5));   // the wind picks up or dies down over a few seconds
   DUCK.on.value = player.mode === 'walk' || player.mode === 'fly' ? 1 : 0; DUCK.a.value.set(player.pos.x, player.pos.y + 1.2, player.pos.z); DUCK.b.value.copy(camera.position);
   updateGrass(dt);
-  updateCull(dt);
+  updateCull(dt); stepDetail();
   updateFurniture();
   post.grade.uniforms.uTime.value = t;
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
