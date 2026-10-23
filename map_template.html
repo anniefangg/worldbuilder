@@ -144,6 +144,8 @@ body {
 #info dt { color: var(--ink-soft); }
 #info dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.dbl-edit { cursor: text; user-select: none; border-radius: 4px; }
+.dbl-edit:hover { background: rgba(31, 87, 168, 0.06); }
 .chip { font: 600 11px/1 var(--font-ui); padding: 4px 8px; border-radius: 999px; background: rgba(31, 87, 168, 0.1); color: var(--azulejo); }
 .hint { font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
 .field { display: grid; gap: 4px; }
@@ -1561,6 +1563,7 @@ async function buildWorld() {
     if (done++ % 4 === 0) await progress(`Raising buildings · tile ${done} of ${world.tileList.size}`, 44 + 36 * done / world.tileList.size);
     rebuildTile(tk);
   }
+  rebuildSigns();
 
   // ---- trees
   await progress('Planting palms and ceibas', 86);
@@ -1599,6 +1602,20 @@ function styleOf(rec) {
   if (FACADES.includes(o.facade)) s.facade = o.facade;
   if (Number.isFinite(+o.doors)) s.doors = clamp(Math.round(+o.doors), 0, DOORS_MAX);
   const fs = cleanFloorStyles(o.floorStyles); if (fs) s.floorStyles = fs;
+  if (o.doorSide === 'long' || o.doorSide === 'short') s.doorSide = o.doorSide;
+  if (AWNINGS.includes(o.awning)) s.awning = o.awning;
+  if (HEX.test(o.awningColor || '')) s.awningColor = o.awningColor.toLowerCase();
+  if (o.porch === true) s.porch = true;
+  const sg = cleanSign(o.sign); if (sg) s.sign = sg;
+  return s;
+}
+// awning: "all" runs one striped awning round every open wall of the ground floor, "doors" puts one over each door, "none" none (unset: over some doors, by seed)
+const AWNINGS = ['all', 'doors', 'none'];
+// sign: {kind: pharmacy (a glowing green cross on a bracket plus a green board) | shop (a board), text, color?}; drawn as its own meshes (buildSign)
+function cleanSign(o) {
+  if (!o || typeof o !== 'object' || (o.kind !== 'pharmacy' && o.kind !== 'shop')) return null;
+  const s = { kind: o.kind, text: String(o.text || (o.kind === 'pharmacy' ? 'FARMACIA' : '')).replace(/\s+/g, ' ').trim().slice(0, 28) };
+  if (HEX.test(o.color || '')) s.color = o.color.toLowerCase();
   return s;
 }
 // Floor bands (style.floorStyles): [{from, to, wall?, shutters?, windows?, groundFloor?}], floors counted from 0 = ground, each band painted round every outer wall.
@@ -1799,10 +1816,12 @@ function ringEdge(R, i) {
 // The façade shader draws the door from the bay index packed into aWall.w; the stoop, lantern and pots are real geometry.
 // A `doors` count set on the building (style.doors) spreads that many doors over the street walls instead.
 function doorsOf(rec) {
-  const want = (store.buildings.get(rec.id) || {}).style, n = want && Number.isFinite(+want.doors) ? clamp(Math.round(+want.doors), 0, DOORS_MAX) : -1;
-  if (rec.doors && rec.doorsN === n) return rec.doors;
-  rec.doorsN = n;
-  if (n >= 0) return (rec.doors = doorsCounted(rec, n));
+  const want = (store.buildings.get(rec.id) || {}).style, side = want && (want.doorSide === 'long' || want.doorSide === 'short') ? want.doorSide : '';
+  let n = want && Number.isFinite(+want.doors) ? clamp(Math.round(+want.doors), 0, DOORS_MAX) : -1;
+  if (side && n < 0) n = 1;   // choosing the side means choosing the doors: one, unless a count is set too
+  if (rec.doors && rec.doorsN === n + side) return rec.doors;
+  rec.doorsN = n + side;
+  if (n >= 0) return (rec.doors = doorsCounted(rec, n, side));
   const R = roundedRings(rec)[0], cand = [];
   for (let i = 0; i < R.pts.length; i += 2) {
     const f = ringEdge(R, i); if (f.L < 4) continue;
@@ -1823,8 +1842,9 @@ function doorsOf(rec) {
   return (rec.doors = out);
 }
 const DOORS_MAX = 24;
-// n doors: one per street wall in turn (longest first), then more on the same walls, spread evenly over the bays where the street meets the ground floor
-function doorsCounted(rec, n) {
+// n doors: one per street wall in turn (longest first), then more on the same walls, spread evenly over the bays where the street meets the ground floor.
+// side "short" keeps them to the narrow ends (street walls under 80% of the longest, shortest first), "long" to the long sides.
+function doorsCounted(rec, n, side = '') {
   if (!n) return [];
   const R = roundedRings(rec)[0], walls = [];
   for (let i = 0; i < R.pts.length; i += 2) {
@@ -1836,6 +1856,10 @@ function doorsCounted(rec, n) {
     if (bays.length) walls.push({ i, f, nb, bays, k: 0 });
   }
   walls.sort((p, q) => q.f.L - p.f.L);
+  if (side && walls.length) {
+    const maxL = walls[0].f.L, pick = walls.filter((w) => side === 'short' ? w.f.L < maxL * 0.8 : w.f.L >= maxL * 0.8);
+    if (pick.length) { walls.length = 0; walls.push(...(side === 'short' ? pick.reverse() : pick)); }
+  }
   for (let left = n, more = true; left > 0 && more;) { more = false; for (const w of walls) if (left > 0 && w.k < w.bays.length) { w.k++; left--; more = true; } }
   const out = [];
   for (const w of walls) for (let j = 0; j < w.k; j++) {
@@ -1946,7 +1970,9 @@ const PIPE = linear('#6f7476'), AC_BODY = linear('#d9dbd8'), AC_GRILL = linear('
 // the small things that make a wall look lived in: striped awnings over some doors, drainpipes, air-conditioning units and trailing vines
 function buildingExtras(geo, rec, s, base, top, gf, fh, cWall, cShut, doors) {
   const rnd = mulberry(rec.seed ^ 0x6a09e667), fs = facadesOf(rec), f = fs[0];
-  for (const d of doors) if (((rec.seed >>> 11) & 3) === 0) {            // a canvas awning over the door
+  const doorAwn = s.awning ? s.awning === 'doors' : ((rec.seed >>> 11) & 3) === 0;
+  if (s.awningColor) cShut = linear(s.awningColor);
+  for (const d of doors) if (doorAwn) {            // a canvas awning over the door
     const F = d.f, dx = (F.bx - F.ax) / F.L, dz = (F.bz - F.az) / F.L, w = 2.5, n = 6, P = (t, dd, y) => [F.ax + dx * t + F.nx * dd, y, F.az + dz * t + F.nz * dd];
     for (let k = 0; k < n; k++) {
       const t0 = d.u - w / 2 + w * k / n, t1 = d.u - w / 2 + w * (k + 1) / n, col = k % 2 ? CREAM : cShut;
@@ -2111,6 +2137,7 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     const f = d.f, stone = _cK.copy(cWall).lerp(new THREE.Color(0.7, 0.68, 0.64), 0.7);
     boxW(dg, f, d.u - 0.95, d.u + 0.95, 0, 0.75, base - 0.3, base + 0.16, stone);
     boxW(dg, f, d.u - 0.8, d.u + 0.8, 0, 0.4, base + 0.16, base + 0.32, stone);
+    if (s.awning === 'all' || s.porch) continue;   // the awning or porch roof takes the lantern's place
     boxW(dg, f, d.u - 0.03, d.u + 0.03, 0, 0.42, base + 3.5, base + 3.56, IRON);                  // bracket
     boxW(dg, f, d.u - 0.15, d.u + 0.15, 0.27, 0.57, base + 3.05, base + 3.45, IRON, LAMP_AW);     // lantern glass
     boxW(dg, f, d.u - 0.2, d.u + 0.2, 0.22, 0.62, base + 3.45, base + 3.55, IRON);               // lantern cap
@@ -2133,6 +2160,8 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     }
   }
   if (detail && !neo) buildingExtras(dg, rec, s, base, top, gf, fh, cWall, cShut, doors);
+  if (!neo && s.awning === 'all') wrapAwning(geo, rec, RR[0], base, s.awningColor ? linear(s.awningColor) : cShut);
+  if (!neo && s.porch) porch(geo, rec, s, base, cWall, doors);
   const g = neo ? 3 : GROUND[s.groundFloor], w = neo ? 3 : WINDOWS[s.windows];
   for (let i = start; i < geo.count; i++) { geo.extra.aBid.push(rec.idx); geo.extra.aStyle.push(g, w); }
   if (dg !== geo) for (let i = dstart; i < dg.count; i++) { dg.extra.aBid.push(rec.idx); dg.extra.aStyle.push(g, w); }
@@ -2188,6 +2217,133 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
     rec.mural = { i, x: (f.ax + f.bx) / 2, z: (f.az + f.bz) / 2, nx: f.nx, nz: f.nz, L: f.L };
   }
 }
+// A striped canvas awning all the way round the ground floor: every wall of the (rounded) outer ring with open ground outside it,
+// stripes counted along the whole loop so they run on unbroken round the corners. In the main mesh, so it reads from afar.
+function wrapAwning(geo, rec, R, base, col) {
+  const yT = base + 3.3, yB = base + 2.82, D = 1.3, SW = 0.5;
+  let run = 0;
+  for (let i = 0; i < R.pts.length; i += 2) {
+    const F = ringEdge(R, i), L = F.L; if (L < 0.05) continue;
+    const mx = (F.ax + F.bx) / 2 + F.nx * 1.6, mz = (F.az + F.bz) / 2 + F.nz * 1.6;
+    if (buildingAt(mx, mz) >= 0 && buildingAt(mx, mz) !== rec.idx) { run += L; continue; }   // a party wall: nothing to shade
+    const dx = (F.bx - F.ax) / L, dz = (F.bz - F.az) / L, P = (t, d, y) => [F.ax + dx * t + F.nx * d, y, F.az + dz * t + F.nz * d];
+    for (let t0 = 0; t0 < L - 1e-3;) {
+      const k = Math.floor((run + t0) / SW + 1e-6), t1 = Math.min(L, (k + 1) * SW - run), c = k % 2 ? CREAM : col;
+      quadN(geo, [P(t0, 0, yT), P(t1, 0, yT), P(t1, D, yB), P(t0, D, yB)], [F.nx * 0.35, 0.94, F.nz * 0.35], c, Z4);
+      quadN(geo, [P(t0, 0, yT), P(t0, D, yB), P(t1, D, yB), P(t1, 0, yT)], [-F.nx * 0.35, -0.94, -F.nz * 0.35], c, Z4);
+      quadN(geo, [P(t0, D, yB), P(t1, D, yB), P(t1, D + 0.02, yB - 0.24), P(t0, D + 0.02, yB - 0.24)], [F.nx, 0, F.nz], c, Z4);   // valance
+      quadN(geo, [P(t0, D, yB), P(t0, D + 0.02, yB - 0.24), P(t1, D + 0.02, yB - 0.24), P(t1, D, yB)], [-F.nx, 0, -F.nz], c, Z4);
+      t0 = t1;
+    }
+    run += L;
+  }
+}
+// A covered porch in front of the main door: a stone platform with steps, lime columns, a beam and a terracotta lean-to roof.
+const PORCH_STONE = linear('#bdb4a3'), PORCH_COL = linear('#f2ede2'), PORCH_TILE = linear('#a84f33'), PORCH_SOFFIT = linear('#d9cfbd');
+function porch(geo, rec, s, base, cWall, doors) {
+  const d0 = doors[0], f = d0 ? d0.f : facadesOf(rec)[0]; if (!f || f.L < 3) return;
+  const W = Math.min(f.L - 0.6, 6.8), u = d0 ? d0.u : f.L / 2, t0 = clamp(u - W / 2, 0.3, f.L - 0.3 - W), t1 = t0 + W, D = 2.4;
+  const yP = base + 0.38, yC = base + 3.2, yB = base + 3.45, yW = base + 3.95, yF = base + 3.4;
+  boxW(geo, f, t0, t1, 0, D, base - 0.6, yP, PORCH_STONE);                                   // platform
+  const sc = clamp(u, t0 + 1, t1 - 1);
+  boxW(geo, f, sc - 0.9, sc + 0.9, D, D + 0.32, base - 0.6, base + 0.19, PORCH_STONE);       // a step
+  const nCol = W > 4.8 ? 3 : 2;
+  for (let k = 0; k < nCol; k++) {
+    let t = t0 + 0.25 + (W - 0.5) * k / (nCol - 1);
+    if (Math.abs(t - u) < 0.95 && k > 0 && k < nCol - 1) t = u + (t < u ? -0.95 : 0.95);   // keep the doorway clear
+    boxW(geo, f, t - 0.13, t + 0.13, D - 0.38, D - 0.12, yP, yC, PORCH_COL);
+    boxW(geo, f, t - 0.18, t + 0.18, D - 0.43, D - 0.07, yP, yP + 0.14, PORCH_COL);             // base
+    boxW(geo, f, t - 0.18, t + 0.18, D - 0.43, D - 0.07, yC - 0.12, yC, PORCH_COL);             // capital
+  }
+  boxW(geo, f, t0, t1, D - 0.45, D - 0.05, yC, yB, PORCH_COL);                               // beam
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, P = (t, d, y) => [f.ax + dx * t + f.nx * d, y, f.az + dz * t + f.nz * d];
+  const slope = Math.hypot(D + 0.3, yW - yF), up = [f.nx * (yW - yF) / slope, (D + 0.3) / slope, f.nz * (yW - yF) / slope];
+  quadN(geo, [P(t0 - 0.15, 0, yW), P(t1 + 0.15, 0, yW), P(t1 + 0.15, D + 0.3, yF), P(t0 - 0.15, D + 0.3, yF)], up, PORCH_TILE, Z4);
+  quadN(geo, [P(t0 - 0.15, 0, yW - 0.12), P(t0 - 0.15, D + 0.3, yF - 0.12), P(t1 + 0.15, D + 0.3, yF - 0.12), P(t1 + 0.15, 0, yW - 0.12)], [-up[0], -up[1], -up[2]], PORCH_SOFFIT, Z4);
+  quadN(geo, [P(t0 - 0.15, D + 0.3, yF - 0.12), P(t1 + 0.15, D + 0.3, yF - 0.12), P(t1 + 0.15, D + 0.3, yF), P(t0 - 0.15, D + 0.3, yF)], [f.nx, 0, f.nz], PORCH_TILE, Z4);
+  for (const t of [t0 - 0.15, t1 + 0.15]) {   // the roof's gable ends
+    const n = t === t0 - 0.15 ? [-dx, 0, -dz] : [dx, 0, dz];
+    quadN(geo, [P(t, 0, yW - 0.12), P(t, D + 0.3, yF - 0.12), P(t, D + 0.3, yF), P(t, 0, yW)], n, PORCH_TILE, Z4);
+  }
+}
+
+// ---- shop signs (style.sign): a lettered board over the ground floor and, for a pharmacy, a green cross on a bracket that glows at night.
+// Separate meshes (they need a texture for the lettering), one group per building, rebuilt when its doc changes; hidden while the building is sunk.
+const SIGNS = new Map();   // building id -> { g, idx, mats }
+function signTexture(text, bg, fg, w, h, cross) {
+  const cv = document.createElement('canvas'), H2 = 128, W2 = clamp(Math.round(H2 * w / h), 128, 2048);
+  cv.width = W2; cv.height = H2;
+  const c = cv.getContext('2d');
+  c.fillStyle = bg; c.fillRect(0, 0, W2, H2);
+  c.strokeStyle = fg; c.globalAlpha = 0.85; c.lineWidth = 4; c.strokeRect(9, 9, W2 - 18, H2 - 18); c.globalAlpha = 1;
+  let size = 74; c.font = `600 ${size}px Georgia, 'Times New Roman', serif`;
+  const pad = cross ? 150 : 50, spaced = text.split('').join(String.fromCharCode(8202));
+  while (size > 30 && c.measureText(spaced).width > W2 - pad * 2) { size -= 4; c.font = `600 ${size}px Georgia, 'Times New Roman', serif`; }
+  c.fillStyle = fg; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(spaced, W2 / 2, H2 / 2 + 4);
+  if (cross) for (const x of [70, W2 - 70]) { c.fillRect(x - 11, H2 / 2 - 32, 22, 64); c.fillRect(x - 32, H2 / 2 - 11, 64, 22); }
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  return tex;
+}
+function dropSign(id) {
+  const o = SIGNS.get(id); if (!o) return;
+  world.signs.remove(o.g);
+  o.g.traverse((m) => { if (m.geometry) m.geometry.dispose(); });
+  for (const m of o.mats) { if (m.map) m.map.dispose(); m.dispose(); }
+  SIGNS.delete(id);
+}
+function buildSign(rec) {
+  dropSign(rec.id);
+  const s = styleOf(rec), sg = s.sign; if (!sg || s.facade === 'neoclassical' || !world.signs) return;
+  const d0 = doorsOf(rec)[0], f = d0 ? d0.f : facadesOf(rec)[0]; if (!f || f.L < 2.5) return;
+  const pharm = sg.kind === 'pharmacy', bg = sg.color || (pharm ? '#1f7a45' : '#2b3f5c'), fg = '#f6f1e3';
+  const u = d0 ? d0.u : f.L / 2, text = sg.text || (pharm ? 'FARMACIA' : '');
+  const Wb = clamp(Math.max(3, text.length * 0.34 + (pharm ? 1.6 : 0.8)), 2, Math.min(f.L - 0.6, 9)), Hb = 0.48;
+  const tb = clamp(u, Wb / 2 + 0.3, f.L - Wb / 2 - 0.3), yB = rec.base + 3.78;
+  const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, at = (t, d) => [f.ax + dx * t + f.nx * d, f.az + dz * t + f.nz * d];
+  const g = new THREE.Group(), mats = []; let crossM = null;
+  const faceA = Math.atan2(f.nx, f.nz);   // turns local +z (a plane's front) to face out of the wall
+  const frameM = new THREE.MeshStandardMaterial({ color: '#2a2a28', roughness: 0.6, metalness: 0.3 }); mats.push(frameM);
+  const tex = signTexture(text, bg, fg, Wb, Hb, pharm);
+  const boardM = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: 0.05, roughness: 0.7 }); mats.push(boardM);
+  const [bx, bz] = at(tb, 0.06);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(Wb + 0.1, Hb + 0.1, 0.07), frameM); frame.position.set(bx, yB, bz); frame.rotation.y = faceA; g.add(frame);
+  const [px, pz] = at(tb, 0.1);
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(Wb, Hb), boardM); board.position.set(px, yB, pz); board.rotation.y = faceA; g.add(board);
+  if (pharm) {
+    // the cross hangs off the wall just past the board's far end (or its near end when the wall runs out), level with the board and under any first-floor balcony
+    let tc = tb + Wb / 2 + 0.7; if (tc > f.L - 0.5) tc = tb - Wb / 2 - 0.7;
+    tc = clamp(tc, 0.5, f.L - 0.5);
+    const yc = rec.base + 3.4; crossM = new THREE.MeshStandardMaterial({ color: '#178a3e', emissive: '#0fbf45', emissiveIntensity: 0.4, roughness: 0.45 }); mats.push(crossM);
+    const rimM = new THREE.MeshStandardMaterial({ color: '#e9efe9', roughness: 0.5 }); mats.push(rimM);
+    const cg = new THREE.Group(), [cx, cz] = at(tc, 0);
+    cg.position.set(cx, yc, cz); cg.rotation.y = Math.atan2(-f.nz, f.nx);   // local x points out of the wall, z along it
+    const bar = (w, h, d, m, x = 0.95) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.x = x; cg.add(b); };
+    bar(0.98, 0.34, 0.1, rimM); bar(0.34, 0.98, 0.1, rimM);       // a pale rim round the cross
+    bar(0.86, 0.26, 0.14, crossM); bar(0.26, 0.86, 0.14, crossM);
+    for (const y of [-0.3, 0.3]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.04, 0.04), frameM); b.position.set(0.26, y, 0); cg.add(b); }   // bracket arms
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.8, 0.14), frameM); plate.position.set(0.015, 0, 0); cg.add(plate);
+    g.add(cg);
+  }
+  g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  world.signs.add(g);
+  SIGNS.set(rec.id, { g, idx: rec.idx, mats, board: boardM, cross: crossM });
+}
+function rebuildSigns(ids) {
+  if (!world.signs) { world.signs = new THREE.Group(); scene.add(world.signs); }
+  for (const id of ids || [...store.buildings.keys()]) { const r = world.byId.get(id); if (r) buildSign(r); else dropSign(id); }
+}
+// each frame: the cross and lettering glow after dark; signs hide while their building is sunk or far away
+function stepSigns() {
+  if (!SIGNS.size) return;
+  const n = NIGHT.value, cam = camera.position;
+  for (const o of SIGNS.values()) {
+    const r = world.buildings[o.idx], far = Math.hypot(r.cx - cam.x, r.cz - cam.z) > 1800;
+    o.g.visible = !far && !isSunk(o.idx);
+    if (o.cross) o.cross.emissiveIntensity = 0.4 + n * 0.9;
+    o.board.emissiveIntensity = 0.05 + n * 0.55;
+  }
+}
+
 // ---- murals: 1% of buildings (by seed) carry a painting across one open wall of 7 m or more, preferring a wall without the front door
 const MURAL_PM = 14, MURAL_IN = 0.45, MURAL_LO = 0.6, MURAL_HI = 0.5;   // margins: inside the quoins, above the plinth, below the cornice
 function muralWall(rec, RR, doorBay, s, neo) {
@@ -4721,10 +4877,12 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
 const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
-  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting', segments: 'Façade', doors: 'Façade', floorStyles: 'Façade' };
+  paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting', segments: 'Façade', doors: 'Façade', floorStyles: 'Façade',
+  doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks' };
+  trees: 'tree density', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
   for (const k of ['name', 'address', 'tags', 'history', 'details', 'attrs']) if (JSON.stringify(a[k] || '') !== JSON.stringify(b[k] || '')) out.push(k);
@@ -4759,6 +4917,11 @@ function cleanStyleFor(kind, o) {
     if (FACADES.includes(o.facade)) s.facade = o.facade;
     if (Number.isFinite(+o.doors)) s.doors = clamp(Math.round(+o.doors), 0, DOORS_MAX);
     if (Array.isArray(o.floorStyles)) s.floorStyles = cleanFloorStyles(o.floorStyles) || [];
+    if (o.doorSide === 'long' || o.doorSide === 'short') s.doorSide = o.doorSide;
+    if (AWNINGS.includes(o.awning)) s.awning = o.awning;
+    if (typeof o.awningColor === 'string' && HEX.test(o.awningColor.trim())) s.awningColor = o.awningColor.trim().toLowerCase();
+    if (typeof o.porch === 'boolean') s.porch = o.porch;
+    if (o.sign === null || (o.sign && o.sign.kind === 'none')) s.sign = null; else { const sg = cleanSign(o.sign); if (sg) s.sign = sg; }
     return s;
   }
   for (const [k, spec] of Object.entries(FSTYLE[kind] || {})) {
@@ -4784,7 +4947,12 @@ const STYLE_DOCS = {
 - windows: "shutters", "plain" or "balconies" (French doors with wrought-iron balconies on the street fronts)
 - facade: "standard" or "neoclassical" (civic stone palace like the MUNAL or a museum: giant-order columned portico with a pediment on the street front, tall arched gallery windows, rusticated base, balustrade)
 - doors: the number of front doors on the ground floor, whole number 0-24. They go on the street-facing walls, one per wall first (longest wall first), then more spread evenly along the same walls, one per 3.4 m window bay at most.
-- floorStyles: a different look for particular floors, all the way round the building. An array of bands, each {"from": first floor, "to": last floor, then any of "wall" ("#rrggbb"), "shutters" ("#rrggbb"), "windows" ("shutters", "plain", "balconies" or "none" = no windows on those floors), "groundFloor" (only on a band that starts at the ground floor)}. Floors are counted from 0 = the ground floor, so the top floor is floors - 1. Give the whole list (it replaces the current one); [] removes every band. Fields left out of a band follow the building's own style. Example, a blue ground floor and plain windows on the top two floors of a 5-floor building: [{"from": 0, "to": 0, "wall": "#3a6ea5"}, {"from": 3, "to": 4, "windows": "plain"}]`,
+- floorStyles: a different look for particular floors, all the way round the building. An array of bands, each {"from": first floor, "to": last floor, then any of "wall" ("#rrggbb"), "shutters" ("#rrggbb"), "windows" ("shutters", "plain", "balconies" or "none" = no windows on those floors), "groundFloor" (only on a band that starts at the ground floor)}. Floors are counted from 0 = the ground floor, so the top floor is floors - 1. Give the whole list (it replaces the current one); [] removes every band. Fields left out of a band follow the building's own style. Example, a blue ground floor and plain windows on the top two floors of a 5-floor building: [{"from": 0, "to": 0, "wall": "#3a6ea5"}, {"from": 3, "to": 4, "windows": "plain"}]
+- doorSide: "long" (doors only on the long street walls) or "short" (only on the narrow ends). With no doors count set it means one door on that side.
+- awning: "all" (one continuous striped canvas awning all the way round the ground floor), "doors" (an awning over each front door) or "none"
+- awningColor: the awning stripes' colour, "#rrggbb" (they alternate with cream; default the shutter colour)
+- porch: true for a covered porch in front of the main door (stone platform and step, lime columns, terracotta lean-to roof); false removes it
+- sign: a shop sign over the ground floor, {"kind": "pharmacy" (a green cross on a bracket that glows at night, plus a green sign board) or "shop" (a sign board), "text": the board's lettering, short and in capitals, e.g. "FARMACIA" or "PANADERÍA", "color": the board colour "#rrggbb" (optional)}; null removes it. The lettering is shop signage, not the building's name.`,
   park: `- grass: lawn colour, "#rrggbb"
 - trees: "none", "sparse", "normal" or "dense"
 - treeType: "palms", "broadleaf" (ceibas and flamboyants) or "mixed"`,
@@ -4803,7 +4971,7 @@ const STYLE_DOCS = {
 function promptFor(t, doc, text, nImages = 0) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
-    current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [] } });
+    current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [], doorSide: cur.doorSide || null, awning: cur.awning || null, porch: !!cur.porch, sign: cur.sign || null } });
   else Object.assign(info, KINDS[t.kind].geom === 'poly' ? { area_m2: Math.round(t.f.size) } : { length_m: Math.round(t.f.size), width_m: t.f.w }, { current_style: cur });
   const fields = STYLE_DOCS[t.kind];
   return `You edit one ${labelOf(t.kind).toLowerCase()} in a 3D map of Amparacán, a fictional tropical island city-state between Mesoamerica and the Caribbean. Its look blends Latin American colonial and Mediterranean towns (Havana, San Juan, Cartagena, Campeche, Oaxaca, Guanajuato, Querétaro, Seville, Cádiz, Granada, Barcelona, Arles, Monaco, Amalfi, Venice, Istanbul): lime-washed and pastel walls, terracotta roofs, blue-white cobbles, palms and bougainvillea, at dusk under string lights.
@@ -4813,12 +4981,12 @@ Feature: ${JSON.stringify(info)}
 The author's request: ${JSON.stringify(text)}
 ${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
-Only if the request asks for it, you may also set attributes: name, ${t.kind === 'building' ? 'address, ' : ''}tags (array of strings), history, details.
+A request like "make this a pharmacy" or "turn it into a school" means "style it like one": change only the look. Set "attributes" (name, ${t.kind === 'building' ? 'address, ' : ''}tags as an array of strings, history, details) only for what the request explicitly asks for in words such as name, call, rename, tag, categorise, history or details. Never invent or propose a name. When the request implies a use but doesn't ask for tags, you may propose tags in "suggest" instead ({"tags": ["pharmacy"]}); the author is asked before they are added.
 
 Also classify the change: "category" is one of ${CATEGORIES.filter((c) => c !== 'Revert').map((c) => `"${c}"`).join(', ')}, and "changeTags" are 1-4 short lowercase tags describing what it was for (style references, themes, purpose).
 
 Reply with only JSON in this shape:
-{"style": {...}, "attributes": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
+{"style": {...}, "attributes": {...}, "suggest": {...}, "summary": "one short sentence describing the change", "category": "...", "changeTags": ["..."], "needsCode": "empty string, or the part of the request these fields cannot express"}`;
 }
 function promptForSegments(segs, text, nImages = 0) {
   const info = segs.map((sg) => {
@@ -4863,6 +5031,23 @@ async function applySegmentPrompt(pid, p, nImages, opts) {
   if (changed && ui.segs.length) refreshSegmentFx();
   return true;
 }
+const ASKS_NAME = /\b(name|names|named|call|called|rename|title)\b/i, ASKS_TAGS = /\b(tag|tags|tagged|categori[sz]e|category|categories|label)\b/i;
+// Ask before adding the tags Claude proposed (never a name); nothing changes unless the author says yes
+function offerTags(id, sug) {
+  const doc = docFor(id);
+  const tags = (sug.tags || []).map((x) => x.toLowerCase()).filter((x) => !(doc.tags || []).map((y) => y.toLowerCase()).includes(x)).slice(0, 4);
+  if (!tags.length) return;
+  const box = $('toast'); clearTimeout(toastTimer);
+  const yes = () => {
+    box.hidden = true; const before = docFor(id), after = { ...before, tags: [...(before.tags || []), ...tags], updatedAt: new Date().toISOString() };
+    saveTarget(id, after, 0);
+    logChange({ id, source: 'prompt', summary: `Tagged ${tags.join(', ')}`, category: 'Details', tags: ['tags'], before, after });
+  };
+  box.replaceChildren(el('span', {}, `Restyled. Also tag it ${tags.map((x) => `“${x}”`).join(', ')}?`), ' ',
+    el('button', { class: 'btn primary small', type: 'button', style: 'width:auto;margin-left:8px', onclick: yes }, 'Yes'),
+    el('button', { class: 'btn small', type: 'button', style: 'width:auto;margin-left:6px', onclick: () => { box.hidden = true; } }, 'No'));
+  box.hidden = false; toastTimer = setTimeout(() => { box.hidden = true; }, 20000);
+}
 async function applyPrompt(pid) {
   const p = store.prompts.get(pid), t = p && targetOf(p.bId);
   if (!t && !(p && p.bIds)) return false;
@@ -4883,8 +5068,11 @@ async function applyPrompt(pid) {
     const before = docFor(t.id);
     if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
     const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
-    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes);
-    const after = { ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
+    const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes), sug = cleanAttrs(r && r.suggest);
+    // "make this a pharmacy" means style it like one: an unasked name is dropped, unasked tags are only offered
+    if (attrs.name != null && !ASKS_NAME.test(p.text)) delete attrs.name;
+    if (attrs.tags && !ASKS_TAGS.test(p.text)) { sug.tags = sug.tags || attrs.tags; delete attrs.tags; }
+    const after ={ ...before, ...attrs, style: { ...before.style, ...style }, updatedAt: new Date().toISOString() };
     markOwn(after, Object.keys(style));
     saveTarget(t.id, after, 0);
     const needs = String((r && r.needsCode) || '').trim(), summary = String((r && r.summary) || 'Applied').slice(0, 300);
@@ -4893,6 +5081,7 @@ async function applyPrompt(pid) {
     if (needs) { const q = newPrompt(t.id, `${p.text}\n\nStill needed: ${needs}`, 'queued'); if (p.images) patchPrompt(q, { images: p.images }); }
     if (t.kind === 'building') { const a = animOf(t.b.idx); a.wantMark = 1; setTimeout(() => { a.wantMark = 0; }, 1400); }
     rememberFocus(t.id);
+    offerTags(t.id, sug);
     return true;
   } catch (e) {
     const msg = { not_granted: 'Claude access wasn’t allowed for this map, so the prompt stays in your batch.', rate_limited: 'Too many requests at once. Wait a moment and try again.', invalid_json: 'Claude’s answer couldn’t be read. Try rephrasing the prompt.' }[e && e.code] || 'That edit didn’t go through. Try again.';
@@ -5315,7 +5504,13 @@ function renderInfo() {
   if (!t) { box.hidden = true; box.replaceChildren(); return; }
   const doc = docFor(id), pinned = !!ui.selected, label = labelOf(t.kind);
   box.dataset.pinned = String(pinned); box.hidden = false;
-  const title = el('h3', {}, doc.name || `Unnamed ${label.toLowerCase()}`);
+  // double-click the name or the tags to jump straight into editing that field
+  const editable = pinned && store.canEdit && !ui.editing;
+  const editAt = (fid) => editable ? { title: 'Double-click to edit', class: 'dbl-edit', ondblclick: (e) => {
+    e.preventDefault(); getSelection().removeAllRanges(); startEditing(); renderInfo();
+    const f = $(fid); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+  } } : {};
+  const title = el('h3', editAt('f-name'), doc.name || `Unnamed ${label.toLowerCase()}`);
   const head = el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, `${label} · ${id}`), title, el('div', { class: 'facts' }, facts(t))),
     pinned ? el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => select(null) }, '×') : null);
   const kids = [head];
@@ -5329,7 +5524,7 @@ function renderInfo() {
   } else {
     const rows = [];
     if (doc.address) rows.push(['Address', doc.address]);
-    if (doc.tags.length) rows.push(['Tags', el('div', { class: 'chips' }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
+    if (doc.tags.length) rows.push(['Tags', el('div', { ...editAt('f-tags'), class: 'chips' + (editable ? ' dbl-edit' : '') }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
     if (doc.history) rows.push(['History', doc.history]);
     if (doc.details) rows.push(['Details', doc.details]);
     for (const [k, v] of Object.entries(doc.attrs || {})) if (k) rows.push([k, String(v)]);
@@ -5341,13 +5536,6 @@ function renderInfo() {
         el('span', { class: 'floors', 'aria-live': 'polite' }, String(fl)),
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
-      if (styleFor(t).facade !== 'neoclassical') {
-        const dn = doorsOf(t.b).length;
-        kids.push(el('div', { class: 'row stepper' }, el('span', { class: 'eyebrow', style: 'margin-right:auto' }, 'Front doors'),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Remove a door', disabled: dn <= 0, onclick: () => changeDoors(id, -1) }, '−'),
-          el('span', { class: 'floors', 'aria-live': 'polite' }, String(dn)),
-          el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a door', disabled: dn >= DOORS_MAX, onclick: () => changeDoors(id, 1) }, '+')));
-      }
     }
     if (store.canEdit && t.kind === 'street') {
       const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
@@ -5401,22 +5589,6 @@ function changeFloors(id, delta) {
   pend.timer = setTimeout(() => {
     floorEdits.delete(id); const after = docFor(id), to = after.style.floors;
     if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Raised' : 'Lowered'} from ${pend.from} to ${to} floor${to > 1 ? 's' : ''}`, category: 'Height', tags: ['floors'], before: pend.before, after });
-  }, 1500);
-}
-// Front doors: like floors, each click rebuilds at once and a burst is logged as one change. A wall with no room for another door caps the count.
-const doorEdits = new Map();
-function changeDoors(id, delta) {
-  const t = targetOf(id); if (!t || t.kind !== 'building' || !store.canEdit) return;
-  const cur = doorsOf(t.b).length, next = clamp(cur + delta, 0, DOORS_MAX); if (next === cur) return;
-  const doc = docFor(id); let pend = doorEdits.get(id);
-  if (!pend) doorEdits.set(id, pend = { before: clone(doc), from: cur, timer: 0 });
-  doc.style = { ...doc.style, doors: next }; markOwn(doc, ['doors']); doc.updatedAt = new Date().toISOString();
-  saveTarget(id, doc, 400);
-  if (delta > 0 && doorsOf(t.b).length === cur) toast('No room for another door on the street walls.');
-  clearTimeout(pend.timer);
-  pend.timer = setTimeout(() => {
-    doorEdits.delete(id); const after = docFor(id), to = doorsOf(t.b).length;
-    if (to !== pend.from) logChange({ id, source: 'manual', summary: `${to > pend.from ? 'Added' : 'Removed'} front doors: ${pend.from} → ${to}`, category: 'Façade', tags: ['doors'], before: pend.before, after });
   }, 1500);
 }
 // Tree canopy slider: applies on release; a burst of changes is logged as one history entry
@@ -6883,6 +7055,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
+  stepSigns();
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -7196,6 +7369,8 @@ window.amparacan = {
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
+  // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
+  styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
@@ -7219,6 +7394,7 @@ store.on((what, ids) => {
   if (what === 'buildings') {
     for (const id of ids || []) { const r = world.byId.get(id); if (r && (JSON.stringify(styleOf(r)) !== JSON.stringify(r.style) || segKey(id) !== (r.lastSegs || ''))) markDirty(id); }
     flushDirty(); plan.invalidate(true);
+    rebuildSigns(ids);
   }
   if (what === 'features') {
     const kinds = new Set(), treeTiles = new Set(); let lights = false, streetTrees = false;
