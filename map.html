@@ -2350,7 +2350,7 @@ function stepSigns() {
 // ---- plaza extras (style fields trees: "pleached", curb (cm), flagpole): a ring of pleached trees whose clipped, boxy canopies
 // join into a shaded walk round the edge (Jardín Guerrero, Querétaro), the stone face of a raised curb, and a tall flagpole on a stepped plinth.
 // One group per plaza, rebuilt when its style changes; hidden beyond 2.2 km; the flag ripples near the camera.
-const PLAZAX = new Map(), PLEACH = { inset: 7, gap: 4.2, base: 2.8, h: 4.4, len: 4.9, depth: 6 }, POLE_H = 26;   // the flag is the author's design (flagTexture)
+const PLAZAX = new Map(), PLEACH = { inset: 9, gap: 4.2, base: 2.8, h: 4.4, len: 5, depth: 9.5, rows: 2.4 }, POLE_H = 26;   // the flag is the author's design (flagTexture)
 function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres inside the paving's edge, every PLEACH.gap (cached per plaza)
   if (f.pleach) return f.pleach;
   const out = [], P = PLEACH;
@@ -2369,7 +2369,8 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
         if ([[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => roadAt(x + ux * a * P.len / 2 + inx * b * P.depth / 2, z + uz * a * P.len / 2 + inz * b * P.depth / 2, 0.3, false))) continue;
         // the whole canopy must clear the buildings, and no two trunks crowd each other at the corners
         if ([[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].some(([a, b]) => buildingAt(x + ux * a * P.len / 2 + inx * b * P.depth / 2, z + uz * a * P.len / 2 + inz * b * P.depth / 2) >= 0)) break;
-        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(ux, uz) });
+        const side = Math.abs(inz) > Math.abs(inx) ? (inz > 0 ? 'n' : 's') : (inx < 0 ? 'e' : 'w');   // which side of the plaza: the edge's outward normal, north = -z
+        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(-uz, ux), side });   // a turns the canopy's x (len) along the edge
         break;
       }
     }
@@ -2377,13 +2378,14 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
   }
   return (f.pleach = out);
 }
+const pleachedFor = (f, s) => pleachedSpots(f).filter((p) => s.treeSides.includes(p.side));
 function flagpoleSpot(f) { return f.size > 600 && pointInRings(f.cx, f.cz, f.rings) && buildingAt(f.cx, f.cz) < 0 ? { x: f.cx, z: f.cz } : null; }
 function pleachedGeometries() {   // a rounded, clipped box of foliage (displaced, so the clipping reads a little soft) and a short trunk splitting into limbs
   if (world.pleachGeo) return world.pleachGeo;
   const P = PLEACH, hx = P.len / 2, hy = P.h / 2, hz = P.depth / 2, R = 0.85;
   let g = new THREE.BoxGeometry(P.len, P.h, P.depth, 14, 8, 14); g.deleteAttribute('uv'); g.deleteAttribute('normal');
   g = mergeVertices(g);
-  const pos = g.attributes.position, v = new THREE.Vector3(), q = new THREE.Vector3(), col = [], cA = linear('#4f8f2f'), cB = linear('#6aa83a'), cU = linear('#2f5a22'), c = new THREE.Color();
+  const pos = g.attributes.position, v = new THREE.Vector3(), q = new THREE.Vector3(), col = [], cA = linear('#3d7a26'), cB = linear('#539331'), cU = linear('#234818'), c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     q.set(clamp(v.x, -hx + R, hx - R), clamp(v.y, -hy + R, hy - R), clamp(v.z, -hz + R, hz - R));
@@ -2444,14 +2446,17 @@ function buildPlazaExtras(f) {
   const s = featureStyle(f); if (s.use === 'chinampa') return;
   const g = new THREE.Group(), o = { g, f, flag: null };
   if (s.trees === 'pleached') {
-    const spots = pleachedSpots(f), G = pleachedGeometries(), r = mulberry(f.seed ^ 0x51ea), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), T = new THREE.Vector3(), c = new THREE.Color();
+    const spots = pleachedFor(f, s), G = pleachedGeometries(), r = mulberry(f.seed ^ 0x51ea), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), T = new THREE.Vector3(), c = new THREE.Color();
     if (spots.length) {
-      const crown = new THREE.InstancedMesh(G.canopy, leafMaterial(), spots.length), trunk = new THREE.InstancedMesh(G.trunk, world.barkMat || (world.barkMat = new THREE.MeshStandardMaterial({ color: '#6d6458', roughness: 0.9 })), spots.length);
+      const crown = new THREE.InstancedMesh(G.canopy, leafMaterial(), spots.length), trunk = new THREE.InstancedMesh(G.trunk, world.barkMat || (world.barkMat = new THREE.MeshStandardMaterial({ color: '#6d6458', roughness: 0.9 })), spots.length * 2), off = new THREE.Vector3();
       spots.forEach((p, i) => {
         const y = H(p.x, p.z) + LIFT + (s.curb || 0) / 100;
         Q.setFromAxisAngle(Y, p.a); S.set(1 + r() * 0.06, 0.94 + r() * 0.12, 0.95 + r() * 0.1); T.set(p.x, y, p.z);
         crown.setMatrixAt(i, M.compose(T, Q, S)); crown.setColorAt(i, c.setHSL(0.27 + r() * 0.03, 0.9, 0.9 + r() * 0.12));
-        trunk.setMatrixAt(i, M.compose(T, Q.setFromAxisAngle(Y, r() * 6.28), S.set(1, 1, 1)));
+        for (const k of [0, 1]) {   // two trunks under each canopy, one either side of the walk's middle
+          off.set(0, 0, (k ? 1 : -1) * PLEACH.rows).applyQuaternion(Q).add(T);
+          trunk.setMatrixAt(i * 2 + k, M.compose(off, new THREE.Quaternion().setFromAxisAngle(Y, r() * 6.28), S.set(1, 0.95 + r() * 0.1, 1)));
+        }
       });
       for (const m of [crown, trunk]) { m.castShadow = m.receiveShadow = true; m.userData.shared = true; g.add(m); }
     }
@@ -3313,9 +3318,10 @@ function featureAt(x, z, tol = 1, pickable = false) {   // pickable: only the la
 // ---- per-feature looks
 const PAVINGS = ['flagstones', 'cobbles', 'pavers'];
 const CURB_MAX = 60;   // a plaza's curb, in cm
+const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], curb: 'cm', flagpole: 'bool' },
+  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], treeSides: 'sides', curb: 'cm', flagpole: 'bool' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
@@ -3324,7 +3330,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', curb: 0, flagpole: false });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', treeSides: 'nesw', curb: 0, flagpole: false });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -3332,6 +3338,7 @@ function featureStyle(f) {
   for (const [k, spec] of Object.entries(FSTYLE[f.kind] || {})) {
     const v = o[k]; if (v === undefined) continue;
     if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; continue; }
+    if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); continue; }
     if (spec === 'cm') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); continue; }
     if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
   }
@@ -4285,7 +4292,7 @@ function addStreetFurniture() {
       });
     } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
-      if (ps.trees === 'pleached') for (const t of pleachedSpots(f)) claim(t.x, t.z);
+      if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
       const pole = ps.flagpole && flagpoleSpot(f); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
       let kb = 0;
       // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
@@ -5136,7 +5143,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', curb: 'curb', flagpole: 'flagpole', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', curb: 'curb', flagpole: 'flagpole', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5184,6 +5191,7 @@ function cleanStyleFor(kind, o) {
     if (spec === 'pct') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 100); }
     else if (spec === 'cm') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); }
     else if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; }
+    else if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); }
     else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
   }
   return s;
@@ -5217,6 +5225,7 @@ const STYLE_DOCS = {
 - paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - trees: "pleached" for a ring of pleached trees round the edge (clipped boxy canopies on bare trunks joined into a shaded walk, like the Jardín Guerrero in Querétaro) or "none"
+- treeSides: which sides of the plaza get the pleached trees, letters from "nesw" ("nesw" = all four, "esw" = all but the north side)
 - curb: the plaza raised on a stone curb above the streets around it, in cm (0 = level, 10 = a low curb, up to 60)
 - flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
@@ -7681,7 +7690,7 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.flagpole !== st.flagpole || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.flagpole !== st.flagpole || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
