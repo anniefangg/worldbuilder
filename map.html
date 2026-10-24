@@ -2350,7 +2350,7 @@ function stepSigns() {
 // ---- plaza extras (style fields trees: "pleached", curb (cm), flagpole): a ring of pleached trees whose clipped, boxy canopies
 // join into a shaded walk round the edge (Jardín Guerrero, Querétaro), the stone face of a raised curb, and a tall flagpole on a stepped plinth.
 // One group per plaza, rebuilt when its style changes; hidden beyond 2.2 km; the flag ripples near the camera.
-const PLAZAX = new Map(), PLEACH = { inset: 7, gap: 4.2, base: 2.8, h: 4.4, len: 4.9, depth: 6 }, POLE_H = 26;   // the flag is a placeholder of the map's own palette (cobalt field, gold sun, terracotta hoist), not any real country's
+const PLAZAX = new Map(), PLEACH = { inset: 7, gap: 4.2, base: 2.8, h: 4.4, len: 4.9, depth: 6 }, POLE_H = 26;   // the flag is the author's design (flagTexture)
 function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres inside the paving's edge, every PLEACH.gap (cached per plaza)
   if (f.pleach) return f.pleach;
   const out = [], P = PLEACH;
@@ -2411,13 +2411,25 @@ function leafMaterial() {   // fine leaf speckle in the shader, so the clipped f
   };
   return (world.leafMat = m);
 }
-function flagTexture() {
+function flagTexture() {   // Amparacán's flag, the author's design: blue, white and green bands; on the white, a crescent sun ringed by five flame petals, eclipsed by a grey moon
   if (world.flagTex) return world.flagTex;
-  const cv = document.createElement('canvas'); cv.width = 300; cv.height = 180; const x = cv.getContext('2d');
-  x.fillStyle = '#1f57a8'; x.fillRect(0, 0, 300, 180); x.fillStyle = '#c4462f'; x.fillRect(0, 0, 46, 180); x.fillStyle = '#f6f1e3'; x.fillRect(46, 0, 8, 180);
-  x.save(); x.translate(178, 90); x.fillStyle = '#e9b44c';
-  for (let k = 0; k < 16; k++) { x.rotate(Math.PI / 8); x.beginPath(); x.moveTo(-6, 34); x.lineTo(0, 62); x.lineTo(6, 34); x.fill(); }
-  x.beginPath(); x.arc(0, 0, 30, 0, Math.PI * 2); x.fill(); x.restore();
+  const cv = document.createElement('canvas'); cv.width = 852; cv.height = 568; const x = cv.getContext('2d'); x.scale(2, 2);   // drawn on the 426 × 284 grid of the author's image
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 426, 284);
+  x.fillStyle = '#6a93b8'; x.fillRect(0, 0, 111, 284); x.fillStyle = '#8db08c'; x.fillRect(315, 0, 111, 284);
+  const sx = 192, sy = 141, mx = 247, my = 127;   // sun (crescent) and moon centres
+  x.fillStyle = '#a86f74';
+  for (const deg of [-96, -146, 151, 98, 62]) {   // five flame petals round the sun's open side (angles measured on the author's image), each curling the same way
+    const a = deg * Math.PI / 180;
+    x.save(); x.translate(sx, sy); x.rotate(a);
+    x.beginPath(); x.moveTo(46, -12); x.quadraticCurveTo(62, -16, 70, -6); x.quadraticCurveTo(80, 4, 82, -4); x.quadraticCurveTo(80, 14, 64, 14); x.quadraticCurveTo(54, 14, 46, 10); x.closePath(); x.fill();
+    x.restore();
+  }
+  x.lineWidth = 2.6; x.strokeStyle = '#c4a46a';
+  x.beginPath(); x.arc(sx, sy, 49, 0, Math.PI * 2); x.fillStyle = '#f4eec2'; x.fill(); x.stroke();
+  x.save(); x.beginPath(); x.arc(sx, sy, 49, 0, Math.PI * 2); x.clip();   // the crescent's inner edge
+  x.beginPath(); x.arc(mx - 4, my + 3, 52, 0, Math.PI * 2); x.fillStyle = '#ffffff'; x.fill(); x.stroke(); x.restore();
+  x.beginPath(); x.arc(mx, my, 48, 0, Math.PI * 2); x.fillStyle = '#ffffff'; x.fill();   // a white margin round the moon
+  x.beginPath(); x.arc(mx, my, 45, 0, Math.PI * 2); x.fillStyle = '#d5d9dc'; x.fill(); x.strokeStyle = '#9aaaab'; x.lineWidth = 3; x.stroke();
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return (world.flagTex = t);
 }
@@ -2470,7 +2482,7 @@ function buildPlazaExtras(f) {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.2, POLE_H, 12), metal); p.position.y = y + POLE_H / 2; pg.add(p);
     const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), gold); ball.position.y = y + POLE_H + 0.25; pg.add(ball);
     // the flag flies downwind (the sea shader's wind, from the west-south-west); its vertices ripple in stepPlazaExtras
-    const fw = 7.5, fh = 4.5, fg = new THREE.PlaneGeometry(fw, fh, 24, 10); fg.translate(fw / 2 + 0.15, 0, 0);
+    const fw = 7.2, fh = 4.8, fg = new THREE.PlaneGeometry(fw, fh, 24, 10); fg.translate(fw / 2 + 0.15, 0, 0);
     const flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8 })); flag.userData.ownMat = true;
     const Wd = new THREE.Vector2(0.82, 0.48).normalize(); flag.position.y = y + POLE_H - fh / 2 - 0.35; flag.rotation.y = -Math.atan2(Wd.y, Wd.x);
     o.flag = { mesh: flag, base: Float32Array.from(fg.attributes.position.array), w: fw }; pg.add(flag);
