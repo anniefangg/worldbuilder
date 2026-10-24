@@ -211,6 +211,8 @@ body.tray-open #info { display: none; }
 .thumbs-sm { display: flex; gap: 4px; flex-wrap: wrap; }
 .thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
+#drop-veil { position: fixed; inset: 10px; z-index: 50; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--azulejo); border-radius: 14px; background: rgba(31, 87, 168, 0.08); color: var(--azulejo); font: 600 15px/1.2 var(--font-ui); pointer-events: none; }
+#drop-veil[hidden] { display: none; }
 #info .stepper { gap: 6px; }
 #info input.canopy { width: 100%; accent-color: #2f7f4f; }
 #info .stepper .floors { font: 600 15px/1 var(--font-mono); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
@@ -5519,6 +5521,7 @@ function groupPromptBox(ids, bIds) {
     el('label', { for: 'prompt-text' }, `Change all ${ids.length.toLocaleString()}`),
     area,
     el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }), el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, '+ Reference image'), file),
+    el('div', { class: 'hint' }, 'Attach, paste or drop a photo to show what you want them to look like.'),
     el('div', { class: 'row' },
       el('button', { class: 'btn primary small', type: 'button', onclick: () => submitGroupPrompt('now') }, 'Apply now'),
       el('button', { class: 'btn small', type: 'button', onclick: () => submitGroupPrompt('batch') }, 'Add to batch')));
@@ -5742,6 +5745,24 @@ function renderAttachments() {
   row.replaceChildren(...attach.list.map((a, i) => el('div', { class: 'thumb', title: a.name }, el('img', { src: a.url, alt: 'Reference image ' + (i + 1) }),
     el('button', { type: 'button', 'aria-label': 'Remove image', onclick: () => { URL.revokeObjectURL(a.url); attach.list.splice(i, 1); renderAttachments(); } }, '×'))));
 }
+function initDropAttach() {   // drop a picture anywhere on the page to attach it to the open prompt box (never lets the browser open the file)
+  let depth = 0;
+  const veil = el('div', { id: 'drop-veil', hidden: true }, 'Drop to attach as a reference image'); document.body.append(veil);
+  const files = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  const target = () => $('prompt-box') || (ui.editing && store.canEdit ? $('info') : null);   // Edit details: drop closes the form to reach the prompt box
+  const mark = (on) => { const b = $('prompt-box'); if (b) b.classList.toggle('dragover', on); veil.hidden = !(on && target()); };
+  addEventListener('dragenter', (e) => { if (files(e)) { depth++; mark(true); } });
+  addEventListener('dragleave', (e) => { if (files(e) && --depth <= 0) { depth = 0; mark(false); } });
+  addEventListener('dragover', (e) => { if (!files(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = target() ? 'copy' : 'none'; });
+  addEventListener('drop', (e) => {
+    if (!files(e)) return;
+    e.preventDefault(); depth = 0; mark(false);
+    if (!target()) { toast(store.canEdit ? 'Select a building or feature first, then drop a picture to use as a reference.' : 'Only the map’s editors can attach reference images.'); return; }
+    if (!$('prompt-box')) { endEditing(); renderInfo(); }
+    addAttachments(e.dataTransfer.files);
+    const b = $('prompt-box'); if (b) b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
 function promptBox(t, seg = null) {
   const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
   const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
@@ -5756,9 +5777,6 @@ function promptBox(t, seg = null) {
       el('button', { class: 'btn primary small', type: 'button', onclick: () => submitPrompt(t, 'now', seg) }, 'Apply now'),
       el('button', { class: 'btn small', type: 'button', onclick: () => submitPrompt(t, 'batch', seg) }, 'Add to batch')),
     el('div', { class: 'plist', id: 'info-prompts' }));
-  box.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); box.classList.add('dragover'); } });
-  box.addEventListener('dragleave', () => box.classList.remove('dragover'));
-  box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('dragover'); addAttachments(e.dataTransfer.files); });
   setTimeout(renderAttachments, 0);
   return box;
 }
@@ -6708,7 +6726,7 @@ function initControls() {
   }, { passive: false });
   $('edit-pill').addEventListener('pointerleave', (e) => { if (e.relatedTarget !== canvas && e.relatedTarget !== plan.canvas) setHover(null); });
   $('edits-btn').addEventListener('click', toggleTray);
-  initLayers(); initSearch(); initPegman();
+  initLayers(); initSearch(); initPegman(); initDropAttach();
   // touch joystick + fly pad
   const J = $('joy'), knob = J.querySelector('i');
   J.addEventListener('pointerdown', (e) => { joy.active = true; J.setPointerCapture(e.pointerId); moveJoy(e); });
