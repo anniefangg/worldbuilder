@@ -2578,100 +2578,6 @@ function buildGroves(f, trees, lift) {   // one instanced mesh per species, usin
   }
   return g;
 }
-// ---- grove beds: each grove stands in a bed of earth cut out of the paving (a rounded hull round its trunks, kept inside the plaza),
-// edged with a low stone kerb, planted with a scatter of shrubs, and crossed by gravel paths that wind between the trunks.
-// The bed outlines are holes in the plaza's paving overlay (buildGround), so the paving is rebuilt when they change.
-const BED = { margin: 4.5, kerbH: 0.14, kerbW: 0.24, pathW: 1.8, n: 44 };
-function bedRing(f, pts, ring) {   // the trunks' hull grown by BED.margin, sampled in BED.n directions, pulled in wherever it would leave open paving
-  let cx = 0, cz = 0; for (const p of pts) { cx += p.x; cz += p.z; } cx /= pts.length; cz /= pts.length;
-  const out = [];
-  for (let i = 0; i < BED.n; i++) {
-    const a = i / BED.n * Math.PI * 2, ux = Math.cos(a), uz = Math.sin(a);
-    let r = -Infinity; for (const p of pts) r = Math.max(r, (p.x - cx) * ux + (p.z - cz) * uz);
-    r += BED.margin;
-    while (r > 2 && (!pointInRings(cx + ux * r, cz + uz * r, f.rings) || distToLine(ring, cx + ux * r, cz + uz * r) < 1.5 || buildingAt(cx + ux * r, cz + uz * r) >= 0)) r -= 0.5;
-    out.push(cx + ux * r, cz + uz * r);
-  }
-  return { ring: out, cx, cz };
-}
-function ringsTouch(a, b) { for (let i = 0; i < a.length; i += 2) if (pointInRings(a[i], a[i + 1], [b])) return true; for (let i = 0; i < b.length; i += 2) if (pointInRings(b[i], b[i + 1], [a])) return true; return false; }
-function groveBeds(f, trees, kio) {   // [{ ring, trees, paths: [[x, z, ...]] }], neighbouring groves whose beds would overlap sharing one bed (cached per tree layout)
-  if (f.bedsL && f.bedsL.trees === trees) return f.bedsL.beds;
-  const edge = [...softRings(f)[0], softRings(f)[0][0], softRings(f)[0][1]], c = kio || { x: f.cx, z: f.cz };
-  let groups = [...new Set(trees.map((t) => t.grove))].map((g) => trees.filter((t) => t.grove === g));
-  for (let merged = true; merged;) {
-    merged = false;
-    const rs = groups.map((g) => bedRing(f, g, edge).ring);
-    outer: for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) if (ringsTouch(rs[i], rs[j])) { groups[i] = groups[i].concat(groups[j]); groups.splice(j, 1); merged = true; break outer; }
-  }
-  const beds = groups.map((g) => {
-    const { ring, cx, cz } = bedRing(f, g, edge), rr = [...ring, ring[0], ring[1]];
-    const ux0 = cx - c.x, uz0 = cz - c.z, L0 = Math.hypot(ux0, uz0) || 1, paths = [];
-    // a path from the side facing the kiosk to the far side, and one across it where the bed is big enough
-    let ext = 0; for (let i = 0; i < ring.length; i += 2) ext = Math.max(ext, Math.hypot(ring[i] - cx, ring[i + 1] - cz));
-    for (const [ux, uz] of ext > 11 ? [[ux0 / L0, uz0 / L0], [-uz0 / L0, ux0 / L0]] : [[ux0 / L0, uz0 / L0]]) {
-      const reach = (sg) => { let d = 0; while (d < 60 && pointInRings(cx + ux * sg * d, cz + uz * sg * d, [ring])) d += 0.25; return d + 0.4; };   // just past the bed's edge, onto the paving
-      const a = reach(-1), b = reach(1), N = Math.max(6, Math.round((a + b) / 1.5)), P = [];
-      for (let k = 0; k <= N; k++) { const t = -a + (a + b) * k / N; P.push([cx + ux * t, cz + uz * t]); }
-      for (let it = 0; it < 24; it++) {   // ease the line round the trunks, then smooth it, keeping its two ends where they are
-        for (let k = 1; k < N; k++) for (const t of g) { const dx = P[k][0] - t.x, dz = P[k][1] - t.z, d = Math.hypot(dx, dz) || 0.01, need = 2.6; if (d < need) { P[k][0] += dx / d * (need - d) * 0.5; P[k][1] += dz / d * (need - d) * 0.5; } }
-        for (let k = 1; k < N; k++) { P[k][0] = P[k][0] * 0.5 + (P[k - 1][0] + P[k + 1][0]) * 0.25; P[k][1] = P[k][1] * 0.5 + (P[k - 1][1] + P[k + 1][1]) * 0.25; }
-      }
-      paths.push(P.flat());
-    }
-    return { ring, trees: g, paths, cx, cz };
-  });
-  f.bedsL = { trees, beds, key: beds.map((b) => b.ring.map((v) => v.toFixed(1)).join(',')).join('|') };
-  return beds;
-}
-function buildBeds(f, beds, lift) {
-  const g = new THREE.Group(), soil = [], soilIdx = [], kerb = [], gravel = [], gravelIdx = [], bush = [], rnd = mulberry(f.seed ^ 0x3c6ef372);
-  const y = (x, z) => H(x, z) + LIFT + lift;
-  for (const b of beds) {
-    const { pts, tris } = triangulate([b.ring]), base = soil.length / 3;   // the earth, a touch below the paving
-    for (const v of pts) soil.push(v.x, y(v.x, v.y) - 0.03, v.y);
-    for (const t of tris) soilIdx.push(base + t[0], base + t[2], base + t[1]);
-    const r = b.ring, n = r.length / 2;
-    for (let k = 0; k < n; k++) {   // the kerb: a short stone block along every side of the outline
-      const ax = r[k * 2], az = r[k * 2 + 1], bx = r[(k * 2 + 2) % r.length], bz = r[(k * 2 + 3) % r.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.05) continue;
-      const m = new THREE.BoxGeometry(L + BED.kerbW * 0.6, BED.kerbH + 0.06, BED.kerbW); m.deleteAttribute('uv');
-      m.rotateY(Math.atan2(-(bz - az), bx - ax)); m.translate((ax + bx) / 2, y((ax + bx) / 2, (az + bz) / 2) + (BED.kerbH - 0.06) / 2, (az + bz) / 2); kerb.push(m);
-    }
-    for (const P of b.paths) {   // gravel ribbons, just above the earth and level with the paving at their ends
-      const base2 = gravel.length / 3, m = P.length / 2;
-      for (let k = 0; k < m; k++) {
-        const k0 = Math.max(0, k - 1), k1 = Math.min(m - 1, k + 1), dx = P[k1 * 2] - P[k0 * 2], dz = P[k1 * 2 + 1] - P[k0 * 2 + 1], L = Math.hypot(dx, dz) || 1, nx = -dz / L * BED.pathW / 2, nz = dx / L * BED.pathW / 2;
-        for (const sg of [-1, 1]) { const x = P[k * 2] + nx * sg, z = P[k * 2 + 1] + nz * sg; gravel.push(x, y(x, z) + 0.012, z); }
-        if (k) gravelIdx.push(base2 + (k - 1) * 2, base2 + k * 2, base2 + (k - 1) * 2 + 1, base2 + (k - 1) * 2 + 1, base2 + k * 2, base2 + k * 2 + 1);
-      }
-    }
-    // shrubs and ferns scattered over the earth, off the paths, clear of the trunks and the kerb
-    const rr = [...r, r[0], r[1]];
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
-    for (let x = x0; x < x1; x += 2.1) for (let z = z0; z < z1; z += 2.1) {
-      const px = x + (rnd() - 0.5) * 1.6, pz = z + (rnd() - 0.5) * 1.6;
-      if (rnd() > 0.5 || !pointInRings(px, pz, [r]) || distToLine(rr, px, pz) < 0.9 || b.trees.some((t) => Math.hypot(t.x - px, t.z - pz) < 1.5) || b.paths.some((P) => distToLine(P, px, pz) < BED.pathW / 2 + 0.7)) continue;
-      bush.push(px, y(px, pz) - 0.05, pz, 0.45 + rnd() * 0.5, rnd() * 6.28, rnd());
-    }
-  }
-  const mesh = (pos, idx, mat) => {
-    for (let i = 0; i < idx.length; i += 3) {   // every triangle faces up
-      const A = idx[i] * 3, B = idx[i + 1] * 3, C = idx[i + 2] * 3, e1x = pos[B] - pos[A], e1z = pos[B + 2] - pos[A + 2], e2x = pos[C] - pos[A], e2z = pos[C + 2] - pos[A + 2];
-      if (e1z * e2x - e1x * e2z < 0) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
-    }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const uv = []; for (let i = 0; i < pos.length; i += 3) uv.push(pos[i] / 3, pos[i + 2] / 3); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals(); const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; m.renderOrder = 6; return m; };
-  if (soil.length) g.add(mesh(soil, soilIdx, world.bedSoilMat || (world.bedSoilMat = new THREE.MeshLambertMaterial({ color: '#7a5c40', map: world.tex.grass.map, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }))));
-  if (gravel.length) g.add(mesh(gravel, gravelIdx, world.bedGravelMat || (world.bedGravelMat = new THREE.MeshLambertMaterial({ color: '#d8c9ab', map: world.tex.sand.map, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }))));
-  if (kerb.length) { const m = new THREE.Mesh(mergeGeometries(kerb), world.bedKerbMat || (world.bedKerbMat = new THREE.MeshStandardMaterial({ color: '#cfc9bd', roughness: 0.85 }))); m.castShadow = m.receiveShadow = true; g.add(m); for (const k of kerb) k.dispose(); }
-  const nb = bush.length / 6;
-  if (nb) {
-    const geo = world.bedBushGeo || (world.bedBushGeo = bushGeometry(false)), im = new THREE.InstancedMesh(geo, world.bedBushMat || (world.bedBushMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })), nb);
-    const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
-    for (let i = 0; i < nb; i++) { const [x, yy, z, sc, rot, hue] = bush.slice(i * 6, i * 6 + 6); im.setMatrixAt(i, M4.compose(V.set(x, yy, z), Q4.setFromAxisAngle(up, rot), Sc.set(sc, sc * (0.8 + hue * 0.5), sc))); im.setColorAt(i, c.setHSL(0.27 + (hue - 0.5) * 0.08, 0.45, 0.62 + hue * 0.2)); }
-    im.castShadow = im.receiveShadow = true; im.userData.shared = true; g.add(im);
-  }
-  return g;
-}
 function groveAnchors(trees, n, lift, c) {   // n strand ends shared out over the groves, each tied into a different tree's crown, nearest trees first
   const groves = [...new Set(trees.map((t) => t.grove))].map((g) => trees.filter((t) => t.grove === g).sort((a, b) => a.d - b.d)), out = [];
   for (let i = 0; i < n && groves.length; i++) {
@@ -2849,9 +2755,6 @@ function buildPlazaExtras(f) {
   const kio = s.kiosk && kioskLayout(f, s.kioskLights);
   const grv = s.groves > 0 && s.use !== 'chinampa' ? plazaGroves(f, s, kio) : [];
   if (grv.length) g.add(buildGroves(f, grv, lift));
-  const beds = grv.length ? groveBeds(f, grv, kio) : null, bedKey = beds ? f.bedsL.key : '';
-  if (beds) g.add(buildBeds(f, beds, lift));
-  if ((f.bedKey || '') !== bedKey) { f.bedKey = bedKey; f.beds = beds; world.bedsDirty = true; }   // the paving's holes follow (rebuildPlazaExtras)
   if (kio) {
     const anchors = grv.length ? groveAnchors(grv, s.kioskLights, lift, kio) : null;
     const k = buildKiosk(f, kio, H(kio.x, kio.z) + LIFT + lift, s.kioskFlag, { stone: s.kioskStone, roof: s.kioskRoof, anchors });
@@ -2881,7 +2784,6 @@ function buildPlazaExtras(f) {
 function rebuildPlazaExtras(ids) {
   if (!world.plazaX) { world.plazaX = new THREE.Group(); scene.add(world.plazaX); }
   for (const id of ids || world.features.filter((f) => f.kind === 'plaza').map((f) => f.id)) { const f = world.featById.get(id); if (f) buildPlazaExtras(f); else dropPlazaExtras(id); }
-  if (world.bedsDirty && world.ground) { world.bedsDirty = false; buildGround('plaza'); }
 }
 function stepPlazaExtras(t) {
   if (!PLAZAX.size) return;
@@ -3985,8 +3887,7 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    const holes = kind === 'plaza' && f.beds && s.groves > 0 ? f.beds.map((b) => b.ring) : [];   // grove beds, cut out of the paving
-    g.push(KINDS[kind].geom === 'poly' ? { rings: [...lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), ...holes], color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
@@ -4685,7 +4586,6 @@ function addStreetFurniture() {
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
       const kio = ps.kiosk && kioskLayout(f, ps.kioskLights), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
       if (ps.groves > 0) for (const t of plazaGroves(f, ps, kio)) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) claim(t.x + a * 1.4, t.z + b * 1.4);   // the groves' trunks
-      if (ps.groves > 0 && f.beds) for (const b of f.beds) { let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (let i = 0; i < b.ring.length; i += 2) { x0 = Math.min(x0, b.ring[i]); x1 = Math.max(x1, b.ring[i]); z0 = Math.min(z0, b.ring[i + 1]); z1 = Math.max(z1, b.ring[i + 1]); } for (let x = x0; x <= x1; x += 1.4) for (let z = z0; z <= z1; z += 1.4) if (pointInRings(x, z, [b.ring])) claim(x, z); }   // and their beds
       if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
       // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
@@ -8086,7 +7986,7 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, beds: f.beds ? f.beds.map((b) => ({ x: Math.round(b.cx), z: Math.round(b.cz), trees: b.trees.length, paths: b.paths.length })) : [], bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
   styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
