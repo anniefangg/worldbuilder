@@ -1277,9 +1277,9 @@ function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) {
 
 // Procedural ground textures (colour map + bump map, multiplied by vertex colour)
 function groundTexture(kind) {
-  const N = kind === 'grass' ? 256 : 512, RES = kind === 'setts' || kind === 'flags' ? 2 : 1;   // stone paving is drawn at double resolution for crisp close-ups
+  const N = kind === 'grass' ? 256 : 512, RES = kind === 'setts' || kind === 'flags' || kind === 'gwaves' ? 2 : 1;   // stone paving is drawn at double resolution for crisp close-ups
   const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N * RES; const g = c.getContext('2d'); g.scale(RES, RES); return [c, g]; };
-  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23 }[kind]);
+  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23, gwaves: 29 }[kind]);
   const stone = (x, y, w, h, r, fill) => {
     g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
     const gr = bg.createRadialGradient(x + w / 2, y + h / 2, 1, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
@@ -1324,11 +1324,29 @@ function groundTexture(kind) {
       bd.data[i] = bd.data[i + 1] = bd.data[i + 2] = stone ? 200 : 90; bd.data[i + 3] = 255;
     }
     g.putImageData(id, 0, 0); bg.putImageData(bd, 0, 0);
+  } else if (kind === 'gwaves') {   // a plaza's grey calçada: small square setts, light and mid grey in broad wave bands (one tile = 12 m, see GW_SCALE: two bands, one wave)
+    const M = N * RES, C = 8, id = g.createImageData(M, M), bd = bg.createImageData(M, M), rows = M / C;
+    const hash = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+    const rowOff = Array.from({ length: rows }, () => Math.floor(rnd() * C));
+    const dark = (x, y) => { const ph = ((x + M * 0.14 * Math.sin(y / M * Math.PI * 2)) / (M / 2)) % 1; return (ph + 1) % 1 < 0.42; };   // the waves run down the tile
+    for (let y = 0; y < M; y++) {
+      const row = Math.floor(y / C), ly = y % C, off = rowOff[row];
+      for (let x = 0; x < M; x++) {
+        const xs = (x + off) % M, col = Math.floor(xs / C), lx = xs % C, i = (y * M + x) * 4;
+        const h1 = hash(col, row), h2 = hash(row + 9.1, col + 3.7), inA = 0.5 + h1, inB = 0.5 + h2;   // each stone a little irregular
+        const stone = lx >= inA && lx < C - inB && ly >= inB * 0.8 && ly < C - inA * 0.8 && !((lx < inA + 0.8 || lx > C - inB - 1.3) && (ly < inB + 0.8 || ly > C - inA - 1.3) && h1 > 0.5);
+        const cx = (col * C - off + C / 2 + M) % M, d = dark(cx, row * C + C / 2), j = (h1 - 0.5) * 22 + (hash(x * 0.37, y * 0.41) - 0.5) * 6;
+        const v = stone ? (d ? 132 : 190) + j * 0.8 : (d ? 96 : 138);
+        id.data[i] = v - 2; id.data[i + 1] = v; id.data[i + 2] = v + 3; id.data[i + 3] = 255;
+        bd.data[i] = bd.data[i + 1] = bd.data[i + 2] = stone ? 205 - Math.abs(lx - C / 2) * 6 : 80; bd.data[i + 3] = 255;
+      }
+    }
+    g.putImageData(id, 0, 0); bg.putImageData(bd, 0, 0);
   } else {                          // grass speckle
     g.fillStyle = '#fff'; g.fillRect(0, 0, N, N); bg.fillStyle = '#888'; bg.fillRect(0, 0, N, N);
     for (let k = 0; k < 2600; k++) { const v = 190 + rnd() * 65 | 0; g.fillStyle = `rgb(${v - 10},${v},${v - 20})`; g.fillRect(rnd() * N, rnd() * N, 2, 3); }
   }
-  if (kind === 'setts' || kind === 'flags' || kind === 'slabs') {   // age: stains, scuffs, hairline cracks and moss in the joints, all wrapping seamlessly
+  if (kind === 'setts' || kind === 'flags' || kind === 'slabs' || kind === 'gwaves') {   // age: stains, scuffs, hairline cracks and moss in the joints, all wrapping seamlessly
     const each = (fn) => { for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) { g.save(); g.translate(dx, dy); fn(); g.restore(); } };
     for (let k = 0; k < 46; k++) { const x = rnd() * N, y = rnd() * N, r = 12 + rnd() * 40, dark = rnd() < 0.7; each(() => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, dark ? 'rgba(40,36,34,0.13)' : 'rgba(255,248,230,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }); }
     g.lineCap = 'round';
@@ -1556,7 +1574,7 @@ async function buildWorld() {
 
   // ---- ground: plazas, parks, streets and paths, each feature styled on its own
   await progress('Paving streets and plazas', 36);
-  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves') };
+  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves'), gwaves: groundTexture('gwaves') };
   buildCanalWalls(canals);
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
@@ -2410,7 +2428,7 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
         // the whole canopy must clear the buildings, and no two trunks crowd each other at the corners
         if ([[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].some(([a, b]) => buildingAt(x + ux * a * P.len / 2 + inx * b * P.depth / 2, z + uz * a * P.len / 2 + inz * b * P.depth / 2) >= 0)) break;
         const side = Math.abs(inz) > Math.abs(inx) ? (inz > 0 ? 'n' : 's') : (inx < 0 ? 'e' : 'w');   // which side of the plaza: the edge's outward normal, north = -z
-        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(-uz, ux), side });   // a turns the canopy's x (len) along the edge
+        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(-uz, ux), side, inx, inz });   // a turns the canopy's x (len) along the edge
         break;
       }
     }
@@ -2418,7 +2436,22 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
   }
   return (f.pleach = out);
 }
-const pleachedFor = (f, s) => pleachedSpots(f).filter((p) => s.treeSides.includes(p.side));
+function pleachedInner(f) {   // pleachRows 2: a second row of canopies just inside the first, each behind its outer twin (cached per plaza)
+  if (f.pleach2) return f.pleach2;
+  const P = PLEACH, outer = pleachedSpots(f), out = [], D = P.depth + 3, r = softRings(f)[0], ring = [...r, r[0], r[1]];
+  for (const o of outer) {
+    const x = o.x + o.inx * D, z = o.z + o.inz * D, ux = o.inz, uz = -o.inx;   // (ux, uz) along the edge
+    const pts = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [x + ux * a * P.len / 2 + o.inx * b * P.depth / 2, z + uz * a * P.len / 2 + o.inz * b * P.depth / 2]);
+    if (!pointInRings(x, z, f.rings) || distToLine(ring, x, z) < P.inset + D - 1 || H(x, z) < 0.6) continue;
+    if (pts.some(([px, pz]) => buildingAt(px, pz) >= 0 || roadAt(px, pz, 0.3, false))) continue;
+    // at the corners the two inner rows converge: keep clear of every outer canopy and of inner ones turned the other way
+    if (outer.some((q) => Math.hypot(q.x - x, q.z - z) < P.depth * 0.95)) continue;
+    if (out.some((q) => Math.hypot(q.x - x, q.z - z) < (Math.abs(Math.sin(q.a - o.a)) > 0.3 ? P.depth * 0.95 : P.gap * 0.8))) continue;
+    out.push({ x, z, a: o.a, side: o.side, inx: o.inx, inz: o.inz });
+  }
+  return (f.pleach2 = out);
+}
+const pleachedFor = (f, s) => (s.pleachRows === 2 ? [...pleachedSpots(f), ...pleachedInner(f)] : pleachedSpots(f)).filter((p) => s.treeSides.includes(p.side));
 function flagpoleSpot(f) { return f.size > 600 && pointInRings(f.cx, f.cz, f.rings) && buildingAt(f.cx, f.cz) < 0 ? { x: f.cx, z: f.cz } : null; }
 function pleachedGeometries() {   // a rounded, clipped box of foliage (displaced, so the clipping reads a little soft) and a short trunk splitting into limbs
   if (world.pleachGeo) return world.pleachGeo;
@@ -3498,7 +3531,7 @@ const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool' },
+  plaza: { use: ['plaza', 'chinampa'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
@@ -3507,7 +3540,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -3517,6 +3550,7 @@ function featureStyle(f) {
     if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; continue; }
     if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); continue; }
     if (spec === 'cm') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); continue; }
+    if (spec === 'rows') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); continue; }
     if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
   }
   if (f.kind === 'street') {      // the canopy slider (0–100) rules; the older none/palms/canopy word is kept in step with it
@@ -3527,7 +3561,8 @@ function featureStyle(f) {
 }
 const CANOPY_WORDS = [[1, 'No trees'], [25, 'A few palms'], [45, 'Palm-lined'], [70, 'Shaded'], [90, 'Leafy canopy'], [101, 'Full canopy']];
 const canopyWord = (c) => CANOPY_WORDS.find(([m]) => c < m)[1];
-const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass' };
+const GW_SCALE = 12;   // the grey wave paving's tile, in metres (other paving: 6)
+const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass', waves: 'gwaves' };
 const LIFT = 0.25;
 // ---- canals: straight stone-walled trenches. Vertical walls from below the water up to quay level with a pale coping along the edge, and a flagstone
 // quay strip beside them that covers the hole left in the terrain mesh (which is too coarse to follow a canal's edge). Pieces that would stand in
@@ -3776,7 +3811,7 @@ function buildGround(kind) {
     g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
-  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
+  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -5321,7 +5356,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5368,6 +5403,7 @@ function cleanStyleFor(kind, o) {
     const v = typeof o[k] === 'string' ? o[k].trim() : o[k];
     if (spec === 'pct') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 100); }
     else if (spec === 'cm') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); }
+    else if (spec === 'rows') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); }
     else if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; }
     else if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); }
     else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
@@ -5400,8 +5436,9 @@ const STYLE_DOCS = {
 - trees: "none", "sparse", "normal" or "dense"
 - treeType: "palms", "broadleaf" (ceibas and flamboyants) or "mixed"`,
   plaza: `- use: "plaza" (a paved square) or "chinampa" (Xochimilco-style floating garden plots between little canals, with ahuejote willows and trajinera boats)
-- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
+- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts), "pavers" (modern large-format) or "waves" (grey Portuguese stone setts, light and mid grey in broad wave bands)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
+- pleachRows: 1 or 2, how many rows of pleached trees (2 = a double row, the second just inside the first)
 - trees: "pleached" for a ring of pleached trees round the edge (clipped boxy canopies on bare trunks joined into a shaded walk, like the Jardín Guerrero in Querétaro) or "none"
 - treeSides: which sides of the plaza get the pleached trees, letters from "nesw" ("nesw" = all four, "esw" = all but the north side)
 - curb: the plaza raised on a stone curb above the streets around it, in cm (0 = level, 10 = a low curb, up to 60)
@@ -7899,7 +7936,7 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
