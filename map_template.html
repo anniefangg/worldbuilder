@@ -2509,27 +2509,27 @@ function flagTexture() {   // Amparacán's flag, the author's design: blue, whit
   return (world.flagTex = t);
 }
 // ---- the kiosk (plaza style kiosk: true), after the author's reference photo of a zócalo bandstand at night: an octagonal stone podium
-// with a flight of steps, a wrought-iron railing, eight slender columns under a tiered roof, and warm string lights wound round the columns,
+// with two flights of steps (opposite sides, handrails), a wrought-iron railing, eight slender columns under a tiered roof, and warm string lights wound round the columns,
 // along the railing and the roof's ribs and rim, fanning out from the crown to iron masts round the plaza. kioskFlag: a small flag at the crown.
-// It takes the centre, so with a kiosk the flagpole is left out and the fountain moves toward one end.
-const KIOSK = { R: 6, podH: 1.7, colH: 4.1, steps: 7, tread: 0.34, stairW: 2.8, reach: 26, strands: 28, mastH: 4.8 };
-function kioskLayout(f) {   // the centre, the stair side (edge k, toward the most open ground) and the masts the light strands run to (cached per plaza)
-  if (f.kioskL !== undefined) return f.kioskL;
+// It takes the centre, so with a kiosk the flagpole is left out and the fountain moves toward one end. kioskLights: how many strands fan out (default 28).
+const KIOSK = { R: 6, podH: 1.7, colH: 4.1, steps: 10, tread: 0.32, stairW: 3.2, reach: 26, strands: 28, mastH: 4.8 };
+function kioskLayout(f, nStr = KIOSK.strands) {   // the centre, the stair sides (edge k toward the most open ground, and the edge opposite) and the masts the light strands run to (cached per plaza)
+  if (f.kioskL !== undefined && (!f.kioskL || f.kioskL.n === nStr)) return f.kioskL;
   const p = flagpoleSpot(f), K = KIOSK;
   const ok = (x, z, m) => pointInRings(x, z, f.rings) && buildingAt(x, z) < 0 && H(x, z) > 0.6 && !roadAt(x, z, m, false);
-  if (!p || f.size < 1400 || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => !ok(p.x + Math.sin(k * Math.PI / 4) * 8.5, p.z + Math.cos(k * Math.PI / 4) * 8.5, 0.3))) return (f.kioskL = null);
+  if (!p || f.size < 1400 || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => !ok(p.x + Math.sin(k * Math.PI / 4) * 9.5, p.z + Math.cos(k * Math.PI / 4) * 9.5, 0.3))) return (f.kioskL = null);
   const ring = [...f.rings[0], f.rings[0][0], f.rings[0][1]];
   let stairK = 0, best = -1;
   for (let k = 0; k < 8; k++) { const a = (k + 0.5) * Math.PI / 4, d = distToLine(ring, p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12); if (ok(p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12, 0.3) && d > best) { best = d; stairK = k; } }
   const masts = [];
-  for (let j = 0; j < K.strands; j++) {
-    const a = (j + 0.5) * Math.PI * 2 / K.strands, sx = Math.sin(a), sz = Math.cos(a);
+  for (let j = 0; j < nStr; j++) {
+    const a = (j + 0.5) * Math.PI * 2 / nStr, sx = Math.sin(a), sz = Math.cos(a);
     for (let r = K.reach; r >= 11; r -= 1) {
       const x = p.x + sx * r, z = p.z + sz * r;
       if (ok(x, z, 0.5) && distToLine(ring, x, z) > 1.6 && buildingAt(x + sx * 1.5, z + sz * 1.5) < 0) { masts.push({ x, z, a, j }); break; }
     }
   }
-  return (f.kioskL = { x: p.x, z: p.z, stairK, masts });
+  return (f.kioskL = { x: p.x, z: p.z, stairK, stairs: [stairK, (stairK + 4) % 8], masts, n: nStr });
 }
 function kioskBulbTexture() {
   if (world.kioskBulbTex) return world.kioskBulbTex;
@@ -2546,16 +2546,27 @@ function buildKiosk(f, L, y0, withFlag) {
   const V = (k, r) => [Math.sin(k * Math.PI / 4) * r, Math.cos(k * Math.PI / 4) * r];   // octagon vertex k (CylinderGeometry's own vertex angles)
   // podium: a plinth band, the drum and a projecting cap; the floor is at FY
   cyl('cap', R + 0.18, R + 0.22, 0.32, 8, 0); cyl('stone', R, R, K.podH, 8, 0.3); cyl('cap', R + 0.24, R + 0.2, 0.16, 8, K.podH + 0.3 - 0.02);
-  const FY = K.podH + 0.44, am = (L.stairK + 0.5) * Math.PI / 4, A = R * Math.cos(Math.PI / 8), n = K.steps;
-  for (let i = 0; i < n; i++) { const h = (i + 1) * FY / n, d = A + (n - 1 - i + 0.5) * K.tread; box(i === n - 1 ? 'cap' : 'stone', K.stairW, h, K.tread + 0.02, Math.sin(am) * d, h / 2, Math.cos(am) * d, am); }
-  for (const s of [-1, 1]) {   // low cheek walls either side of the flight, stepped down with it
-    const ox = Math.cos(am) * s * (K.stairW / 2 + 0.17), oz = -Math.sin(am) * s * (K.stairW / 2 + 0.17);
-    for (let i = 0; i < n; i += 2) { const h = (i + 1.6) * FY / n, d = A + (n - 1 - i) * K.tread; box('cap', 0.34, h, K.tread * 2 + 0.02, Math.sin(am) * d + ox, h / 2, Math.cos(am) * d + oz, am); }
+  const FY = K.podH + 0.44, A = R * Math.cos(Math.PI / 8), n = K.steps, run = n * K.tread;
+  for (const sk of L.stairs) {   // a flight up each stair side: steps with a darker lip, a stone string either side and an iron handrail on each
+    const am = (sk + 0.5) * Math.PI / 4, ux = Math.sin(am), uz = Math.cos(am), sx = Math.cos(am), sz = -Math.sin(am);
+    for (let i = 0; i < n; i++) {
+      const h = (i + 1) * FY / n, d = A + (n - 1 - i + 0.5) * K.tread;
+      box('stone', K.stairW, h, K.tread + 0.02, ux * d, h / 2, uz * d, am);
+      box('cap', K.stairW + 0.04, 0.05, 0.09, ux * (d + K.tread / 2 - 0.03), h - 0.02, uz * (d + K.tread / 2 - 0.03), am);
+    }
+    const slope = Math.atan2(FY, run), L2 = Math.hypot(FY, run);
+    for (const s of [-1, 1]) {
+      const o = K.stairW / 2 + 0.16, cx = ux * (A + run / 2) + sx * s * o, cz = uz * (A + run / 2) + sz * s * o;
+      const string = new THREE.BoxGeometry(0.3, 0.42, L2 + 0.3); string.rotateX(slope); string.rotateY(am); string.translate(cx, FY / 2 + 0.06, cz); add('cap', string);
+      box('cap', 0.32, 0.5, 0.5, ux * (A + run + 0.1) + sx * s * o, 0.25, uz * (A + run + 0.1) + sz * s * o, am);   // a newel block at the foot
+      const rail = new THREE.BoxGeometry(0.05, 0.05, L2); rail.rotateX(slope); rail.rotateY(am); rail.translate(cx, FY / 2 + 0.95, cz); add('iron', rail);
+      for (const t of [0.04, 0.5, 0.96]) box('iron', 0.045, 0.95, 0.045, ux * (A + run * t) + sx * s * o, FY * (1 - t) + 0.47 + 0.04, uz * (A + run * t) + sz * s * o);
+    }
   }
   // wrought-iron railing round the platform, open over the stairs
   const RR = R - 0.12, gapHalf = K.stairW / 2;
   for (let k = 0; k < 8; k++) {
-    const [ax, az] = V(k, RR), [bx, bz] = V(k + 1, RR), dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len, ry = Math.atan2(-dz, dx), stair = k === L.stairK;
+    const [ax, az] = V(k, RR), [bx, bz] = V(k + 1, RR), dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len, ry = Math.atan2(-dz, dx), stair = L.stairs.includes(k);
     box('iron', 0.1, 1.0, 0.1, ax, FY + 0.5, az); box('cream', 0.16, 0.12, 0.16, ax, FY + 1.05, az);
     const runs = stair ? [[0, len / 2 - gapHalf], [len / 2 + gapHalf, len]] : [[0, len]];
     for (const [s0, s1] of runs) {
@@ -2607,7 +2618,7 @@ function buildKiosk(f, L, y0, withFlag) {
   const mastsW = L.masts.map((m) => ({ ...m, lx: m.x - L.x, lz: m.z - L.z, ly: m.y - y0 }));
   for (const m of mastsW) { const len = Math.hypot(m.lx, m.lz); line(Math.sin(m.a) * SR, SY, Math.cos(m.a) * SR, m.lx, m.ly - 0.1, m.lz, 0.2 + len * 0.018, 0.5); }
   for (let i = 0; i < mastsW.length; i++) {   // and a sagging edge strand from mast to mast where neighbours are close
-    const a = mastsW[i], b = mastsW[(i + 1) % mastsW.length]; if (a === b || (b.j - a.j + K.strands) % K.strands !== 1) continue;
+    const a = mastsW[i], b = mastsW[(i + 1) % mastsW.length]; if (a === b || (b.j - a.j + L.n) % L.n !== 1) continue;
     const d = Math.hypot(a.lx - b.lx, a.lz - b.lz); if (d < 12) line(a.lx, a.ly - 0.1, a.lz, b.lx, b.ly - 0.1, b.lz, 0.2 + d * 0.03, 0.5);
   }
   for (let k = 0; k < 8; k++) {
@@ -2617,7 +2628,7 @@ function buildKiosk(f, L, y0, withFlag) {
     const [ax, az] = V(k, R + 0.42), [bx, bz] = V(k + 1, R + 0.42); line(ax, T1 + 0.02, az, bx, T1 + 0.02, bz, 0.12, 0.26);   // the roof's rim, scalloped
     const [cx, cz] = V(k, 2.25); line(ax, T1 + 0.05, az, cx, T2 + 0.02, cz, 0.05, 0.32);                                        // its ribs
     const [rx, rz] = V(k, RR + 0.06), [sx, sz] = V(k + 1, RR + 0.06);                                                              // the railing's top
-    if (k !== L.stairK) line(rx, FY + 1.0, rz, sx, FY + 1.0, sz, 0.02, 0.24);
+    if (!L.stairs.includes(k)) line(rx, FY + 1.0, rz, sx, FY + 1.0, sz, 0.02, 0.24);
     else { const g = gapHalf / Math.hypot(sx - rx, sz - rz); line(rx, FY + 1.0, rz, rx + (sx - rx) * (0.5 - g), FY + 1.0, rz + (sz - rz) * (0.5 - g), 0.02, 0.24); line(rx + (sx - rx) * (0.5 + g), FY + 1.0, rz + (sz - rz) * (0.5 + g), sx, FY + 1.0, sz, 0.02, 0.24); }
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bl, 3));
@@ -2683,7 +2694,7 @@ function buildPlazaExtras(f) {
     const m = new THREE.Mesh(geo, world.curbMat || (world.curbMat = new THREE.MeshStandardMaterial({ color: '#9d9488', roughness: 0.85, side: THREE.DoubleSide })));
     m.receiveShadow = true; g.add(m);
   }
-  const kio = s.kiosk && kioskLayout(f);
+  const kio = s.kiosk && kioskLayout(f, s.kioskLights);
   if (kio) { const k = buildKiosk(f, kio, H(kio.x, kio.z) + LIFT + lift, s.kioskFlag); g.add(k.g); o.flag = k.flag; o.night = k.night; o.kiosk = k; }
   const pole = !kio && s.flagpole && flagpoleSpot(f);
   if (pole) {
@@ -3531,7 +3542,7 @@ const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { use: ['plaza', 'chinampa'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool' },
+  plaza: { use: ['plaza', 'chinampa'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', fountain: 'bool' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
@@ -3540,7 +3551,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false, kioskLights: KIOSK.strands, fountain: true });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -3551,6 +3562,7 @@ function featureStyle(f) {
     if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); continue; }
     if (spec === 'cm') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); continue; }
     if (spec === 'rows') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); continue; }
+    if (spec === 'strands') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); continue; }
     if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
   }
   if (f.kind === 'street') {      // the canopy slider (0–100) rules; the older none/palms/canopy word is kept in step with it
@@ -4505,7 +4517,7 @@ function addStreetFurniture() {
     } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
-      const kio = ps.kiosk && kioskLayout(f), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      const kio = ps.kiosk && kioskLayout(f, ps.kioskLights), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
       if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
       // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
@@ -4519,7 +4531,7 @@ function addStreetFurniture() {
         const bx = x + nx * sgn * 3.4, bz = z + nz * sgn * 3.4; if (!pointInRings(bx, bz, f.rings) || !clear(bx, bz, 1.2)) return;
         claim(bx, bz); put((kb++ % 3) === 2 ? 'planter' : 'bench', bx, bz, facing(bx, bz, x + nx * sgn * 10, z + nz * sgn * 10));
       });
-      if (f.size > 1400) {
+      if (f.size > 1400 && ps.fountain) {
         // the fountain stands at the centre, or with a flagpole there, a third of the way toward one end along the plaza's length
         const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
         const [fx, fz] = spots.find(([x, z]) => pointInRings(x, z, f.rings) && clear(x, z, 3.5)) || [NaN, NaN];
@@ -5356,7 +5368,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', fountain: 'fountain', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5404,6 +5416,7 @@ function cleanStyleFor(kind, o) {
     if (spec === 'pct') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 100); }
     else if (spec === 'cm') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); }
     else if (spec === 'rows') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); }
+    else if (spec === 'strands') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); }
     else if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; }
     else if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); }
     else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
@@ -5444,6 +5457,8 @@ const STYLE_DOCS = {
 - curb: the plaza raised on a stone curb above the streets around it, in cm (0 = level, 10 = a low curb, up to 60)
 - flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it
 - kiosk: true for an octagonal bandstand at the centre (stone podium with steps, wrought-iron railing, slender columns, tiered roof, warm string lights round the columns and railing and fanning out from the crown to masts round the plaza); it takes the place of the flagpole and the fountain moves toward one end; false removes it
+- kioskLights: how many strands of string lights fan out from the kiosk's crown to masts round the plaza, 0-40 (default 28)
+- fountain: false for no fountain on the plaza, true (the default) for one
 - kioskFlag: true for a small flag on a short mast at the top of the kiosk's roof (use this, not flagpole, when the flag should be on the kiosk)`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
@@ -7899,7 +7914,7 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag } : null, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs } : null, bbox: f.bbox.map((v) => Math.round(v)) }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
   styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
@@ -7936,7 +7951,7 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.fountain !== st.fountain || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
