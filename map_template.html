@@ -2435,6 +2435,139 @@ function flagTexture() {   // Amparacán's flag, the author's design: blue, whit
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return (world.flagTex = t);
 }
+// ---- the kiosk (plaza style kiosk: true), after the author's reference photo of a zócalo bandstand at night: an octagonal stone podium
+// with a flight of steps, a wrought-iron railing, eight slender columns under a tiered roof, and warm string lights wound round the columns,
+// along the railing and the roof's ribs and rim, fanning out from the crown to iron masts round the plaza. kioskFlag: a small flag at the crown.
+// It takes the centre, so with a kiosk the flagpole is left out and the fountain moves toward one end.
+const KIOSK = { R: 6, podH: 1.7, colH: 4.1, steps: 7, tread: 0.34, stairW: 2.8, reach: 26, strands: 28, mastH: 4.8 };
+function kioskLayout(f) {   // the centre, the stair side (edge k, toward the most open ground) and the masts the light strands run to (cached per plaza)
+  if (f.kioskL !== undefined) return f.kioskL;
+  const p = flagpoleSpot(f), K = KIOSK;
+  const ok = (x, z, m) => pointInRings(x, z, f.rings) && buildingAt(x, z) < 0 && H(x, z) > 0.6 && !roadAt(x, z, m, false);
+  if (!p || f.size < 1400 || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => !ok(p.x + Math.sin(k * Math.PI / 4) * 8.5, p.z + Math.cos(k * Math.PI / 4) * 8.5, 0.3))) return (f.kioskL = null);
+  const ring = [...f.rings[0], f.rings[0][0], f.rings[0][1]];
+  let stairK = 0, best = -1;
+  for (let k = 0; k < 8; k++) { const a = (k + 0.5) * Math.PI / 4, d = distToLine(ring, p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12); if (ok(p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12, 0.3) && d > best) { best = d; stairK = k; } }
+  const masts = [];
+  for (let j = 0; j < K.strands; j++) {
+    const a = (j + 0.5) * Math.PI * 2 / K.strands, sx = Math.sin(a), sz = Math.cos(a);
+    for (let r = K.reach; r >= 11; r -= 1) {
+      const x = p.x + sx * r, z = p.z + sz * r;
+      if (ok(x, z, 0.5) && distToLine(ring, x, z) > 1.6 && buildingAt(x + sx * 1.5, z + sz * 1.5) < 0) { masts.push({ x, z, a, j }); break; }
+    }
+  }
+  return (f.kioskL = { x: p.x, z: p.z, stairK, masts });
+}
+function kioskBulbTexture() {
+  if (world.kioskBulbTex) return world.kioskBulbTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,246,225,1)'); gr.addColorStop(0.22, 'rgba(255,214,150,0.95)'); gr.addColorStop(1, 'rgba(255,170,80,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  return (world.kioskBulbTex = new THREE.CanvasTexture(c));
+}
+function buildKiosk(f, L, y0, withFlag) {
+  const K = KIOSK, R = K.R, kg = new THREE.Group(); kg.position.set(L.x, y0, L.z);
+  const parts = { stone: [], cap: [], iron: [], cream: [], gold: [] };
+  const add = (k, g, x = 0, y = 0, z = 0, ry = 0) => { if (g.attributes.uv) g.deleteAttribute('uv'); if (ry) g.rotateY(ry); g.translate(x, y, z); parts[k].push(g); };
+  const box = (k, w, h, d, x, y, z, ry) => add(k, new THREE.BoxGeometry(w, h, d), x, y, z, ry);
+  const cyl = (k, rt, rb, h, seg, y, x = 0, z = 0) => add(k, new THREE.CylinderGeometry(rt, rb, h, seg), x, y + h / 2, z);
+  const V = (k, r) => [Math.sin(k * Math.PI / 4) * r, Math.cos(k * Math.PI / 4) * r];   // octagon vertex k (CylinderGeometry's own vertex angles)
+  // podium: a plinth band, the drum and a projecting cap; the floor is at FY
+  cyl('cap', R + 0.18, R + 0.22, 0.32, 8, 0); cyl('stone', R, R, K.podH, 8, 0.3); cyl('cap', R + 0.24, R + 0.2, 0.16, 8, K.podH + 0.3 - 0.02);
+  const FY = K.podH + 0.44, am = (L.stairK + 0.5) * Math.PI / 4, A = R * Math.cos(Math.PI / 8), n = K.steps;
+  for (let i = 0; i < n; i++) { const h = (i + 1) * FY / n, d = A + (n - 1 - i + 0.5) * K.tread; box(i === n - 1 ? 'cap' : 'stone', K.stairW, h, K.tread + 0.02, Math.sin(am) * d, h / 2, Math.cos(am) * d, am); }
+  for (const s of [-1, 1]) {   // low cheek walls either side of the flight, stepped down with it
+    const ox = Math.cos(am) * s * (K.stairW / 2 + 0.17), oz = -Math.sin(am) * s * (K.stairW / 2 + 0.17);
+    for (let i = 0; i < n; i += 2) { const h = (i + 1.6) * FY / n, d = A + (n - 1 - i) * K.tread; box('cap', 0.34, h, K.tread * 2 + 0.02, Math.sin(am) * d + ox, h / 2, Math.cos(am) * d + oz, am); }
+  }
+  // wrought-iron railing round the platform, open over the stairs
+  const RR = R - 0.12, gapHalf = K.stairW / 2;
+  for (let k = 0; k < 8; k++) {
+    const [ax, az] = V(k, RR), [bx, bz] = V(k + 1, RR), dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len, ry = Math.atan2(-dz, dx), stair = k === L.stairK;
+    box('iron', 0.1, 1.0, 0.1, ax, FY + 0.5, az); box('cream', 0.16, 0.12, 0.16, ax, FY + 1.05, az);
+    const runs = stair ? [[0, len / 2 - gapHalf], [len / 2 + gapHalf, len]] : [[0, len]];
+    for (const [s0, s1] of runs) {
+      const m = (s0 + s1) / 2, w = s1 - s0;
+      for (const y of [FY + 0.95, FY + 0.16]) box('iron', w, 0.05, 0.05, ax + ux * m, y, az + uz * m, ry);
+      for (let s = s0 + 0.12; s < s1 - 0.06; s += 0.13) box('iron', 0.022, 0.78, 0.022, ax + ux * s, FY + 0.55, az + uz * s);
+      for (let s = s0 + 0.45; s < s1 - 0.3; s += 0.9) add('iron', new THREE.TorusGeometry(0.16, 0.016, 4, 12), ax + ux * s, FY + 0.72, az + uz * s, ry);   // the scrollwork's rings
+      if (stair) for (const s of [s0, s1]) if (s > 0.01 && s < len - 0.01) box('iron', 0.09, 1.0, 0.09, ax + ux * s, FY + 0.5, az + uz * s);
+    }
+  }
+  // eight slender columns at the vertices, with bases and capitals, under a frieze
+  const RC = R - 0.5;
+  for (let k = 0; k < 8; k++) {
+    const [x, z] = V(k, RC);
+    cyl('cream', 0.2, 0.2, 0.22, 10, FY, x, z); cyl('cream', 0.1, 0.12, K.colH, 10, FY + 0.22, x, z); cyl('cream', 0.24, 0.11, 0.26, 10, FY + 0.22 + K.colH, x, z);
+  }
+  const TOP = FY + 0.22 + K.colH + 0.26;
+  cyl('cream', R - 0.1, R - 0.25, 0.5, 8, TOP); cyl('gold', R - 0.05, R - 0.05, 0.06, 8, TOP + 0.5);
+  const T1 = TOP + 0.56, T2 = T1 + 1.6, T3 = T2 + 0.62, CROWN = T3 + 1.1;
+  cyl('cream', 2.2, R + 0.4, 1.6, 8, T1); cyl('cream', 1.25, 1.3, 0.62, 8, T2); cyl('gold', 1.42, 1.42, 0.06, 8, T3 - 0.03); cyl('cream', 0.06, 1.5, 1.1, 8, T3);
+  add('gold', new THREE.SphereGeometry(0.2, 12, 8), 0, CROWN + 0.1, 0);
+  const mats = {
+    stone: world.kioskStone || (world.kioskStone = new THREE.MeshStandardMaterial({ color: '#c9a47a', roughness: 0.85, emissive: '#c0763a', emissiveIntensity: 0 })),
+    cap: world.kioskCap || (world.kioskCap = new THREE.MeshStandardMaterial({ color: '#b48f69', roughness: 0.8, emissive: '#c0763a', emissiveIntensity: 0 })),
+    iron: world.kioskIron || (world.kioskIron = new THREE.MeshStandardMaterial({ color: '#23252a', roughness: 0.5, metalness: 0.6 })),
+    cream: world.kioskCream || (world.kioskCream = new THREE.MeshStandardMaterial({ color: '#efe5cf', roughness: 0.55, emissive: '#ffb366', emissiveIntensity: 0 })),   // glows a little under its lights after dark (stepPlazaExtras)
+    gold: world.finialMat || (world.finialMat = new THREE.MeshStandardMaterial({ color: '#d6a64a', roughness: 0.3, metalness: 0.9 })),
+  };
+  for (const [k, list] of Object.entries(parts)) {
+    if (!list.length) continue;
+    const m = new THREE.Mesh(mergeGeometries(list), mats[k]); m.castShadow = m.receiveShadow = true; kg.add(m);
+    for (const g of list) g.dispose();
+  }
+  // masts round the plaza, each a thin iron pole with a ball on top (world coordinates, so they sit on their own ground)
+  const mastG = [];
+  for (const m of L.masts) { const gy = H(m.x, m.z) + LIFT + (y0 - H(L.x, L.z) - LIFT); m.y = gy + K.mastH; const c = new THREE.CylinderGeometry(0.05, 0.07, K.mastH, 8); c.deleteAttribute('uv'); c.translate(m.x - L.x, gy - y0 + K.mastH / 2, m.z - L.z); mastG.push(c); const b = new THREE.SphereGeometry(0.1, 8, 6); b.deleteAttribute('uv'); b.translate(m.x - L.x, gy - y0 + K.mastH + 0.06, m.z - L.z); mastG.push(b); }
+  if (mastG.length) { const m = new THREE.Mesh(mergeGeometries(mastG), mats.iron); m.castShadow = true; kg.add(m); for (const g of mastG) g.dispose(); }
+  // the lights: bulbs as glowing points (night only), on dark wires (always)
+  const bl = [], wl = [];
+  const line = (ax, ay, az, bx, by, bz, sag, step) => {   // a strand from a to b sagging by sag in the middle, a bulb every step metres
+    const len = Math.hypot(bx - ax, by - ay, bz - az), n = Math.max(2, Math.round(len / step)); let px, py, pz;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t - sag * 4 * t * (1 - t), z = az + (bz - az) * t;
+      if (i > 0 && i < n) bl.push(x, y - 0.06, z);
+      if (i) wl.push(px, py, pz, x, y, z); px = x; py = y; pz = z;
+    }
+  };
+  const SR = 1.35, SY = T2 + 0.1;   // the strands leave the drum at the crown
+  const mastsW = L.masts.map((m) => ({ ...m, lx: m.x - L.x, lz: m.z - L.z, ly: m.y - y0 }));
+  for (const m of mastsW) { const len = Math.hypot(m.lx, m.lz); line(Math.sin(m.a) * SR, SY, Math.cos(m.a) * SR, m.lx, m.ly - 0.1, m.lz, 0.2 + len * 0.018, 0.5); }
+  for (let i = 0; i < mastsW.length; i++) {   // and a sagging edge strand from mast to mast where neighbours are close
+    const a = mastsW[i], b = mastsW[(i + 1) % mastsW.length]; if (a === b || (b.j - a.j + K.strands) % K.strands !== 1) continue;
+    const d = Math.hypot(a.lx - b.lx, a.lz - b.lz); if (d < 12) line(a.lx, a.ly - 0.1, a.lz, b.lx, b.ly - 0.1, b.lz, 0.2 + d * 0.03, 0.5);
+  }
+  for (let k = 0; k < 8; k++) {
+    const [x, z] = V(k, RC), turns = 10, N = 54;   // a spiral down each column
+    let px, py, pz;
+    for (let i = 0; i <= N; i++) { const t = i / N, a = t * turns * Math.PI * 2 + k, cx = x + Math.sin(a) * 0.17, cy = FY + 0.3 + t * (K.colH - 0.15), cz = z + Math.cos(a) * 0.17; bl.push(cx, cy, cz); if (i) wl.push(px, py, pz, cx, cy, cz); px = cx; py = cy; pz = cz; }
+    const [ax, az] = V(k, R + 0.42), [bx, bz] = V(k + 1, R + 0.42); line(ax, T1 + 0.02, az, bx, T1 + 0.02, bz, 0.12, 0.26);   // the roof's rim, scalloped
+    const [cx, cz] = V(k, 2.25); line(ax, T1 + 0.05, az, cx, T2 + 0.02, cz, 0.05, 0.32);                                        // its ribs
+    const [rx, rz] = V(k, RR + 0.06), [sx, sz] = V(k + 1, RR + 0.06);                                                              // the railing's top
+    if (k !== L.stairK) line(rx, FY + 1.0, rz, sx, FY + 1.0, sz, 0.02, 0.24);
+    else { const g = gapHalf / Math.hypot(sx - rx, sz - rz); line(rx, FY + 1.0, rz, rx + (sx - rx) * (0.5 - g), FY + 1.0, rz + (sz - rz) * (0.5 - g), 0.02, 0.24); line(rx + (sx - rx) * (0.5 + g), FY + 1.0, rz + (sz - rz) * (0.5 + g), sx, FY + 1.0, sz, 0.02, 0.24); }
+  }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bl, 3));
+  const bulbs = new THREE.Points(bg, world.kioskBulbMat || (world.kioskBulbMat = new THREE.PointsMaterial({ size: 0.5, map: kioskBulbTexture(), color: '#ffd39a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
+  bulbs.renderOrder = 12; kg.add(bulbs);
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wl, 3));
+  const wires = new THREE.LineSegments(wg, world.kioskWireMat || (world.kioskWireMat = new THREE.LineBasicMaterial({ color: '#2a2a2e', transparent: true, opacity: 0.6 })));
+  wires.renderOrder = 11; kg.add(wires);
+  // a warm pool of light on the paving under the canopy (night only)
+  const reach = Math.max(12, ...L.masts.map((m) => Math.hypot(m.x - L.x, m.z - L.z)));
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(reach * 0.95, 40).rotateX(-Math.PI / 2), world.kioskPoolMat || (world.kioskPoolMat = new THREE.MeshBasicMaterial({ map: kioskBulbTexture(), color: '#d98545', transparent: true, opacity: 0.42, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
+  pool.position.y = 0.05; pool.renderOrder = 7; kg.add(pool);
+  let flag = null;
+  if (withFlag) {   // a small flag on a short mast at the crown, rippling like the big one (scaled by k)
+    const mh = 2.3, mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, mh, 8), mats.iron); mast.position.y = CROWN + 0.2 + mh / 2; mast.castShadow = true; kg.add(mast);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), mats.gold); ball.position.y = CROWN + 0.2 + mh + 0.05; kg.add(ball);
+    const fw = 1.5, fh = 1.0, fg = new THREE.PlaneGeometry(fw, fh, 12, 6); fg.translate(fw / 2 + 0.04, 0, 0);
+    const fm = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8 })); fm.userData.ownMat = true; fm.castShadow = true;
+    const Wd = new THREE.Vector2(0.82, 0.48).normalize(); fm.position.y = CROWN + 0.2 + mh - fh / 2 - 0.08; fm.rotation.y = -Math.atan2(Wd.y, Wd.x);
+    flag = { mesh: fm, base: Float32Array.from(fg.attributes.position.array), w: fw, x0: 0.04, k: fw / 7.2 }; kg.add(fm);
+  }
+  return { g: kg, flag, night: [bulbs, pool], bulbs: bl.length / 3, masts: L.masts.length };
+}
 function dropPlazaExtras(id) {
   const o = PLAZAX.get(id); if (!o) return;
   world.plazaX.remove(o.g);
@@ -2477,7 +2610,9 @@ function buildPlazaExtras(f) {
     const m = new THREE.Mesh(geo, world.curbMat || (world.curbMat = new THREE.MeshStandardMaterial({ color: '#9d9488', roughness: 0.85, side: THREE.DoubleSide })));
     m.receiveShadow = true; g.add(m);
   }
-  const pole = s.flagpole && flagpoleSpot(f);
+  const kio = s.kiosk && kioskLayout(f);
+  if (kio) { const k = buildKiosk(f, kio, H(kio.x, kio.z) + LIFT + lift, s.kioskFlag); g.add(k.g); o.flag = k.flag; o.night = k.night; o.kiosk = k; }
+  const pole = !kio && s.flagpole && flagpoleSpot(f);
   if (pole) {
     const pg = new THREE.Group(), y0 = H(pole.x, pole.z) + LIFT + lift; pg.position.set(pole.x, y0, pole.z);
     const stone = world.plinthMat || (world.plinthMat = new THREE.MeshStandardMaterial({ color: '#cdbfae', roughness: 0.8 }));
@@ -2490,7 +2625,7 @@ function buildPlazaExtras(f) {
     const fw = 7.2, fh = 4.8, fg = new THREE.PlaneGeometry(fw, fh, 24, 10); fg.translate(fw / 2 + 0.15, 0, 0);
     const flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8 })); flag.userData.ownMat = true;
     const Wd = new THREE.Vector2(0.82, 0.48).normalize(); flag.position.y = y + POLE_H - fh / 2 - 0.35; flag.rotation.y = -Math.atan2(Wd.y, Wd.x);
-    o.flag = { mesh: flag, base: Float32Array.from(fg.attributes.position.array), w: fw }; pg.add(flag);
+    o.flag = { mesh: flag, base: Float32Array.from(fg.attributes.position.array), w: fw, x0: 0.15, k: 1 }; pg.add(flag);
     pg.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     g.add(pg);
   }
@@ -2503,15 +2638,17 @@ function rebuildPlazaExtras(ids) {
 }
 function stepPlazaExtras(t) {
   if (!PLAZAX.size) return;
-  const cam = camera.position, gust = WINDK.value || 1;
+  const cam = camera.position, gust = WINDK.value || 1, lit = NIGHT.value > 0.5;
+  if (world.kioskCream) for (const [m, k] of [[world.kioskCream, 0.22], [world.kioskStone, 0.2], [world.kioskCap, 0.2]]) m.emissiveIntensity = NIGHT.value * k;   // lit by its own bulbs after dark
   for (const o of PLAZAX.values()) {
     const d = Math.hypot(o.f.cx - cam.x, o.f.cz - cam.z); o.g.visible = d < 2200;
+    if (o.night) for (const m of o.night) m.visible = lit;
     const fl = o.flag; if (!fl || d > 700) continue;
-    const a = fl.mesh.geometry.attributes.position, A = a.array, B = fl.base;
+    const a = fl.mesh.geometry.attributes.position, A = a.array, B = fl.base, k = fl.k;   // k scales the ripple to the flag's size
     for (let i = 0; i < A.length; i += 3) {
-      const u = (B[i] - 0.15) / fl.w, x = B[i], yv = B[i + 1];
-      A[i + 2] = u * (0.32 + 0.12 * gust) * Math.sin(x * 0.9 - t * (3.2 + gust) + yv * 0.35) + u * 0.12 * Math.sin(x * 2.1 - t * 6.1);
-      A[i + 1] = yv - u * u * 0.5 / (0.6 + gust);   // a light flag droops a little at the fly end in a calm
+      const u = (B[i] - fl.x0) / fl.w, x = B[i] / k, yv = B[i + 1];
+      A[i + 2] = k * (u * (0.32 + 0.12 * gust) * Math.sin(x * 0.9 - t * (3.2 + gust) + yv / k * 0.35) + u * 0.12 * Math.sin(x * 2.1 - t * 6.1));
+      A[i + 1] = yv - k * u * u * 0.5 / (0.6 + gust);   // a light flag droops a little at the fly end in a calm
     }
     a.needsUpdate = true; fl.mesh.geometry.computeVertexNormals();
   }
@@ -3321,7 +3458,7 @@ const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], treeSides: 'sides', curb: 'cm', flagpole: 'bool' },
+  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
@@ -3330,7 +3467,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', treeSides: 'nesw', curb: 0, flagpole: false });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -4293,7 +4430,8 @@ function addStreetFurniture() {
     } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
-      const pole = ps.flagpole && flagpoleSpot(f); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      const kio = ps.kiosk && kioskLayout(f), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
       // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
       walk(ring, 3.4, 1.5, (x, z, nx, nz) => {
@@ -5143,7 +5281,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', curb: 'curb', flagpole: 'flagpole', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5227,7 +5365,9 @@ const STYLE_DOCS = {
 - trees: "pleached" for a ring of pleached trees round the edge (clipped boxy canopies on bare trunks joined into a shaded walk, like the Jardín Guerrero in Querétaro) or "none"
 - treeSides: which sides of the plaza get the pleached trees, letters from "nesw" ("nesw" = all four, "esw" = all but the north side)
 - curb: the plaza raised on a stone curb above the streets around it, in cm (0 = level, 10 = a low curb, up to 60)
-- flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it`,
+- flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it
+- kiosk: true for an octagonal bandstand at the centre (stone podium with steps, wrought-iron railing, slender columns, tiered roof, warm string lights round the columns and railing and fanning out from the crown to masts round the plaza); it takes the place of the flagpole and the fountain moves toward one end; false removes it
+- kioskFlag: true for a small flag on a short mast at the top of the kiosk's roof (use this, not flagpole, when the flag should be on the kiosk)`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
@@ -6764,7 +6904,14 @@ function dropIn(x, z) {
 
 const START = { x: -2727.8, z: 1618.3, yaw: 3.024 };   // where walking and flying begin: the plaza by the fountain, facing just west of north (chosen by the author)
 function spawnPoint() {
-  if (H(START.x, START.z) > 0.3 && buildingAt(START.x, START.z) < 0) { const p = new THREE.Vector3(START.x, 0, START.z); collide(p, 0.4); p.y = H(p.x, p.z); return p; }
+  if (H(START.x, START.z) > 0.3 && buildingAt(START.x, START.z) < 0) {
+    const p = new THREE.Vector3(START.x, 0, START.z);
+    for (const o of PLAZAX.values()) {   // a kiosk on the start plaza: step out from it along the same line, to just past its steps
+      const L = o.kiosk && o.f.kioskL; if (!L) continue;
+      const dx = p.x - L.x, dz = p.z - L.z, d = Math.hypot(dx, dz); if (d < 11) { const k = 11 / (d || 1); p.x = L.x + (d ? dx : 1) * k; p.z = L.z + (d ? dz : 0) * k; }
+    }
+    collide(p, 0.4); p.y = H(p.x, p.z); return p;
+  }
   // otherwise (the plaza no longer exists after a re-import): the heart of the densest neighbourhood, on the nearest street
   const C = 250, count = new Map(); let best = null, bestN = 0;
   for (const b of world.buildings) { const k = gkey(Math.floor(b.cx / C) + 2000, Math.floor(b.cz / C) + 2000), n = (count.get(k) || 0) + 1; count.set(k, n); if (n > bestN) { bestN = n; best = b; } }
@@ -7653,7 +7800,7 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag } : null, bbox: f.bbox.map((v) => Math.round(v)) }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
   styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
@@ -7690,7 +7837,7 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.flagpole !== st.flagpole || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
