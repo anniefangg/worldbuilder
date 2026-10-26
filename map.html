@@ -2514,11 +2514,23 @@ function flagTexture() {   // Amparacán's flag, the author's design: blue, whit
 // It takes the centre, so with a kiosk the flagpole is left out and the fountain moves toward one end. kioskLights: how many strands fan out (default 28).
 const KIOSK_STONE = '#c9a47a', KIOSK_ROOF = '#efe5cf';   // the kiosk's own colours unless kioskStone / kioskRoof say otherwise
 const KIOSK = { R: 6, podH: 1.7, colH: 4.1, steps: 10, tread: 0.32, stairW: 3.2, reach: 26, strands: 28, mastH: 4.8 };
-function kioskLayout(f, nStr = KIOSK.strands) {   // the centre, the stair sides (edge k toward the most open ground, and the edge opposite) and the masts the light strands run to (cached per plaza)
-  if (f.kioskL !== undefined && (!f.kioskL || f.kioskL.n === nStr)) return f.kioskL;
-  const p = flagpoleSpot(f), K = KIOSK;
+function kioskLayout(f, s) {   // where it stands, the stair sides (edge k toward the most open ground, and the edge opposite) and the masts the light strands run to (cached per plaza)
+  const nStr = s.kioskLights ?? KIOSK.strands, key = [nStr, s.trees, s.pleachRows, s.treeSides].join();
+  if (f.kioskL !== undefined && f.kioskKey === key) return f.kioskL;
+  f.kioskKey = key;
+  const K = KIOSK, pl = s.trees === 'pleached' ? pleachedFor(f, s) : [];
   const ok = (x, z, m) => pointInRings(x, z, f.rings) && buildingAt(x, z) < 0 && H(x, z) > 0.6 && !roadAt(x, z, m, false);
-  if (!p || f.size < 1400 || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => !ok(p.x + Math.sin(k * Math.PI / 4) * 9.5, p.z + Math.cos(k * Math.PI / 4) * 9.5, 0.3))) return (f.kioskL = null);
+  const clearAt = (x, z) => [0, 1, 2, 3, 4, 5, 6, 7].every((k) => { const px = x + Math.sin(k * Math.PI / 4) * 9.5, pz = z + Math.cos(k * Math.PI / 4) * 9.5; return ok(px, pz, 0.3) && ok((x + px) / 2, (z + pz) / 2, 0.3); })
+    && !pl.some((q) => Math.hypot(q.x - x, q.z - z) < 9.5 + 5.3);   // clear of the pleached canopies too
+  let p = flagpoleSpot(f);
+  if (f.size < 1400) return (f.kioskL = null);
+  if (!p || !clearAt(p.x, p.z)) {   // the centre is taken (a building, a street, the trees): the open spot nearest it, on a 3 m grid
+    p = null; let bd = Infinity;
+    for (let x = f.bbox[0] + 9.5; x <= f.bbox[2] - 9.5; x += 3) for (let z = f.bbox[1] + 9.5; z <= f.bbox[3] - 9.5; z += 3) {
+      const d = Math.hypot(x - f.cx, z - f.cz); if (d < bd && clearAt(x, z)) { bd = d; p = { x, z }; }
+    }
+    if (!p) return (f.kioskL = null);
+  }
   const ring = [...f.rings[0], f.rings[0][0], f.rings[0][1]];
   let stairK = 0, best = -1;
   for (let k = 0; k < 8; k++) { const a = (k + 0.5) * Math.PI / 4, d = distToLine(ring, p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12); if (ok(p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12, 0.3) && d > best) { best = d; stairK = k; } }
@@ -2752,7 +2764,7 @@ function buildPlazaExtras(f) {
     const m = new THREE.Mesh(geo, world.curbMat || (world.curbMat = new THREE.MeshStandardMaterial({ color: '#9d9488', roughness: 0.85, side: THREE.DoubleSide })));
     m.receiveShadow = true; g.add(m);
   }
-  const kio = s.kiosk && kioskLayout(f, s.kioskLights);
+  const kio = s.kiosk && kioskLayout(f, s);
   const grv = s.groves > 0 && s.use !== 'chinampa' ? plazaGroves(f, s, kio) : [];
   if (grv.length) g.add(buildGroves(f, grv, lift));
   if (kio) {
@@ -4584,7 +4596,7 @@ function addStreetFurniture() {
     } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
-      const kio = ps.kiosk && kioskLayout(f, ps.kioskLights), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      const kio = ps.kiosk && kioskLayout(f, ps), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
       if (ps.groves > 0) for (const t of plazaGroves(f, ps, kio)) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) claim(t.x + a * 1.4, t.z + b * 1.4);   // the groves' trunks
       if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
@@ -7986,7 +7998,7 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
   styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
