@@ -201,6 +201,10 @@ body.tray-open #info { display: none; }
 #minimap .mm-bar { position: absolute; right: 8px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 3px 5px 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar i { display: block; height: 5px; border: 1.6px solid var(--ink); border-top: 0; margin-bottom: 3px; }
 #alt-box { position: fixed; z-index: 5; padding: 6px 10px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; border-radius: 10px; pointer-events: none; }
+#coord-box { position: fixed; z-index: 5; padding: 6px 10px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; border-radius: 10px; color: var(--ink); cursor: copy; border: 0; }
+#coord-box span { font: 500 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-right: 6px; }
+#minimap .mm-btns #mm-xy { width: auto; padding: 0 5px; font: 600 11px/1 var(--font-mono); }
+#minimap .mm-btns #mm-xy[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
 #alt-box span { font: 500 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-right: 6px; }
 #preview-banner { margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff1c9; color: #6b4a10; font-size: 11.5px; line-height: 1.35; max-width: 220px; }
 #preview-banner a { color: var(--azulejo); font-weight: 600; }
@@ -349,8 +353,9 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <div id="selbox" hidden></div>
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
-<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
+<div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button><button type="button" id="mm-xy" aria-pressed="false" aria-label="Show coordinates" title="Show coordinates (G)">xy</button></div></div>
 <div id="alt-box" class="plaque" hidden><span>Altitude</span><b id="alt-val"></b></div>
+<button id="coord-box" class="plaque" type="button" hidden title="Your position in map metres. Click to copy."><span>Position</span><b id="coord-val"></b></button>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -369,6 +374,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
+    <dt>G</dt><dd>Show or hide your coordinates (walk and fly); click them to copy</dd>
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, misty, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
@@ -5685,12 +5691,29 @@ function applyUndoStep(step, dir) {
 }
 function undoEdit() { const st = undo.stack.pop(); if (!st) return; applyUndoStep(st, 'undo'); undo.redo.push(st); toast(`Undone${st.size > 1 ? ` (${st.size} items)` : ''}.`); refreshUndo(); }
 function redoEdit() { const st = undo.redo.pop(); if (!st) return; applyUndoStep(st, 'redo'); undo.stack.push(st); toast('Redone.'); refreshUndo(); }
+// The position readout (G or the minimap's xy button; remembered in localStorage): the character's x and z in map metres, the same
+// numbers a prompt's "at" and fountainAt use. A click copies them.
+const COORDS = { on: false };
+try { COORDS.on = localStorage.getItem('amparacan-map-coords') === '1'; } catch (e) {}
+function toggleCoords(on = !COORDS.on) {
+  COORDS.on = on; try { localStorage.setItem('amparacan-map-coords', on ? '1' : '0'); } catch (e) {}
+  $('mm-xy').setAttribute('aria-pressed', String(on)); mm.last = 0;
+  if (!(player.mode === 'walk' || player.mode === 'fly')) toast(on ? 'Coordinates on: they show while you walk or fly.' : 'Coordinates off.');
+  else if (!on) $('coord-box').hidden = true;
+  _hudSig = '';
+}
+function copyCoords() {
+  const t = `x ${player.pos.x.toFixed(1)}, z ${player.pos.z.toFixed(1)}`;
+  const done = () => toast(`Copied ${t}`), fail = () => toast(t);
+  try { navigator.clipboard.writeText(t).then(done, fail); } catch (e) { fail(); }
+}
 // Compass and Measure sit by the minimap: the compass to its right, Measure under it (or under the altitude counter while flying)
 let _hudSig = '';
 function placeHud() {
   const mmEl = $('minimap'), sr = $('search').getBoundingClientRect(), vis = !mmEl.hidden, mr = mmEl.getBoundingClientRect(), alt = $('alt-box');
   const cl = vis ? mr.right + 8 : sr.right + 8, ct = vis ? mr.top : sr.top;
-  const ml = vis ? mr.left : sr.left, ar = alt.hidden ? null : alt.getBoundingClientRect(), mt = ar ? ar.bottom + 6 : vis ? mr.bottom + 6 : sr.bottom + 7;
+  const cbx = $('coord-box'), low = !cbx.hidden ? cbx : !alt.hidden ? alt : null;
+  const ml = vis ? mr.left : sr.left, ar = low ? low.getBoundingClientRect() : null, mt = ar ? ar.bottom + 6 : vis ? mr.bottom + 6 : sr.bottom + 7;
   const sig = [cl, ct, ml, mt].map(Math.round).join();
   if (sig === _hudSig) return; _hudSig = sig;
   const c = $('compass').style, m = $('measure-btn').style;
@@ -7510,6 +7533,7 @@ function initControls() {
     if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
+    if (k === 'g') toggleCoords();
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
@@ -7545,6 +7569,9 @@ function initControls() {
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
   $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
+  $('mm-xy').addEventListener('click', (e) => { e.stopPropagation(); toggleCoords(); });
+  $('mm-xy').setAttribute('aria-pressed', String(COORDS.on));
+  $('coord-box').addEventListener('click', (e) => { e.stopPropagation(); copyCoords(); });
   $('undo-btn').addEventListener('click', (e) => { e.stopPropagation(); undoEdit(); });
   $('redo-btn').addEventListener('click', (e) => { e.stopPropagation(); redoEdit(); });
   $('edit-pill').addEventListener('click', (e) => { if (!ui.hover) return; if (e.shiftKey) toggleMulti(ui.hover); else select(ui.hover, { focusPrompt: true }); });
@@ -8107,6 +8134,9 @@ function drawMinimap(now) {
   const box = $('alt-box'), mr = $('minimap').getBoundingClientRect();
   $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
   box.hidden = player.mode !== 'fly'; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
+  const cb = $('coord-box'), con = COORDS.on && (player.mode === 'walk' || player.mode === 'fly');   // the position readout, under the altitude when flying
+  if (cb.hidden === con) cb.hidden = !con;
+  if (con) { $('coord-val').textContent = `x ${player.pos.x.toFixed(1)}   z ${player.pos.z.toFixed(1)}`; cb.style.left = Math.round(mr.left) + 'px'; cb.style.top = Math.round((box.hidden ? mr.bottom : box.getBoundingClientRect().bottom) + 6) + 'px'; }
   const maxPx = clamp(W * 0.38, 40, 110); let nice = 0.1; for (let e = -1; e < 7; e++) for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v * s <= maxPx) nice = v; }   // the longest round length (…10, 20, 50, 100, 200, 500 m, 1, 2, 5 km…) that fits
   const bar = $('mm-bar'); bar.firstChild.style.width = Math.max(4, Math.round(nice * s)) + 'px'; bar.lastChild.textContent = nice >= 1000 ? `${nice / 1000} km` : `${nice < 1 ? nice.toFixed(1) : nice} m`;
 }
