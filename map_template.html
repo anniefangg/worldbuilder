@@ -2863,6 +2863,10 @@ function streetBollards(f) {
 const MAJ = { R: 9, rimH: 0.8 };
 function majesticSpot(f, s) {   // the centre, or with a kiosk or flagpole there, the clear end of the plaza (as the plain fountain moves)
   const ok = (x, z) => pointInRings(x, z, f.rings) && [0, 1, 2, 3, 4, 5, 6, 7].every((k) => { const px = x + Math.sin(k * Math.PI / 4) * (MAJ.R + 1), pz = z + Math.cos(k * Math.PI / 4) * (MAJ.R + 1); return pointInRings(px, pz, f.rings) && buildingAt(px, pz) < 0 && !roadAt(px, pz, 0.3, false); });
+  if (s.fountainAt) {   // placed by hand: there, or the nearest spot within 25 m where the basin fits
+    const { x, z } = s.fountainAt;
+    for (let d = 0; d <= 25; d += 1.5) for (let k = 0, n = d ? Math.ceil(d * 4) : 1; k < n; k++) { const a = k / n * Math.PI * 2, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d; if (ok(px, pz)) return { x: px, z: pz }; }
+  }
   const taken = (s.kiosk && kioskLayout(f, s)) || (s.flagpole && flagpoleSpot(f)), wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1];
   const spots = taken ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
   const p = spots.find(([x, z]) => ok(x, z)); return p ? { x: p[0], z: p[1] } : null;
@@ -3837,7 +3841,7 @@ const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense', 'lush'], treeType: ['palms', 'broadleaf', 'mixed', 'ceibas'], fence: 'bool' },
-  plaza: { use: ['plaza', 'chinampa', 'boatyard'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', kioskStone: 'hex', kioskRoof: 'hex', groves: 'groves', fountain: 'bool', fountainStyle: ['simple', 'majestic'] },
+  plaza: { use: ['plaza', 'chinampa', 'boatyard'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', kioskStone: 'hex', kioskRoof: 'hex', groves: 'groves', fountain: 'bool', fountainStyle: ['simple', 'majestic'], fountainAt: 'point' },
   street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct', bollards: 'bool' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
@@ -3859,6 +3863,7 @@ function featureStyle(f) {
     if (spec === 'rows') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); continue; }
     if (spec === 'strands') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); continue; }
     if (spec === 'groves') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 8); continue; }
+    if (spec === 'point') { if (v && Number.isFinite(+v.x) && Number.isFinite(+v.z)) s[k] = { x: +v.x, z: +v.z }; continue; }
     if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
   }
   if (f.kind === 'street') {      // the canopy slider (0–100) rules; the older none/palms/canopy word is kept in step with it
@@ -4891,7 +4896,7 @@ function addStreetFurniture() {
       if (maj) for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < MAJ.R + 1.5) claim(maj.x + a * 1.4, maj.z + b * 1.4);   // the majestic fountain (plaza extras) and its step
       if (f.size > 1400 && ps.fountain && !maj) {
         // the fountain stands at the centre, or with a flagpole there, a third of the way toward one end along the plaza's length
-        const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
+        const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = [...(ps.fountainAt ? [[ps.fountainAt.x, ps.fountainAt.z]] : []), ...(pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]])];
         const [fx, fz] = spots.find(([x, z]) => pointInRings(x, z, f.rings) && clear(x, z, 3.5)) || [NaN, NaN];
         if (Number.isFinite(fx)) { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(fx + a * 1.4, fz + b * 1.4); put('fountain', fx, fz, 0); put('fountainWater', fx, fz, 0); }
       }
@@ -5701,9 +5706,14 @@ function refreshUndo() {
 function docFor(id) { return { ...blankDoc(), ...clone(store[colFor(id)].get(id)) }; }
 function saveTarget(id, body, delay) { saveDoc(colFor(id), id, body, delay); store.emit(colFor(id), [id]); }
 const newId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// where "here" is when a prompt is written: the character (walking or flying now, or where it was last left standing), otherwise the point the map camera looks at
+function whereNow() {
+  const walking = player.mode === 'walk' || player.mode === 'fly', p = walking ? player.pos : player.lastWalk || (controls && controls.target);
+  return p ? { x: +p.x.toFixed(1), z: +p.z.toFixed(1), by: walking || player.lastWalk ? 'character' : 'camera' } : null;
+}
 function newPrompt(bId, text, status, extra = {}) {
   const id = newId('p'), now = new Date().toISOString();
-  saveDoc('prompts', id, { bId, text, status, result: '', createdAt: now, updatedAt: now, ...extra }, 0);
+  saveDoc('prompts', id, { bId, text, status, result: '', createdAt: now, updatedAt: now, at: whereNow(), ...extra }, 0);
   store.emit('prompts'); return id;
 }
 function patchPrompt(id, patch) { const p = store.prompts.get(id); if (!p) return; saveDoc('prompts', id, { ...p, ...patch, updatedAt: new Date().toISOString() }, 0); store.emit('prompts'); }
@@ -5726,7 +5736,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', fountainStyle: 'fountain style', bollards: 'bollards', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', fountainStyle: 'fountain style', fountainAt: 'fountain position', bollards: 'bollards', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5777,6 +5787,7 @@ function cleanStyleFor(kind, o) {
     else if (spec === 'rows') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); }
     else if (spec === 'strands') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); }
     else if (spec === 'groves') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 8); }
+    else if (spec === 'point') { if (v === null) s[k] = null; else if (v && Number.isFinite(+v.x) && Number.isFinite(+v.z)) s[k] = { x: +(+v.x).toFixed(1), z: +(+v.z).toFixed(1) }; }
     else if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; }
     else if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); }
     else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
@@ -5821,6 +5832,7 @@ const STYLE_DOCS = {
 - kiosk: true for an octagonal bandstand at the centre (stone podium with steps, wrought-iron railing, slender columns, tiered roof, warm string lights round the columns and railing and fanning out from the crown to masts round the plaza); it takes the place of the flagpole and the fountain moves toward one end; false removes it
 - kioskLights: how many strands of string lights fan out from the kiosk's crown to masts round the plaza, 0-40 (default 28)
 - fountain: false for no fountain on the plaza, true (the default) for one
+- fountainAt: where the fountain stands, {"x": number, "z": number} in map metres (a prompt's "at" is where the author was when writing it, so "put the fountain here" means that point); null puts it back in the middle
 - fountainStyle: "simple" (the default: a small two-tier fountain) or "majestic" (a grand baroque fountain at the centre: an 18 m stone basin on two steps, three cascading bowls with water curtains, a crowning urn and jet, and eight arcing jets from the rim)
 - kioskStone: the kiosk's stone (podium, steps), "#rrggbb" (limestone is about "#e3dccb"; default "#c9a47a" sandstone)
 - kioskRoof: the kiosk's roof colour, "#rrggbb" (default "#efe5cf" cream)
@@ -5836,7 +5848,7 @@ const STYLE_DOCS = {
 - tint: colour multiplied over the surface, "#rrggbb"`,
   beach: `- look: "copacabana" (wide golden sand, black-and-white wave-pattern calçadão promenade, palms, kiosks, lifeguard posts, umbrellas) or "natural" (plain sand)`,
 };
-function promptFor(t, doc, text, nImages = 0) {
+function promptFor(t, doc, text, nImages = 0, at = null) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
     current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [], doorSide: cur.doorSide || null, awning: cur.awning || null, porch: !!cur.porch, sign: cur.sign || null } });
@@ -5847,7 +5859,7 @@ function promptFor(t, doc, text, nImages = 0) {
 Feature: ${JSON.stringify(info)}
 
 The author's request: ${JSON.stringify(text)}
-${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
+${at ? `When writing it the author's ${at.by === 'character' ? 'character stood' : 'camera was looking'} at x ${at.x}, z ${at.z} (map metres): that is where "here" is.\n` : ''}${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
 A request like "make this a pharmacy" or "turn it into a school" means "style it like one": change only the look. Set "attributes" (name, ${t.kind === 'building' ? 'address, ' : ''}tags as an array of strings, history, details) only for what the request explicitly asks for in words such as name, call, rename, tag, categorise, history or details. Never invent or propose a name. When the request implies a use but doesn't ask for tags, you may propose tags in "suggest" instead ({"tags": ["pharmacy"]}); the author is asked before they are added.
 
@@ -5935,7 +5947,7 @@ async function applyPrompt(pid) {
     if (p.bIds) return await applyGroupPrompt(pid, p, canSee ? images : [], opts);
     const before = docFor(t.id);
     if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
-    const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
+    const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0, p.at), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes), sug = cleanAttrs(r && r.suggest);
     // "make this a pharmacy" means style it like one: an unasked name is dropped, unasked tags are only offered
     if (attrs.name != null && !ASKS_NAME.test(p.text)) delete attrs.name;
@@ -7351,6 +7363,7 @@ const joy = { x: 0, y: 0, active: false }, pad = { up: false, down: false };
 
 function setMode(mode) {
   const prev = player.mode; if (prev === mode) return;
+  if (prev === 'walk' || prev === 'fly') player.lastWalk = player.pos.clone();   // where the character was left standing (a prompt's "here")
   player.mode = mode;
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).setAttribute('aria-pressed', String(m === mode));
   controls.enabled = mode === 'map';
@@ -8282,7 +8295,7 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: !!(o && o.majestic), yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: o && o.majestic ? { x: +(o.majestic.g.position.x).toFixed(1), z: +(o.majestic.g.position.z).toFixed(1) } : null, yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
   bollardsOf(id) { const f = world.featById.get(id); return f && f.kind === 'street' ? { on: !!featureStyle(f).bollards, spots: streetBollards(f).map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]) } : null; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
   ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
@@ -8322,7 +8335,7 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.groves !== st.groves || o.fountain !== st.fountain || o.fountainStyle !== st.fountainStyle || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.groves !== st.groves || o.fountain !== st.fountain || o.fountainStyle !== st.fountainStyle || JSON.stringify(o.fountainAt) !== JSON.stringify(st.fountainAt) || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).bollards !== st.bollards)) streetTrees = true;   // the furniture follows
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
