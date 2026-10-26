@@ -2841,6 +2841,87 @@ function buildBoatyard(f, lift) {
   }
   return { g, boats: boats.length, masts: masted.length, fence: panels.length, cranes: things.filter((o) => o.kind === 'crane').length, lockers: lockers.length };
 }
+// ---- street bollards (street style bollards: true): a row of bollards across each end of the street, set back from the street it meets
+function streetBollards(f) {
+  const P = f.pts, out = [], n = P.length / 2, hw = f.w / 2;
+  const others = (x, z) => { for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) { const g = world.features[idx]; if (g !== f && (g.kind === 'street' || g.kind === 'path') && distToLine(g.pts, x, z) < g.w / 2 + 0.9) return true; } return false; };
+  let total = 0; for (let i = 0; i < n - 1; i++) total += Math.hypot(P[i * 2 + 2] - P[i * 2], P[i * 2 + 3] - P[i * 2 + 1]);
+  for (const end of [0, 1]) {
+    for (let d = 0.8; d < Math.min(30, total / 2); d += 0.5) {
+      const at = end ? total - d : d, [x, z] = pointAlong(P, at), [x2, z2] = pointAlong(P, Math.min(total, at + 0.5)), dx = x2 - x, dz = z2 - z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L;
+      if ([-hw, 0, hw].some((o) => others(x + nx * o, z + nz * o))) continue;   // still inside the junction
+      const k = Math.max(2, Math.round(f.w / 1.5));
+      for (let i = 0; i <= k; i++) { const o = -hw + 0.35 + (f.w - 0.7) * i / k; out.push([x + nx * o, z + nz * o]); }
+      break;
+    }
+  }
+  return out;
+}
+// ---- the majestic fountain (plaza style fountainStyle: "majestic"): a baroque, three-tier fountain in a wide stone basin, after the great
+// fountains of Spanish and Mexican plazas: a stepped plinth, a moulded basin rim, a fluted pedestal carrying three cascading bowls, water
+// curtains falling from every rim (scrolling sheets), a jet from the crowning finial and eight arcing jets from the rim toward the middle.
+const MAJ = { R: 9, rimH: 0.8 };
+function majesticSpot(f, s) {   // the centre, or with a kiosk or flagpole there, the clear end of the plaza (as the plain fountain moves)
+  const ok = (x, z) => pointInRings(x, z, f.rings) && [0, 1, 2, 3, 4, 5, 6, 7].every((k) => { const px = x + Math.sin(k * Math.PI / 4) * (MAJ.R + 1), pz = z + Math.cos(k * Math.PI / 4) * (MAJ.R + 1); return pointInRings(px, pz, f.rings) && buildingAt(px, pz) < 0 && !roadAt(px, pz, 0.3, false); });
+  const taken = (s.kiosk && kioskLayout(f, s)) || (s.flagpole && flagpoleSpot(f)), wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1];
+  const spots = taken ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
+  const p = spots.find(([x, z]) => ok(x, z)); return p ? { x: p[0], z: p[1] } : null;
+}
+function curtainTexture() {   // falling water: soft vertical streaks, scrolled down in stepPlazaExtras
+  if (world.curtainTex) return world.curtainTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d'), r = mulberry(77);
+  g.fillStyle = 'rgba(220,244,250,0.35)'; g.fillRect(0, 0, 128, 256);
+  for (let k = 0; k < 90; k++) { const x = r() * 128, w = 1 + r() * 3, y = r() * 256, h = 40 + r() * 160; g.fillStyle = `rgba(255,255,255,${0.25 + r() * 0.5})`; for (const dy of [-256, 0, 256]) g.fillRect(x, y + dy, w, h); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return (world.curtainTex = t);
+}
+function buildMajestic(f, p, y0) {
+  const g = new THREE.Group(); g.position.set(p.x, y0, p.z);
+  const stone = world.majStone || (world.majStone = new THREE.MeshStandardMaterial({ color: '#e6ddca', roughness: 0.75 }));
+  const stoneD = world.majStoneD || (world.majStoneD = new THREE.MeshStandardMaterial({ color: '#cfc4ad', roughness: 0.8 }));
+  const water = world.majWater || (world.majWater = new THREE.MeshStandardMaterial({ color: '#4fb3c6', roughness: 0.08, metalness: 0.25, emissive: '#0d3c48', emissiveIntensity: 0.25 }));
+  const parts = { s: [], d: [] }, cyl = (k, rt, rb, h, y, seg = 48) => { const c = new THREE.CylinderGeometry(rt, rb, h, seg); c.deleteAttribute('uv'); c.translate(0, y + h / 2, 0); parts[k].push(c); };
+  const R = MAJ.R;
+  cyl('d', R + 1.3, R + 1.4, 0.18, 0); cyl('s', R + 0.8, R + 0.9, 0.18, 0.18);                       // two shallow steps round it
+  const rim = new THREE.LatheGeometry([[R - 0.35, 0.3], [R - 0.35, MAJ.rimH], [R - 0.25, MAJ.rimH + 0.12], [R + 0.25, MAJ.rimH + 0.12], [R + 0.38, MAJ.rimH], [R + 0.3, MAJ.rimH - 0.1], [R + 0.3, 0.36], [R + 0.45, 0.3]].map(([x, y]) => new THREE.Vector2(x, y)), 64);
+  rim.deleteAttribute('uv'); parts.s.push(rim);                                                       // the basin's moulded rim
+  // the pedestal and three bowls, each a lathe profile: a cup with a rolled lip
+  const bowl = (r, y, d) => { const b = new THREE.LatheGeometry([[0.4, y - d], [r * 0.55, y - d * 0.8], [r * 0.92, y - 0.12], [r, y + 0.04], [r * 0.96, y + 0.12], [r * 0.88, y + 0.02], [0.3, y + 0.02]].map(([x, yy]) => new THREE.Vector2(x, yy)), 48); b.deleteAttribute('uv'); parts.s.push(b); };
+  const ped = new THREE.LatheGeometry([[1.3, 0.3], [1.2, 0.6], [0.75, 0.8], [0.62, 1.2], [0.7, 1.5], [0.55, 1.8]].map(([x, y]) => new THREE.Vector2(x, y)), 24); ped.deleteAttribute('uv'); parts.d.push(ped);
+  const B = [[3.8, 2.0, 0.7], [2.3, 3.9, 0.55], [1.15, 5.4, 0.4]];
+  cyl('d', 0.42, 0.5, 2.0, 1.8, 16); cyl('d', 0.3, 0.36, 1.5, 3.9, 16); cyl('d', 0.2, 0.26, 1.2, 5.4, 12);
+  for (const [r, y, d] of B) bowl(r, y, d);
+  const fin = new THREE.LatheGeometry([[0.01, 6.6], [0.28, 6.7], [0.18, 6.95], [0.32, 7.25], [0.12, 7.6], [0.2, 7.75], [0.01, 8.05]].map(([x, y]) => new THREE.Vector2(x, y)), 16); fin.deleteAttribute('uv'); parts.s.push(fin);   // a crowning urn
+  for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, sp = new THREE.SphereGeometry(0.32, 10, 8); sp.deleteAttribute('uv'); sp.translate(Math.sin(a) * (R - 0.05), MAJ.rimH + 0.42, Math.cos(a) * (R - 0.05)); parts.s.push(sp); }   // the jets' stone heads on the rim
+  for (const [k, list] of Object.entries(parts)) { const m = new THREE.Mesh(mergeGeometries(list), k === 's' ? stone : stoneD); m.castShadow = m.receiveShadow = true; g.add(m); for (const q of list) q.dispose(); }
+  // water: the basin, each bowl's pool, and the falling curtains between them
+  const disc = (r, y) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 48).rotateX(-Math.PI / 2), water); m.position.y = y; m.receiveShadow = true; g.add(m); };
+  disc(R - 0.36, 0.62); for (const [r, y] of B) disc(r * 0.88, y - 0.02);
+  const cm = new THREE.MeshBasicMaterial({ map: curtainTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.85 }); cm.userData = {};
+  const curtains = [];
+  B.forEach(([r, y], i) => {
+    const below = i === 0 ? 0.62 : B[i - 1][1] - 0.02, h = y - below, c = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.02, r + 0.35, h, 48, 1, true), cm.clone());
+    c.material.map = curtainTexture().clone(); c.material.map.needsUpdate = true; c.material.map.repeat.set(6 * r, h / 2.2);
+    c.position.y = below + h / 2; c.renderOrder = 8; c.userData.ownMat = true; g.add(c); curtains.push(c);
+  });
+  // the jets: particles flying along parabolas (CPU, near the camera only)
+  const NJ = 8, PER = 26, TOP = 40, pts = new Float32Array((NJ * PER + TOP) * 3), pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+  const spray = new THREE.Points(pg, world.majSprayMat || (world.majSprayMat = new THREE.PointsMaterial({ size: 0.22, map: kioskBulbTexture(), color: '#e6f8fc', transparent: true, depthWrite: false, opacity: 0.9 })));
+  spray.frustumCulled = false; spray.renderOrder = 9; g.add(spray);
+  return { g, curtains, spray, NJ, PER, TOP, R };
+}
+function stepMajestic(o, t) {   // scroll the curtains and move the jets' water along their arcs
+  for (const c of o.curtains) c.material.map.offset.y = (t * 0.9) % 1;
+  const A = o.spray.geometry.attributes.position.array, R = o.R - 0.1; let k = 0;
+  for (let j = 0; j < o.NJ; j++) {
+    const a = j * Math.PI / 4, sx = Math.sin(a) * R, sz = Math.cos(a) * R, ex = Math.sin(a) * 4.6, ez = Math.cos(a) * 4.6;   // from the rim head toward the lowest bowl's edge
+    for (let i = 0; i < o.PER; i++) { const u = ((t * 0.55 + i / o.PER + j * 0.37) % 1); A[k++] = sx + (ex - sx) * u; A[k++] = MAJ.rimH + 0.45 + 3.2 * u * (1 - u) * 2.2 - u * 0.7; A[k++] = sz + (ez - sz) * u; }
+  }
+  for (let i = 0; i < o.TOP; i++) {   // the finial's jet: up, then falling back in a loose crown
+    const u = ((t * 0.7 + i / o.TOP) % 1), a = i * 2.39996, rr = 0.15 + u * 0.9;
+    A[k++] = Math.cos(a) * rr; A[k++] = 8.05 + 2.4 * 4 * u * (1 - u) - u * 1.4; A[k++] = Math.sin(a) * rr;
+  }
+  o.spray.geometry.attributes.position.needsUpdate = true;
+}
 function dropPlazaExtras(id) {
   const o = PLAZAX.get(id); if (!o) return;
   world.plazaX.remove(o.g);
@@ -2910,6 +2991,8 @@ function buildPlazaExtras(f) {
     pg.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     g.add(pg);
   }
+  const maj = s.fountain && s.fountainStyle === 'majestic' && majesticSpot(f, s);
+  if (maj) { const m = buildMajestic(f, maj, H(maj.x, maj.z) + LIFT + lift); g.add(m.g); o.majestic = m; }
   if (!g.children.length) return;
   world.plazaX.add(g); PLAZAX.set(f.id, o);
 }
@@ -2925,6 +3008,7 @@ function stepPlazaExtras(t) {
   for (const o of PLAZAX.values()) {
     const d = Math.hypot(o.f.cx - cam.x, o.f.cz - cam.z); o.g.visible = d < 2200;
     if (o.night) for (const m of o.night) m.visible = lit;
+    if (o.majestic && d < 600) stepMajestic(o.majestic, t);
     const fl = o.flag; if (!fl || d > 700) continue;
     const a = fl.mesh.geometry.attributes.position, A = a.array, B = fl.base, k = fl.k;   // k scales the ripple to the flag's size
     for (let i = 0; i < A.length; i += 3) {
@@ -3753,8 +3837,8 @@ const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
   park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense', 'lush'], treeType: ['palms', 'broadleaf', 'mixed', 'ceibas'], fence: 'bool' },
-  plaza: { use: ['plaza', 'chinampa', 'boatyard'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', kioskStone: 'hex', kioskRoof: 'hex', groves: 'groves', fountain: 'bool' },
-  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
+  plaza: { use: ['plaza', 'chinampa', 'boatyard'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', kioskStone: 'hex', kioskRoof: 'hex', groves: 'groves', fountain: 'bool', fountainStyle: ['simple', 'majestic'] },
+  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct', bollards: 'bool' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
   beach: { look: ['copacabana', 'natural'] },
@@ -3762,7 +3846,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false, kioskLights: KIOSK.strands, kioskStone: KIOSK_STONE, kioskRoof: KIOSK_ROOF, groves: 0, fountain: true });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false, kioskLights: KIOSK.strands, kioskStone: KIOSK_STONE, kioskRoof: KIOSK_ROOF, groves: 0, fountain: true, fountainStyle: 'simple' });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -4755,6 +4839,7 @@ function addStreetFurniture() {
     const rnd = mulberry(f.seed ^ 0x7f4a7c15);
     if (f.kind === 'street' && f.w >= 3) {
       const hw = f.w / 2, both = f.w >= 12; let side = rnd() < 0.5 ? 1 : -1, k = 0;
+      if (featureStyle(f).bollards) for (const b of streetBollards(f)) { claim(b[0], b[1]); put('bollard', b[0], b[1], 0); }   // pedestrian-only: a row across each end
       walk(f.pts, f.w >= 9 ? 24 : 28, 6 + rnd() * 10, (x, z, nx, nz) => {
         for (const sd of both ? [side, -side] : [side]) lamp(x + nx * (hw + 0.45) * sd, z + nz * (hw + 0.45) * sd);
         side = -side;
@@ -4802,7 +4887,9 @@ function addStreetFurniture() {
         const bx = x + nx * sgn * 3.4, bz = z + nz * sgn * 3.4; if (!pointInRings(bx, bz, f.rings) || !clear(bx, bz, 1.2)) return;
         claim(bx, bz); put((kb++ % 3) === 2 ? 'planter' : 'bench', bx, bz, facing(bx, bz, x + nx * sgn * 10, z + nz * sgn * 10));
       });
-      if (f.size > 1400 && ps.fountain) {
+      const maj = ps.fountain && ps.fountainStyle === 'majestic' && majesticSpot(f, ps);
+      if (maj) for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < MAJ.R + 1.5) claim(maj.x + a * 1.4, maj.z + b * 1.4);   // the majestic fountain (plaza extras) and its step
+      if (f.size > 1400 && ps.fountain && !maj) {
         // the fountain stands at the centre, or with a flagpole there, a third of the way toward one end along the plaza's length
         const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
         const [fx, fz] = spots.find(([x, z]) => pointInRings(x, z, f.rings) && clear(x, z, 3.5)) || [NaN, NaN];
@@ -5639,7 +5726,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', fountainStyle: 'fountain style', bollards: 'bollards', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5734,6 +5821,7 @@ const STYLE_DOCS = {
 - kiosk: true for an octagonal bandstand at the centre (stone podium with steps, wrought-iron railing, slender columns, tiered roof, warm string lights round the columns and railing and fanning out from the crown to masts round the plaza); it takes the place of the flagpole and the fountain moves toward one end; false removes it
 - kioskLights: how many strands of string lights fan out from the kiosk's crown to masts round the plaza, 0-40 (default 28)
 - fountain: false for no fountain on the plaza, true (the default) for one
+- fountainStyle: "simple" (the default: a small two-tier fountain) or "majestic" (a grand baroque fountain at the centre: an 18 m stone basin on two steps, three cascading bowls with water curtains, a crowning urn and jet, and eight arcing jets from the rim)
 - kioskStone: the kiosk's stone (podium, steps), "#rrggbb" (limestone is about "#e3dccb"; default "#c9a47a" sandstone)
 - kioskRoof: the kiosk's roof colour, "#rrggbb" (default "#efe5cf" cream)
 - groves: 0-8 outcrops of tall broadleaf trees (mahogany, copal, chicozapote, magnolia) out on the paving, clear of the kiosk's stairs and the pleached rows; with a kiosk, its light strands run into these trees' crowns instead of to masts
@@ -5741,6 +5829,7 @@ const STYLE_DOCS = {
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
+- bollards: true for a row of bollards across each end of the street, making it pedestrian-only; false removes them"
 - canopy: tree cover as a number 0-100 (0 = no trees, about 30 = a line of palms, about 75 = shade trees on both sides, 100 = a full canopy of overlapping crowns, on both sides of the street). Prefer this over "trees".
 - trees: "canopy" (large shade trees on both sides whose crowns meet over the street), "palms" (a line of palms) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
@@ -8193,7 +8282,8 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: !!(o && o.majestic), yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  bollardsOf(id) { const f = world.featById.get(id); return f && f.kind === 'street' ? { on: !!featureStyle(f).bollards, spots: streetBollards(f).map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]) } : null; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
   ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
@@ -8232,8 +8322,9 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.groves !== st.groves || o.fountain !== st.fountain || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.groves !== st.groves || o.fountain !== st.fountain || o.fountainStyle !== st.fountainStyle || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
+      if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).bollards !== st.bollards)) streetTrees = true;   // the furniture follows
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
     if (kinds.has('street') || kinds.has('path')) { kinds.add('street'); kinds.add('path'); }
