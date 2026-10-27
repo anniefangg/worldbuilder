@@ -380,6 +380,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
     <dt>G</dt><dd>Show or hide your coordinates (walk and fly); click them to copy</dd>
     <dt>⇧ G</dt><dd>Show or hide the altitude while flying</dd>
+    <dt>⌘ G</dt><dd>Group the selected things (⇧⌘G ungroups); ⌥-click picks one member alone</dd>
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, misty, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
@@ -5603,12 +5604,12 @@ function updateSinking(t) {
 
 // ─────────────────────────── saved edits (artifact db, owner-only writes) ───────────────────────────
 // buildings/{id} and features/{id}: {name, address, tags[], history, details, attrs{}, style{}}
-// prompts/{id}: {bId (target id), text, status, result}; changes/{id}: the history log
+// prompts/{id}: {bId (target id), text, status, result}; changes/{id}: the history log; groups/{id}: {name, ids[]} (⌘G)
 const store = {
-  kind: 'none', canEdit: false, buildings: new Map(), features: new Map(), prompts: new Map(), changes: new Map(), listeners: new Set(),
+  kind: 'none', canEdit: false, buildings: new Map(), features: new Map(), prompts: new Map(), changes: new Map(), groups: new Map(), listeners: new Set(),
   on(fn) { this.listeners.add(fn); }, emit(what, ids) { for (const f of this.listeners) f(what, ids); },
 };
-const COLLECTIONS = ['buildings', 'features', 'prompts', 'changes'];
+const COLLECTIONS = ['buildings', 'features', 'prompts', 'changes', 'groups'];
 let DB = null, SAMPLE;
 const LOCAL_KEY = 'amparacan-map-edits';
 const pending = new Map(); // "col/id" → { body, timer, inflight }
@@ -5626,7 +5627,7 @@ async function initStore() {
     store.kind = 'local'; store.canEdit = true; document.body.classList.add('local-preview');
     setTimeout(() => toast('Local preview: edits stay in this browser and “Apply now” can’t run Claude here. Open the published map to edit instantly.'), 1500);
     try { const j = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}'); for (const c of COLLECTIONS) for (const [k, v] of Object.entries(j[c] || {})) store[c].set(k, v); } catch (e) {}
-    store.emit('buildings', [...store.buildings.keys()]); store.emit('features', [...store.features.keys()]); store.emit('prompts'); store.emit('changes'); store.emit('ready');
+    store.emit('buildings', [...store.buildings.keys()]); store.emit('features', [...store.features.keys()]); store.emit('prompts'); store.emit('changes'); store.emit('groups'); store.emit('ready');
     return;
   }
   const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
@@ -6033,7 +6034,8 @@ function endEditing() {
   if (ui.editSnapshot) logChange({ id: ui.selected, source: 'manual', before: ui.editSnapshot, after, tags: diffDocs(ui.editSnapshot, after).map((f) => FIELD_LABEL[f] || f) });
   ui.editing = false; ui.editSnapshot = null;
 }
-function select(id, { edit = false, focusPrompt = false, keepSegs = false } = {}) {
+function select(id, { edit = false, focusPrompt = false, keepSegs = false, one = false } = {}) {
+  if (id && !one && !keepSegs && groupIds(groupOf(id)).length >= 2) { selectGroup(groupOf(id)); return; }   // a member of a group brings the whole group
   if (multi.size) clearMulti(true);
   if (ui.segs.length && !keepSegs) clearSegment(true);
   if (id !== ui.selected) { endEditing(); for (const x of attach.list) URL.revokeObjectURL(x.url); attach.list = []; }
@@ -6057,6 +6059,45 @@ function multiMark(id, on) {
   const m = fxMulti.get(id);
   if (on && !m) fxMulti.set(id, featureShape(t.f, '#3d7bd9', 0.4));
   if (!on && m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); fxMulti.delete(id); }
+}
+// ---- named groups (⌘G groups the selection, ⇧⌘G ungroups): groups/{gId} {name, ids[], at}. Clicking any member selects the whole
+// group (⌥-click picks one alone); the group panel's edits, tags and prompts then go to every member. A thing is in one group at most.
+const GROUPS = { of: new Map() };
+function indexGroups() { GROUPS.of.clear(); for (const [gid, g] of store.groups) for (const id of g.ids || []) GROUPS.of.set(id, gid); }
+store.on((what) => { if (what === 'groups' || what === 'ready') indexGroups(); });
+const groupOf = (id) => (id && GROUPS.of.get(id)) || null;
+const groupIds = (gid) => { const g = gid && store.groups.get(gid); return g ? (g.ids || []).filter((x) => targetOf(x)) : []; };
+function currentGroup() {   // the group the multi-selection is, exactly
+  if (multi.size < 2) return null;
+  const gid = groupOf([...multi][0]), ids = groupIds(gid);
+  return gid && ids.length === multi.size && ids.every((x) => multi.has(x)) ? gid : null;
+}
+function selectGroup(gid) { const ids = groupIds(gid); if (ids.length >= 2) setMulti(ids); else if (ids.length) select(ids[0], { one: true }); }
+function groupSelection() {
+  if (!store.canEdit) { toast('Only the map’s owner can group things.'); return; }
+  if (multi.size < 2) { toast('Select two or more things first (Shift-click or Shift-drag), then press ⌘G.'); return; }
+  const ids = [...multi], taken = new Set(ids);
+  if (currentGroup()) { toast('These are already one group. ⇧⌘G ungroups them.'); return; }
+  const counts = new Map(); for (const id of ids) { const g = groupOf(id); if (g) counts.set(g, (counts.get(g) || 0) + 1); }
+  let gid = null; for (const [g, n] of counts) if (!gid || n > counts.get(gid)) gid = g;   // grouping a group with more things grows it, keeping its name
+  for (const [og, g] of [...store.groups]) {   // anything taken from another group leaves it; a group left with one thing is dissolved
+    if (og === gid) continue;
+    const rest = (g.ids || []).filter((x) => !taken.has(x)); if (rest.length === (g.ids || []).length) continue;
+    if (rest.length < 2) deleteDoc('groups', og); else saveDoc('groups', og, { ...g, ids: rest, updatedAt: new Date().toISOString() }, 0);
+  }
+  const base = gid && store.groups.get(gid), now = new Date().toISOString();
+  gid = gid || 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  saveDoc('groups', gid, { name: (base && base.name) || '', ids, at: (base && base.at) || now, updatedAt: now }, 0);
+  store.emit('groups');
+  toast(base ? `Added to “${base.name || 'the group'}”: ${ids.length.toLocaleString()} things now.` : `Grouped ${ids.length.toLocaleString()} things. Give the group a name in the panel.`);
+  setTimeout(() => { const x = $('g-name'); if (x && !x.value) x.focus(); }, 0);
+}
+function ungroupSelection() {
+  if (!store.canEdit) return;
+  const gid = currentGroup() || (ui.selected && groupOf(ui.selected)), g = gid && store.groups.get(gid);
+  if (!g) { toast('Select a group first (click any of its members).'); return; }
+  deleteDoc('groups', gid); store.emit('groups');
+  toast(`Ungrouped ${g.name ? `“${g.name}”` : `${(g.ids || []).length} things`}. They stay selected.`);
 }
 function clearMulti(silent) { for (const id of multi) multiMark(id, false); multi.clear(); if (!silent) afterMulti(); }
 function setMulti(ids, { add = false } = {}) {
@@ -6216,8 +6257,8 @@ function attachBoxSelect(el, pick, boxPick) {
       const ids = boxPick(Math.min(b.sx, e.clientX), Math.min(b.sy, e.clientY), Math.max(b.sx, e.clientX), Math.max(b.sy, e.clientY));
       if (ids.length) setMulti(ids, { add: b.shift && (multi.size > 0 || !!ui.selected) }); else if (!b.shift) toast('Nothing in that area. Drag across some buildings.');
     } else {
-      const id = pick(e.clientX, e.clientY);
-      if (b.shift) toggleMulti(id); else select(id);
+      const id = pick(e.clientX, e.clientY), g = !e.altKey && groupOf(id);
+      if (b.shift) { if (g) setMulti(groupIds(g), { add: true }); else toggleMulti(id); } else select(id, { one: e.altKey });
     }
   }, true);
 }
@@ -6315,15 +6356,22 @@ function bulkReset() {
 }
 function selectionCentre(ids) { let x = 0, z = 0, n = 0; for (const id of ids) { const t = targetOf(id); if (t) { x += t.cx; z += t.cz; n++; } } return n ? [x / n, z / n] : null; }
 function renderGroupInfo() {
-  const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId);
+  const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId), gid = currentGroup(), grp = gid && store.groups.get(gid);
   box.dataset.pinned = 'true'; box.hidden = false;
   const kinds = {}; for (const id of ids) { const k = targetOf(id).kind; kinds[k] = (kinds[k] || 0) + 1; }
   const title = Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
   const fl = bIds.map((id) => styleFor(targetOf(id)).floors), fmin = Math.min(...fl), fmax = Math.max(...fl);
-  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, 'Selection'), el('h3', {}, title),
-      bIds.length ? el('div', { class: 'facts' }, `${fmin === fmax ? fmin : fmin + '–' + fmax} floors`) : null),
+  const floorsTxt = bIds.length ? `${fmin === fmax ? fmin : fmin + '–' + fmax} floors` : '';
+  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || 'Unnamed group' : title),
+      el('div', { class: 'facts' }, grp ? [title, floorsTxt].filter(Boolean).join(' · ') : floorsTxt || null)),
     el('button', { class: 'close', type: 'button', 'aria-label': 'Clear selection', onclick: () => clearMulti() }, '×'))];
-  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', onclick: () => focusTarget(id) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
+  if (grp && store.canEdit) {
+    const nm = el('input', { type: 'text', id: 'g-name', value: grp.name || '', placeholder: 'Name this group', autocomplete: 'off' });
+    nm.addEventListener('input', () => { const g = store.groups.get(gid); if (!g) return; saveDoc('groups', gid, { ...g, name: nm.value.trim(), updatedAt: new Date().toISOString() }, 600); const h = box.querySelector('header h3'); if (h) h.textContent = nm.value.trim() || 'Unnamed group'; });
+    nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); });
+    kids.push(el('div', { class: 'field' }, el('label', { for: 'g-name' }, 'Group name'), nm));
+  }
+  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
   if (store.canEdit) {
     if (bIds.length) {
       const setIn = el('input', { type: 'number', id: 'g-floors', min: 1, max: 40, value: fmax, 'aria-label': 'Set every building to this many floors', style: 'width:64px' });
@@ -6336,7 +6384,9 @@ function renderGroupInfo() {
     const tagIn = el('input', { type: 'text', id: 'g-tags', placeholder: 'e.g. Barrio Viejo, colonial' });
     kids.push(el('div', { class: 'field' }, el('label', { for: 'g-tags' }, 'Add tags to all'), el('div', { class: 'row' }, tagIn, el('button', { class: 'btn small', type: 'button', onclick: () => bulkTags(tagIn.value) }, 'Add'))));
     kids.push(el('hr', { class: 'sep' }), groupPromptBox(ids, bIds));
-    kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: bulkReset }, 'Reset look'), el('button', { class: 'btn small', type: 'button', onclick: () => clearMulti() }, 'Clear selection')));
+    kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: bulkReset }, 'Reset look'),
+      grp ? el('button', { class: 'btn small', type: 'button', title: '⇧⌘G', onclick: ungroupSelection }, 'Ungroup') : el('button', { class: 'btn small', type: 'button', title: '⌘G', onclick: groupSelection }, 'Group'),
+      el('button', { class: 'btn small', type: 'button', onclick: () => clearMulti() }, 'Clear selection')));
   }
   const mine = [...store.changes].filter(([, c]) => c.kind === 'group' && c.targets && c.targets.length === ids.length && ids.every((x) => c.targets.includes(x))).sort((a, b) => b[1].at.localeCompare(a[1].at));
   if (mine.length) kids.push(el('hr', { class: 'sep' }), el('h4', { class: 'eyebrow', style: 'margin:0' }, `History · ${mine.length}`), el('div', { class: 'plist' }, mine.slice(0, 3).map(([cid, c]) => changeItem(cid, c, false))));
@@ -6348,7 +6398,7 @@ function groupPromptBox(ids, bIds) {
   const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
   area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
   return el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
-    el('label', { for: 'prompt-text' }, `Change all ${ids.length.toLocaleString()}`),
+    el('label', { for: 'prompt-text' }, currentGroup() ? `Change the whole group (${ids.length.toLocaleString()})` : `Change all ${ids.length.toLocaleString()}`),
     area,
     el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }), el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, '+ Reference image'), file),
     el('div', { class: 'hint' }, 'Attach, paste or drop a photo to show what you want them to look like.'),
@@ -6361,7 +6411,7 @@ async function submitGroupPrompt(how) {
   if (!text && !attach.list.length) { x.focus(); return; }
   const files = attach.list.splice(0); x.value = ''; renderAttachments();
   const id = newPrompt(ids[0], text || 'Make them look like the attached image.', 'draft');
-  patchPrompt(id, { bIds: ids, group: true });
+  const gid = currentGroup(); patchPrompt(id, { bIds: ids, group: true, ...(gid ? { groupId: gid } : {}) });
   if (files.length) { sessionBlobs.set(id, files.map((f) => f.blob)); patchPrompt(id, { images: await storeImages(files) }); files.forEach((f) => URL.revokeObjectURL(f.url)); }
   if (how === 'now') await applyPrompt(id); else toast(`Added to your batch (${ids.length.toLocaleString()} items).`);
 }
@@ -6680,9 +6730,9 @@ function renderPromptHistory() {
   const items = [...store.prompts].filter(([, p]) => p.bId === ui.selected && p.status !== 'applied' && p.status !== 'done').sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || '')).slice(0, 4);
   list.replaceChildren(...items.map(([pid, p]) => promptItem(pid, p, false)));
 }
-function focusTarget(id) {
+function focusTarget(id, one = false) {
   const t = targetOf(id); if (!t) return;
-  select(id);
+  select(id, { one });
   const top = t.b ? t.b.top : H(t.cx, t.cz), base = t.b ? t.b.base : top;
   const span = t.b ? 0 : Math.min(Math.sqrt(KINDS[t.kind].geom === 'poly' ? t.f.size : t.f.size * 20), 900);
   if (player.mode === 'plan') { plan.cx = t.cx; plan.cz = t.cz; plan.scale = t.b ? Math.max(plan.scale, 1.2) : clamp(innerHeight / (span * 2.2 + 40), 0.05, 4); plan.invalidate(); return; }
@@ -6940,7 +6990,7 @@ function initPlanInput() {
   });
   c.addEventListener('pointerup', (e) => {
     c.classList.remove('dragging');
-    if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale)); } }
+    if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale), { one: e.altKey }); } }
     drag = null;
   });
   c.addEventListener('pointerleave', (e) => { if (e.relatedTarget !== $('edit-pill')) setHover(null); });
@@ -7539,6 +7589,7 @@ function initControls() {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
     if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.segs.length) clearSegment(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if ((e.metaKey || e.ctrlKey) && k === 'g') { e.preventDefault(); if (e.shiftKey) ungroupSelection(); else groupSelection(); return; }
     if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
@@ -7569,7 +7620,7 @@ function initControls() {
     const run = () => { lastPick = performance.now(); if (document.body.classList.contains('pegging')) return; setHover(measure.on ? null : pick3D(e.clientX, e.clientY)); };
     clearTimeout(pickTimer); if (performance.now() - lastPick > 50) run(); else pickTimer = setTimeout(run, 50);
   });
-  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else select(pick3D(e.clientX, e.clientY)); } drag = null; });
+  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else select(pick3D(e.clientX, e.clientY), { one: e.altKey }); } drag = null; });
   canvas.addEventListener('pointerleave', (e) => { clearTimeout(pickTimer); if (e.relatedTarget !== $('edit-pill')) setHover(null); });
   canvas.addEventListener('wheel', (e) => { if (player.mode === 'map') return; e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 2.5, 600); }, { passive: false });
   canvas.addEventListener('dblclick', (e) => {
@@ -8230,6 +8281,10 @@ function runSearch(q) {
     else if (addr.includes(full)) score = 65; else if (toks.every((t) => addr.includes(t))) score = 55; else if (tags.some((t) => toks.every((k) => t.includes(k)))) score = 45; else if (toks.every((t) => tags.join(' ').includes(t) || name.includes(t) || addr.includes(t))) score = 40;
     out.push({ id, kind, score, d }); seen.add(id);
   }
+  if (!SEARCH.cats.size) for (const [gid, g] of store.groups) {   // groups by name
+    const name = norm(g.name), first = groupIds(gid)[0]; if (!name || !first || !toks.every((t) => name.includes(t))) continue;
+    out.push({ id: first, kind: 'group', group: gid, score: name === norm(q) ? 125 : name.startsWith(toks.join(' ')) ? 105 : 88, d: { name: g.name, tags: [], address: `${groupIds(gid).length.toLocaleString()} things` } });
+  }
   if (/^[a-z]{1,2}[0-9a-f]{3,}$/i.test(q.trim())) for (const [id] of world.byId) { if (!seen.has(id) && id.startsWith(q.trim().toLowerCase())) { out.push({ id, kind: 'building', score: 30, d: docFor(id) }); if (out.length > 60) break; } }
   return out.sort((a, b) => b.score - a.score || (a.d.name || '').localeCompare(b.d.name || '')).slice(0, 60);
 }
@@ -8291,7 +8346,7 @@ function initSearch() {
     setOpen(true);
     if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Names, addresses and tags come from each building’s Edit details.`)); return; }
     rs.slice(0, 12).forEach((r, i) => {
-      const t = targetOf(r.id), label = t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
+      const t = targetOf(r.id), label = r.group ? 'Group' : t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
       const li = el('li', { role: 'option', id: 's-opt-' + i, 'aria-selected': String(i === SEARCH.active) });
       li.innerHTML = `<div class="t"><span>${hl(name, SEARCH.q)}</span><span class="k">${esc(label)}</span></div>${sub ? `<div class="s">${hl(sub, SEARCH.q)}</div>` : `<div class="s">${esc(r.id)}</div>`}`;
       li.addEventListener('mousedown', (e) => e.preventDefault());
@@ -8344,6 +8399,9 @@ window.amparacan = {
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
+  selectMany(ids) { setMulti(ids); return multi.size; },
+  selection() { return { ids: [...multi], selected: ui.selected, group: currentGroup() }; },
+  groups() { return Object.fromEntries(store.groups); },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
   stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.instanceCount, fall: +RAIN.fall.toFixed(1), speed: RAIN.speed } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
@@ -8390,6 +8448,7 @@ store.on((what, ids) => {
   }
   if ((what === 'buildings' || what === 'features' || what === 'changes') && sel && !ui.editing && (touched || what === 'changes')) renderInfo();
   if (what === 'prompts') renderPromptHistory();
+  if (what === 'groups' && (multi.size || ui.selected) && !ui.editing && document.activeElement?.id !== 'g-name') renderInfo();   // never while the name is being typed
   renderTray();
 });
 (async function boot() {
