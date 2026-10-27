@@ -220,6 +220,15 @@ body.tray-open #info { display: none; }
 .thumbs-sm { display: flex; gap: 4px; flex-wrap: wrap; }
 .thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
+#own-veil { position: fixed; inset: 0; z-index: 45; background: rgba(18, 50, 63, 0.28); display: grid; place-items: center; padding: 16px; }
+#own-ask { width: min(460px, 100%); max-height: min(580px, calc(100vh - 32px)); display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; background: var(--plaster-solid); }
+#own-ask h3 { margin: 0; font: 400 19px/1.2 var(--font-display); }
+#own-ask p { margin: 0; }
+#own-ask .own-list { overflow: auto; display: flex; flex-direction: column; gap: 9px; min-height: 0; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); padding: 8px 0; }
+#own-ask .own-name { font: 600 12.5px/1.3 var(--font-ui); }
+#own-ask .own-row { display: flex; gap: 7px; align-items: center; font-size: 12.5px; padding: 2px 0 2px 2px; cursor: pointer; }
+#own-ask .own-row b { font: 600 11.5px/1.2 var(--font-mono); }
+#own-ask .row { justify-content: flex-end; gap: 6px; }
 #drop-veil { position: fixed; inset: 10px; z-index: 50; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--azulejo); border-radius: 14px; background: rgba(31, 87, 168, 0.08); color: var(--azulejo); font: 600 15px/1.2 var(--font-ui); pointer-events: none; }
 #drop-veil[hidden] { display: none; }
 #info .stepper { gap: 6px; }
@@ -6301,6 +6310,31 @@ function toggleBoxTool(on = !ui.boxTool) {
   if (on) toast('Drag across the map to select an area. Shift adds to the selection.');
 }
 // ---- bulk edits over the selection
+// Before a group edit changes a style field set on one member by itself, the author decides case by case (`askOwn`):
+// conflicts [{id, f, from, to}] → a Set of "id|field" to change; everything else keeps its own setting. Esc keeps them all.
+function askOwn(conflicts, what) {
+  if (!conflicts.length) return Promise.resolve(new Set());
+  return new Promise((done) => {
+    const byId = new Map(); for (const c of conflicts) { if (!byId.has(c.id)) byId.set(c.id, []); byId.get(c.id).push(c); }
+    const word = currentGroup() ? 'member' : 'item', n = byId.size, boxes = [];
+    const fmt = (v) => (v === undefined || v === null ? 'generated look' : typeof v === 'object' ? JSON.stringify(v).slice(0, 40) : String(v));
+    const rows = [...byId].slice(0, 80).map(([id, cs]) => el('div', {}, el('div', { class: 'own-name' }, nameOf(id)),
+      cs.map((c) => { const cb = el('input', { type: 'checkbox' }); boxes.push([cb, c]); return el('label', { class: 'own-row' }, cb, el('span', {}, `${FIELD_LABEL[c.f] || c.f}: `, el('b', {}, fmt(c.from)), ' → ', el('b', {}, fmt(c.to)))); })));
+    const key = (c) => c.id + '|' + c.f;
+    const finish = (pick) => { veil.remove(); removeEventListener('keydown', onKey, true); done(pick); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); finish(new Set()); } };
+    const veil = el('div', { id: 'own-veil' }, el('div', { class: 'plaque', id: 'own-ask', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'own-h' },
+      el('h3', { id: 'own-h' }, `${n} ${word}${n === 1 ? ' has its' : 's have their'} own settings`),
+      el('p', { class: 'hint' }, `${what} would change ${n === 1 ? 'it' : 'them'}. Tick what should change; the rest keep their own setting.`),
+      el('div', { class: 'own-list' }, rows, n > 80 ? el('div', { class: 'hint' }, `+${(n - 80).toLocaleString()} more, kept unless you change all`) : null),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn small', type: 'button', onclick: () => finish(new Set()) }, 'Keep all'),
+        el('button', { class: 'btn small', type: 'button', onclick: () => finish(new Set(conflicts.map(key))) }, 'Change all'),
+        el('button', { class: 'btn primary small', type: 'button', onclick: () => finish(new Set(boxes.filter(([cb]) => cb.checked).map(([, c]) => key(c)))) }, 'Apply'))));
+    document.body.append(veil); addEventListener('keydown', onKey, true);
+    setTimeout(() => { const b = veil.querySelector('.btn.primary'); if (b) b.focus(); }, 0);
+  });
+}
 function bulkUpdate(ids, mutate) {
   const changed = [], before = {};
   for (const id of ids) {
@@ -6327,11 +6361,14 @@ function logGroupChange({ ids, before, source, prompt = '', summary, category, t
   saveDoc('changes', cid, entry, 0); store.emit('changes');
 }
 const groupFloors = { timer: 0, before: null, ids: null };
-function bulkFloors(delta, absolute) {
+async function bulkFloors(delta, absolute) {
   const ids = [...multi].filter(isBuildingId); if (!ids.length) return;
+  const nextOf = (id) => { const cur = styleFor(targetOf(id)).floors; return [cur, clamp(absolute ? absolute : cur + delta, 1, 40)]; };
+  const conflicts = ids.filter((id) => isOwn(docFor(id), 'floors') && nextOf(id)[0] !== nextOf(id)[1]).map((id) => ({ id, f: 'floors', from: nextOf(id)[0], to: nextOf(id)[1] }));
+  const ok = await askOwn(conflicts, absolute ? `Setting ${absolute} floors` : delta > 0 ? 'Adding a floor' : 'Removing a floor');
   let held = 0;
-  const r = bulkUpdate(ids, (d, id) => { if (isOwn(d, 'floors')) { held++; return false; } const t = targetOf(id), cur = styleFor(t).floors, next = clamp(absolute ? absolute : cur + delta, 1, 40); if (next === cur) return false; d.style = { ...d.style, floors: next }; markAuto(d, ['floors']); return true; });
-  if (held) toast(`Left ${held} building${held === 1 ? '' : 's'} alone: they have their own floor count.`);
+  const r = bulkUpdate(ids, (d, id) => { if (isOwn(d, 'floors') && !ok.has(id + '|floors')) { held++; return false; } const [cur, next] = nextOf(id); if (next === cur) return false; d.style = { ...d.style, floors: next }; markAuto(d, ['floors']); return true; });
+  if (held) toast(`Kept the own floor count of ${held} building${held === 1 ? '' : 's'}.`);
   if (!groupFloors.before) { groupFloors.before = r.before; groupFloors.ids = new Set(); } else for (const [k, v] of Object.entries(r.before)) if (!(k in groupFloors.before)) groupFloors.before[k] = v;
   r.changed.forEach((x) => groupFloors.ids.add(x));
   clearTimeout(groupFloors.timer);
@@ -6348,9 +6385,12 @@ function bulkTags(text) {
   logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Tagged ${r.changed.length} items “${add.join(', ')}”`, category: 'Details', tags: add, fields: ['tags'] });
   toast(`Tagged ${r.changed.length} item${r.changed.length === 1 ? '' : 's'}.`); renderInfo();
 }
-function bulkReset() {
+async function bulkReset() {
+  const ids = [...multi], conflicts = [];
+  for (const id of ids) { const d = docFor(id); for (const [f, v] of Object.entries(d.style || {})) if (isOwn(d, f)) conflicts.push({ id, f, from: v, to: undefined }); }
+  const ok = await askOwn(conflicts, 'Reset look');
   let held = 0;
-  const r = bulkUpdate([...multi], (d) => { const keep = {}; let drop = 0; for (const [f, v] of Object.entries(d.style || {})) { if (isOwn(d, f)) { keep[f] = v; held++; } else drop++; } if (!drop) return false; d.style = keep; d.auto = {}; return true; });
+  const r = bulkUpdate(ids, (d, id) => { const keep = {}; let drop = 0; for (const [f, v] of Object.entries(d.style || {})) { if (isOwn(d, f) && !ok.has(id + '|' + f)) { keep[f] = v; held++; } else drop++; } if (!drop) return false; d.style = keep; d.auto = {}; return true; });
   logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Reset ${r.changed.length} items to their generated look` + (held ? ` (kept individual settings)` : ''), category: 'Revert', fields: ['style'] });
   toast(r.changed.length ? (held ? 'Back to the generated look, apart from settings made on individual items.' : 'Back to the generated look.') : (held ? 'Only individual settings were left, so nothing changed.' : 'Nothing in the selection had been restyled.')); renderInfo();
 }
@@ -6440,19 +6480,25 @@ Reply with only JSON: {"styles": {"building": {...}, "park": {...}}, "variants":
   const r = await SAMPLE.json(input, opts);
   const styles = (r && r.styles) || {}, variants = (r && r.variants) || {};
   const hash = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h; };
-  let kept = 0;   // items where something this request would change was already set on that item itself
-  const res = bulkUpdate(ids, (d, id) => {
+  const wants = new Map(ids.map((id) => {
     const k = targetOf(id).kind, common = cleanStyleFor(k, styles[k]), vs = Array.isArray(variants[k]) ? variants[k].map((v) => cleanStyleFor(k, v)).filter((v) => Object.keys(v).length) : [];
-    const pick = vs.length ? vs[hash(id) % vs.length] : {}, want = { ...common, ...pick }, next = { ...d.style }, wrote = [];
+    return [id, { ...common, ...(vs.length ? vs[hash(id) % vs.length] : {}) }];
+  }));
+  const conflicts = [];   // fields set on one item by itself that this request would change: the author decides each
+  for (const id of ids) { const d = docFor(id); for (const [f, v] of Object.entries(wants.get(id))) if (isOwn(d, f) && JSON.stringify(d.style[f]) !== JSON.stringify(v)) conflicts.push({ id, f, from: d.style[f], to: v }); }
+  const ok = await askOwn(conflicts, 'This request');
+  let kept = 0;   // items that kept something of their own this request would have changed
+  const res = bulkUpdate(ids, (d, id) => {
+    const next = { ...d.style }, wrote = [];
     let held = false;
-    for (const [f, v] of Object.entries(want)) { if (isOwn(d, f)) { if (next[f] !== v) held = true; continue; } if (next[f] !== v) { next[f] = v; wrote.push(f); } }
+    for (const [f, v] of Object.entries(wants.get(id))) { if (isOwn(d, f) && !ok.has(id + '|' + f)) { if (next[f] !== v) held = true; continue; } if (next[f] !== v) { next[f] = v; wrote.push(f); } }
     if (held) kept++;
     if (!wrote.length) return false; d.style = next; markAuto(d, wrote); return true;
   });
   const fields = [...new Set(Object.values(styles).flatMap((o) => Object.keys(o || {})).concat(Object.values(variants).flatMap((a) => (Array.isArray(a) ? a.flatMap((o) => Object.keys(o || {})) : []))))];
-  const summary = (String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 280) + (kept ? ` (worked around the individual settings of ${kept} item${kept === 1 ? '' : 's'})` : '')), needs = String((r && r.needsCode) || '').trim();
+  const summary = (String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 280) + (kept ? ` (kept, as chosen, the individual settings of ${kept} item${kept === 1 ? '' : 's'})` : '')), needs = String((r && r.needsCode) || '').trim();
   patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
-  if (kept) toast(`Kept the individual settings of ${kept} item${kept === 1 ? '' : 's'} and changed the rest.`);
+  if (kept) toast(`Kept the own settings of ${kept} item${kept === 1 ? "" : "s"}, as you chose, and changed the rest.`);
   logGroupChange({ ids: res.changed, before: res.before, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], fields, images: p.images });
   if (needs) { const q = newPrompt(ids[0], `${p.text}\n\nStill needed: ${needs}`, 'queued'); patchPrompt(q, { bIds: ids, group: true }); if (p.images) patchPrompt(q, { images: p.images }); }
   return true;
