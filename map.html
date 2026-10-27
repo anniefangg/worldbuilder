@@ -203,8 +203,10 @@ body.tray-open #info { display: none; }
 #readouts { position: fixed; z-index: 5; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px; }   /* under the minimap */
 #readouts[hidden], #readouts .ro[hidden] { display: none; }
 #readouts .ro { display: inline-flex; align-items: center; gap: 7px; padding: 3px; border-radius: 9px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-#readouts .ro-tog { min-width: 30px; height: 20px; padding: 0 5px; border: 1px solid var(--edge); border-radius: 6px; background: rgba(251,248,240,.92); color: var(--ink); font: 600 10.5px/1 var(--font-mono); cursor: pointer; }
+#readouts .ro-tog { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; height: 20px; padding: 0 6px 0 5px; border: 1px solid var(--edge); border-radius: 6px; background: rgba(251,248,240,.92); color: var(--ink); font: 600 10.5px/1 var(--font-mono); cursor: pointer; }
 #readouts .ro-tog:hover { background: #fff; }
+#readouts .ro-tog svg { width: 10px; height: 10px; flex: none; }
+#readouts .ro-tog[aria-pressed="true"] svg circle { fill: var(--azulejo); }
 #readouts .ro-tog[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
 #readouts .ro-val { padding-right: 6px; white-space: pre; }
 #readouts .ro-val[hidden] { display: none; }
@@ -357,7 +359,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
 <div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
-<div id="readouts" hidden><div id="alt-box" class="ro plaque" hidden><button type="button" id="mm-alt" class="ro-tog" aria-pressed="true" aria-label="Altitude" title="Altitude (Shift G)">alt</button><b id="alt-val" class="ro-val"></b></div><div id="coord-box" class="ro plaque"><button type="button" id="mm-xy" class="ro-tog" aria-pressed="false" aria-label="Coordinates" title="Coordinates (G)">xy</button><button type="button" id="coord-val" class="ro-val" hidden title="Your position in map metres. Click to copy."></button></div></div>
+<div id="readouts" hidden><div id="alt-box" class="ro plaque" hidden><button type="button" id="mm-alt" class="ro-tog" aria-pressed="true" aria-label="Altitude" title="Altitude (Shift G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8.6V1.6M2 4.4 5 1.4l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Alt.</button><b id="alt-val" class="ro-val"></b></div><div id="coord-box" class="ro plaque"><button type="button" id="mm-xy" class="ro-tog" aria-pressed="false" aria-label="Coordinates" title="Coordinates (G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9.4C3.2 7.2 2 5.6 2 4.1a3 3 0 0 1 6 0c0 1.5-1.2 3.1-3 5.3z" fill="currentColor"/><circle cx="5" cy="4.1" r="1.1" fill="var(--plaster, #fbf8f0)"/></svg>x, y</button><button type="button" id="coord-val" class="ro-val" hidden title="Your position in map metres. Click to copy."></button></div></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
