@@ -200,8 +200,17 @@ body.tray-open #info { display: none; }
 #minimap .mm-scale { position: absolute; right: 8px; top: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar { position: absolute; right: 8px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 3px 5px 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar i { display: block; height: 5px; border: 1.6px solid var(--ink); border-top: 0; margin-bottom: 3px; }
-#alt-box { position: fixed; z-index: 5; padding: 6px 10px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; border-radius: 10px; pointer-events: none; }
-#alt-box span { font: 500 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-right: 6px; }
+#readouts { position: fixed; z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }   /* under the minimap */
+#readouts[hidden], #readouts .ro[hidden] { display: none; }
+#readouts .ro { display: inline-flex; align-items: center; gap: 7px; padding: 3px; border-radius: 9px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+#readouts .ro-tog { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; height: 20px; padding: 0 7px 0 6px; border: 1px solid var(--edge); border-radius: 6px; background: rgba(251,248,240,.92); color: var(--ink); font: 600 10.5px/1 var(--font-mono); cursor: pointer; }
+#readouts .ro-tog:hover { background: #fff; }
+#readouts .ro-tog svg { width: 10px; height: 10px; flex: none; }
+#readouts .ro-tog[aria-pressed="true"] svg circle { fill: var(--azulejo); }
+#readouts .ro-tog[aria-pressed="true"] { background: var(--azulejo); color: var(--azulejo-ink); border-color: transparent; }
+#readouts .ro-val { padding-right: 6px; white-space: pre; }
+#readouts .ro-val[hidden] { display: none; }
+#coord-val { border: 0; background: none; color: var(--ink); font: inherit; cursor: copy; padding: 0 6px 0 0; }
 #preview-banner { margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff1c9; color: #6b4a10; font-size: 11.5px; line-height: 1.35; max-width: 220px; }
 #preview-banner a { color: var(--azulejo); font-weight: 600; }
 #info .attach-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -211,6 +220,15 @@ body.tray-open #info { display: none; }
 .thumbs-sm { display: flex; gap: 4px; flex-wrap: wrap; }
 .thumbs-sm img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--edge); }
 #prompt-box.dragover { outline: 2px dashed var(--azulejo); outline-offset: 4px; border-radius: 8px; }
+#own-veil { position: fixed; inset: 0; z-index: 45; background: rgba(18, 50, 63, 0.28); display: grid; place-items: center; padding: 16px; }
+#own-ask { width: min(460px, 100%); max-height: min(580px, calc(100vh - 32px)); display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; background: var(--plaster-solid); }
+#own-ask h3 { margin: 0; font: 400 19px/1.2 var(--font-display); }
+#own-ask p { margin: 0; }
+#own-ask .own-list { overflow: auto; display: flex; flex-direction: column; gap: 9px; min-height: 0; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); padding: 8px 0; }
+#own-ask .own-name { font: 600 12.5px/1.3 var(--font-ui); }
+#own-ask .own-row { display: flex; gap: 7px; align-items: center; font-size: 12.5px; padding: 2px 0 2px 2px; cursor: pointer; }
+#own-ask .own-row b { font: 600 11.5px/1.2 var(--font-mono); }
+#own-ask .row { justify-content: flex-end; gap: 6px; }
 #drop-veil { position: fixed; inset: 10px; z-index: 50; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--azulejo); border-radius: 14px; background: rgba(31, 87, 168, 0.08); color: var(--azulejo); font: 600 15px/1.2 var(--font-ui); pointer-events: none; }
 #drop-veil[hidden] { display: none; }
 #info .stepper { gap: 6px; }
@@ -350,7 +368,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
 <div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
-<div id="alt-box" class="plaque" hidden><span>Altitude</span><b id="alt-val"></b></div>
+<div id="readouts" hidden><div id="coord-box" class="ro plaque"><button type="button" id="mm-xy" class="ro-tog" aria-pressed="false" aria-label="Coordinates" title="Coordinates (G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9.4C3.2 7.2 2 5.6 2 4.1a3 3 0 0 1 6 0c0 1.5-1.2 3.1-3 5.3z" fill="currentColor"/><circle cx="5" cy="4.1" r="1.1" fill="var(--plaster, #fbf8f0)"/></svg>x, z</button><button type="button" id="coord-val" class="ro-val" hidden title="Your position in map metres. Click to copy."></button></div><div id="alt-box" class="ro plaque" hidden><button type="button" id="mm-alt" class="ro-tog" aria-pressed="true" aria-label="Altitude" title="Altitude (Shift G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8.6V1.6M2 4.4 5 1.4l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Alt.</button><b id="alt-val" class="ro-val"></b></div></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -369,6 +387,9 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>Q</dt><dd>Descend when flying</dd>
     <dt>F</dt><dd>Take off / land</dd>
     <dt>T</dt><dd>Time of day: dawn, day, dusk, night</dd>
+    <dt>G</dt><dd>Show or hide your coordinates (walk and fly); click them to copy</dd>
+    <dt>⇧ G</dt><dd>Show or hide the altitude while flying</dd>
+    <dt>⌘ G</dt><dd>Group the selected things (⇧⌘G ungroups); ⌥-click picks one member alone</dd>
     <dt>R</dt><dd>Weather: sunny, cloudy, rain, storm, misty, fog</dd>
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
@@ -737,7 +758,7 @@ function applyWeather() {
   if (!t || !u) return;
   sun.intensity = t.sunI * w.sunK; hemi.intensity = wx.baseHemi = t.hemiI * w.hemiK;
   bounce.color.set(t.bounce[0]); bounce.intensity = t.bounce[1] * (0.45 + 0.55 * w.hemiK) * (0.6 + 0.4 * w.sunK);
-  const grey = new THREE.Color(t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');
+  const grey = new THREE.Color(wx.name === 'rain' ? (t.night > 0.6 ? '#1d2238' : t.night > 0.2 ? '#77738f' : '#a9afc7') : t.night > 0.6 ? '#1b2334' : t.night > 0.2 ? '#6f7680' : '#a3abb2');   // gentle rain reads blue-lavender and dreamy, a storm stays slate grey
   scene.fog.color.set(t.fog).lerp(grey, w.overcast * 0.8);
   wx.fogBase = scene.fog.color.clone();   // the frame loop restores this before any cloud white-out
   u.uOvercast.value = w.overcast; u.uOver.value.copy(scene.fog.color); u.uCover.value = { sunny: 0.64, cloudy: 0.78, rain: 0.92, storm: 1, misty: 0.6, fog: 0.55 }[wx.name];
@@ -755,26 +776,71 @@ function applyWeather() {
     world.clouds.children.forEach((c, i) => { c.visible = i < w.clouds + (Q.t.sky ? 0 : 14); });
   }
   if (world.water) { world.water.uniforms.uDark.value = t.waterDark * (1 - 0.3 * w.overcast); world.water.uniforms.uRough.value = w.rough; world.water.uniforms.uRain.value = clamp(w.rain / 1.8, 0, 1); }
-  if (world.rain) { world.rain.visible = w.rain > 0; world.rain.geometry.setDrawRange(0, Math.round(world.rainN * Math.min(1, w.rain / 1.8)) * 2); }
+  if (world.rain) {
+    world.rain.visible = w.rain > 0; world.rain.geometry.instanceCount = Math.round(RAIN.N * Math.min(1, w.rain / 1.8) * (w.storm ? 1 : 1.6));
+    const ru = world.rain.material.uniforms;   // gentle rain: slow, soft drops tinted by the sky; a storm falls faster, longer and brighter
+    ru.uColor.value.copy(scene.fog.color).lerp(new THREE.Color(t.night > 0.6 ? '#aab6d6' : '#f2f5fb'), t.night > 0.6 ? 0.55 : 0.6);
+    ru.uOpacity.value = w.storm ? 0.62 : 0.5; ru.uLen.value = w.storm ? 1.7 : 1.15; RAIN.speed = w.storm ? 17 : 10.5;
+  }
   const b = $('wx'), next = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length];
   const label = wx.name === 'sunny' && t.night > 0.6 ? 'Clear' : w.label;
   if (b) { b.innerHTML = ICONS[wx.name === 'sunny' && t.night > 0.6 ? 'clear' : wx.name]; b.setAttribute('aria-label', `Weather: ${label}. Switch to ${WEATHER[next].label}`); b.title = `Weather: ${label}. Click (or R) for ${WEATHER[next].label.toLowerCase()}.`; }
 }
 function setWeather(name) { wx.name = WEATHER[name] ? name : 'sunny'; wx.nextFlash = 0; applyWeather(); }
 function toggleWeather() { AUTO.wx = false; const n = WEATHER_ORDER[(WEATHER_ORDER.indexOf(wx.name) + 1) % WEATHER_ORDER.length]; setWeather(n); try { localStorage.setItem('amparacan-map-weather', n); } catch (e) {} }
-// Rain: streaks recycled in a box that travels with the camera
+// Rain: soft, slow, slanting streaks drawn on the GPU. Each drop is a thin billboard that tapers to a faint tail, takes its colour
+// from the sky, fades out close to the eye and into the distance, and now and then catches the light. The drops live in a 100 m box
+// that wraps round the camera; RAIN.fall (metres fallen so far) and the wind slant are uniforms, so nothing is updated per drop on the CPU.
+const RAIN = { N: 12000, fall: 0, speed: 0 };
 function addRain() {
-  const N = world.rainN = 12000, pos = new Float32Array(N * 6), rnd = mulberry(99);
-  world.rainDrops = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) { world.rainDrops[i * 3] = (rnd() - 0.5) * 100; world.rainDrops[i * 3 + 1] = rnd() * 60; world.rainDrops[i * 3 + 2] = (rnd() - 0.5) * 100; }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#e4ecf5', transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+  const N = RAIN.N, rnd = mulberry(99), seed = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) seed.set([(rnd() - 0.5) * 100, rnd() * 60, (rnd() - 0.5) * 100, rnd()], i * 4);
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0]), 3));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
+  g.instanceCount = N;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,   // the billboard's side vector mirrors its winding, so both faces must draw
+    uniforms: { uCam: { value: new THREE.Vector3() }, uGround: { value: 0 }, uFall: { value: 0 }, uSlant: { value: new THREE.Vector2(0.12, 0.04) },
+      uColor: { value: new THREE.Color('#dfe6f2') }, uOpacity: { value: 0.3 }, uLen: { value: 1.2 }, uTime: { value: 0 } },
+    vertexShader: `
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute vec4 aSeed; uniform vec3 uCam; uniform float uGround, uFall, uLen, uTime; uniform vec2 uSlant;
+      varying float vAlong, vAcross, vFade, vGlint;
+      void main() {
+        float B = 100.0, y = mod(aSeed.y - uFall * (0.85 + 0.3 * aSeed.w), 60.0);
+        vec3 base = vec3(uCam.x + mod(aSeed.x - uCam.x + B * 0.5, B) - B * 0.5, uGround - 6.0 + y + max(0.0, uCam.y - uGround - 25.0), uCam.z + mod(aSeed.z - uCam.z + B * 0.5, B) - B * 0.5);
+        vec3 dir = normalize(vec3(uSlant.x, 1.0, uSlant.y));                  // a drop's streak points back up along its slanting path
+        float len = uLen * (0.65 + 0.7 * fract(aSeed.w * 7.13));
+        vec3 view = base - cameraPosition, side = normalize(cross(dir, view));
+        float d = length(view);
+        vec3 p = base + dir * len * position.y + side * position.x * (0.026 + d * 0.0012);   // a touch wider far off so distant rain stays a soft veil, not aliased hairs
+        vAlong = position.y; vAcross = position.x * 2.0;
+        vFade = smoothstep(1.2, 4.0, d) * (1.0 - smoothstep(18.0, 48.0, d));
+        vGlint = pow(max(0.0, sin(uTime * (1.3 + aSeed.w) + aSeed.w * 40.0)), 24.0);   // now and then a drop catches the light
+        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uColor; uniform float uOpacity; varying float vAlong, vAcross, vFade, vGlint;
+      void main() {
+        #include <logdepthbuf_fragment>
+        float a = (1.0 - abs(vAcross)) * smoothstep(0.0, 0.25, vAlong) * pow(1.0 - vAlong, 1.6);   // soft across, a bright head (bottom) easing to a faint tail
+        gl_FragColor = vec4(uColor * (1.0 + vGlint * 0.9), a * vFade * uOpacity * (1.0 + vGlint * 1.5));
+      }`,
+  });
+  const m = new THREE.Mesh(g, mat);
   m.frustumCulled = false; m.renderOrder = 13; m.visible = false; scene.add(m); world.rain = m;
 }
 // Mist banks: soft puffs that drift with the wind around the camera and swell and thin as they go
 function addMist() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), rn = mulberry(31);
   for (let k = 0; k < 14; k++) { const px = 64 + (rn() - 0.5) * 56, py = 64 + (rn() - 0.5) * 40, r = 22 + rn() * 26, g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); }
+  { const m = x.createRadialGradient(64, 64, 20, 64, 64, 63); m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)'); x.globalCompositeOperation = 'destination-in'; x.fillStyle = m; x.fillRect(0, 0, 128, 128); x.globalCompositeOperation = 'source-over'; }   // fade every puff out before the square's edge (they used to be cut off in a hard line)
   const tex = new THREE.CanvasTexture(c), N = world.mistN = 90, rnd = mulberry(77); world.mist = [];
   for (let i = 0; i < N; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 }));
@@ -810,7 +876,7 @@ function stepPetals(dt, t) {
   m.geometry.attributes.position.needsUpdate = true;
 }
 function stepMist(dt, t) {
-  const w = WEATHER[wx.name], amt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : 0, c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
+  const w = WEATHER[wx.name], amt = wx.name === 'fog' ? 1 : wx.name === 'misty' ? 0.5 : wx.name === 'storm' ? 0.4 : wx.name === 'rain' ? 0.32 : 0, c = camera.position, B = 700, gy = Math.max(0, H(c.x, c.z));
   const alt = c.y - gy, vis = amt > 0 && alt < 500, fade = clamp(1 - (alt - 250) / 250, 0, 1);
   const col = scene.fog.color;
   for (let i = 0; i < world.mist.length; i++) {
@@ -829,17 +895,12 @@ function stepWeather(dt, t) {
   if (world.mist) stepMist(dt, t);
   if (world.petalMesh) stepPetals(dt, t);
   if (world.rain && w.rain > 0) {
-    const r = world.rain, P = r.geometry.attributes.position.array, D = world.rainDrops, c = camera.position, fall = 30 * dt * (w.storm ? 1.25 : 1), n = world.rainN;
-    r.visible = c.y - H(c.x, c.z) < 450;                          // from high above, rain is just haze
-    const B = 100, ox = Math.floor(c.x / B) * B, oz = Math.floor(c.z / B) * B, gy = H(c.x, c.z);
-    for (let i = 0; i < n; i++) {
-      let y = D[i * 3 + 1] - fall; if (y < 0) y += 60; D[i * 3 + 1] = y;
-      let x = ox + D[i * 3]; if (x < c.x - B / 2) x += B; else if (x > c.x + B / 2) x -= B;
-      let z = oz + D[i * 3 + 2]; if (z < c.z - B / 2) z += B; else if (z > c.z + B / 2) z -= B;
-      const yy = gy - 6 + y + Math.max(0, c.y - gy - 25);
-      const k = i * 6; P[k] = x; P[k + 1] = yy; P[k + 2] = z; P[k + 3] = x + 0.35; P[k + 4] = yy + 1.9; P[k + 5] = z + 0.12;
-    }
-    r.geometry.attributes.position.needsUpdate = true;
+    const r = world.rain, c = camera.position, gy = H(c.x, c.z), ru = r.material.uniforms;
+    r.visible = c.y - gy < 450;                                   // from high above, rain is just haze
+    RAIN.fall += RAIN.speed * dt; if (RAIN.fall > 2e5) RAIN.fall = 0;   // never wrapped sooner: drops fall at slightly different speeds, so a wrap makes them jump
+    const wk = WINDK.value, sway = 0.12 + 0.05 * Math.sin(t * 0.21);   // the slant leans with the wind and sways slowly
+    ru.uCam.value.copy(c); ru.uGround.value = gy; ru.uFall.value = RAIN.fall; ru.uTime.value = t;
+    ru.uSlant.value.set(sway * Math.min(2.2, wk), 0.05 * Math.min(2.2, wk));
   }
   const u = camera.userData.sky.material.uniforms;
   if (w.storm) {                                                  // lightning: a bright double flash every few seconds
@@ -954,7 +1015,7 @@ function crtInit() {
     for (let i = 0; i < k.n; i++) k.list.push({ x: (rnd() - 0.5) * 60, z: (rnd() - 0.5) * 60, y: 1.5, yaw: 0, s: 1 }); }
   // -- cats: on window sills and parapets of ~10% of buildings
   { const k = critterKind('cat', { n: 3400, build: K.cat, rate: 1.3, tail: 0.5, alt: 260, shadow: true }), cols = ['#1d1b1b', '#d9842f', '#8a8a8a', '#f2efe6', '#6b4a2e', '#c9b9a2'];
-    let i = 0; for (const rec of world.buildings) { if (i >= k.n || ((rec.seed >>> 11) % 100) >= 10) continue; const fs = facadesOf(rec); if (!fs.length) continue; const f = fs[(rec.seed >>> 3) % fs.length], s = rec.style || styleOf(rec), nb = Math.max(1, Math.floor(f.L / 3.4)), bay = (rec.seed >>> 5) % nb, u = (bay + 0.5) * f.L / nb; const up = rec.top != null && (rec.seed >>> 7) % 3 === 0;
+    let i = 0; for (const rec of world.buildings) { if (rec.removed || i >= k.n || ((rec.seed >>> 11) % 100) >= 10) continue; const fs = facadesOf(rec); if (!fs.length) continue; const f = fs[(rec.seed >>> 3) % fs.length], s = rec.style || styleOf(rec), nb = Math.max(1, Math.floor(f.L / 3.4)), bay = (rec.seed >>> 5) % nb, u = (bay + 0.5) * f.L / nb; const up = rec.top != null && (rec.seed >>> 7) % 3 === 0;
       const fl = 1 + ((rec.seed >>> 9) % Math.max(1, Math.min(s.floors - 1, 3))), y = up ? (rec.top || rec.base + 4 + (s.floors - 1) * 3.3) + 0.9 : rec.base + 4 + (fl - 1) * 3.3 + 0.26 * 3.3 - 0.08, out = up ? -0.2 : 0.17;
       critterPlace(k, i, f.ax + (f.bx - f.ax) / f.L * u + f.nx * out, y, f.az + (f.bz - f.az) / f.L * u + f.nz * out, Math.atan2(f.nx, f.nz) + ((rec.seed >>> 13) % 2 ? 0.5 : -0.5), 0.9 + ((rec.seed >>> 15) % 20) / 100); k.mesh.setColorAt(i, CRT.col.set(cols[(rec.seed >>> 17) % cols.length])); i++; }
     k.mesh.count = i; k.n = i; }
@@ -1237,9 +1298,9 @@ function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) {
 
 // Procedural ground textures (colour map + bump map, multiplied by vertex colour)
 function groundTexture(kind) {
-  const N = kind === 'grass' ? 256 : 512, RES = kind === 'setts' || kind === 'flags' ? 2 : 1;   // stone paving is drawn at double resolution for crisp close-ups
+  const N = kind === 'grass' ? 256 : 512, RES = kind === 'setts' || kind === 'flags' || kind === 'gwaves' ? 2 : 1;   // stone paving is drawn at double resolution for crisp close-ups
   const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N * RES; const g = c.getContext('2d'); g.scale(RES, RES); return [c, g]; };
-  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23 }[kind]);
+  const [c, g] = mk(), [bc, bg] = mk(), rnd = mulberry({ setts: 7, flags: 13, slabs: 17, grass: 11, sand: 19, waves: 23, gwaves: 29 }[kind]);
   const stone = (x, y, w, h, r, fill) => {
     g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
     const gr = bg.createRadialGradient(x + w / 2, y + h / 2, 1, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
@@ -1284,11 +1345,29 @@ function groundTexture(kind) {
       bd.data[i] = bd.data[i + 1] = bd.data[i + 2] = stone ? 200 : 90; bd.data[i + 3] = 255;
     }
     g.putImageData(id, 0, 0); bg.putImageData(bd, 0, 0);
+  } else if (kind === 'gwaves') {   // a plaza's grey calçada: small square setts, light and mid grey in broad wave bands (one tile = 12 m, see GW_SCALE: two bands, one wave)
+    const M = N * RES, C = 8, id = g.createImageData(M, M), bd = bg.createImageData(M, M), rows = M / C;
+    const hash = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+    const rowOff = Array.from({ length: rows }, () => Math.floor(rnd() * C));
+    const dark = (x, y) => { const ph = ((x + M * 0.14 * Math.sin(y / M * Math.PI * 2)) / (M / 2)) % 1; return (ph + 1) % 1 < 0.42; };   // the waves run down the tile
+    for (let y = 0; y < M; y++) {
+      const row = Math.floor(y / C), ly = y % C, off = rowOff[row];
+      for (let x = 0; x < M; x++) {
+        const xs = (x + off) % M, col = Math.floor(xs / C), lx = xs % C, i = (y * M + x) * 4;
+        const h1 = hash(col, row), h2 = hash(row + 9.1, col + 3.7), inA = 0.5 + h1, inB = 0.5 + h2;   // each stone a little irregular
+        const stone = lx >= inA && lx < C - inB && ly >= inB * 0.8 && ly < C - inA * 0.8 && !((lx < inA + 0.8 || lx > C - inB - 1.3) && (ly < inB + 0.8 || ly > C - inA - 1.3) && h1 > 0.5);
+        const cx = (col * C - off + C / 2 + M) % M, d = dark(cx, row * C + C / 2), j = (h1 - 0.5) * 22 + (hash(x * 0.37, y * 0.41) - 0.5) * 6;
+        const v = stone ? (d ? 132 : 190) + j * 0.8 : (d ? 96 : 138);
+        id.data[i] = v - 2; id.data[i + 1] = v; id.data[i + 2] = v + 3; id.data[i + 3] = 255;
+        bd.data[i] = bd.data[i + 1] = bd.data[i + 2] = stone ? 205 - Math.abs(lx - C / 2) * 6 : 80; bd.data[i + 3] = 255;
+      }
+    }
+    g.putImageData(id, 0, 0); bg.putImageData(bd, 0, 0);
   } else {                          // grass speckle
     g.fillStyle = '#fff'; g.fillRect(0, 0, N, N); bg.fillStyle = '#888'; bg.fillRect(0, 0, N, N);
     for (let k = 0; k < 2600; k++) { const v = 190 + rnd() * 65 | 0; g.fillStyle = `rgb(${v - 10},${v},${v - 20})`; g.fillRect(rnd() * N, rnd() * N, 2, 3); }
   }
-  if (kind === 'setts' || kind === 'flags' || kind === 'slabs') {   // age: stains, scuffs, hairline cracks and moss in the joints, all wrapping seamlessly
+  if (kind === 'setts' || kind === 'flags' || kind === 'slabs' || kind === 'gwaves') {   // age: stains, scuffs, hairline cracks and moss in the joints, all wrapping seamlessly
     const each = (fn) => { for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) { g.save(); g.translate(dx, dy); fn(); g.restore(); } };
     for (let k = 0; k < 46; k++) { const x = rnd() * N, y = rnd() * N, r = 12 + rnd() * 40, dark = rnd() < 0.7; each(() => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, dark ? 'rgba(40,36,34,0.13)' : 'rgba(255,248,230,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }); }
     g.lineCap = 'round';
@@ -1487,8 +1566,15 @@ async function buildWorld() {
     const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
     const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
     const tmp = new THREE.Color();
+    // ponds set in a park or paving: the 16 m ground mesh is too coarse to dip below the water inside a small pond, so only its middle showed
+    // as water and the rest as a sandy rim. Every ground vertex within POND_SINK of such a pond (all hidden under the lawn or paving, which
+    // is drawn at the true height) drops below the water, so the water fills the pond's whole outline; buildPondBanks adds the bank.
+    const POND_SINK = 24, ponds = water.filter((p) => { const r = p[0]; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= r.length / 2; cz /= r.length / 2; return [...parks, ...pave].some((q) => pointInRings(cx, cz, q)); })
+      .map((p) => { const r = p[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < r.length; i += 2) { a = Math.min(a, r[i]); c = Math.max(c, r[i]); b = Math.min(b, r[i + 1]); d = Math.max(d, r[i + 1]); } return { p, edge: [...r, r[0], r[1]], bb: [a - POND_SINK, b - POND_SINK, c + POND_SINK, d + POND_SINK] }; });
+    world.ponds = ponds;
+    const sunk = (x, z) => ponds.some((q) => x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && (pointInRings(x, z, q.p) || distToLine(q.edge, x, z) < POND_SINK));
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h = H(x, z);
+      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h = sunk(x, z) ? Math.min(H(x, z), -1.6) : H(x, z);
       pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z; uv[k * 2] = x / 7; uv[k * 2 + 1] = z / 7;
       const n1 = vnoise(x / 260, z / 260), n2 = vnoise(x / 55, z / 55);
       tmp.copy(grassA).lerp(grassB, clamp(n1 * 0.75 + n2 * 0.35 - 0.1, 0, 1));
@@ -1516,10 +1602,11 @@ async function buildWorld() {
 
   // ---- ground: plazas, parks, streets and paths, each feature styled on its own
   await progress('Paving streets and plazas', 36);
-  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves') };
+  world.tex = { setts: groundTexture('setts'), flags: groundTexture('flags'), slabs: groundTexture('slabs'), grass: groundTexture('grass'), sand: groundTexture('sand'), waves: groundTexture('waves'), gwaves: groundTexture('gwaves') };
   buildCanalWalls(canals);
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
+  buildPondBanks();
   overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083' })), 4), world.tex.setts, 3);
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
@@ -1609,6 +1696,7 @@ function styleOf(rec) {
   if (AWNINGS.includes(o.awning)) s.awning = o.awning;
   if (HEX.test(o.awningColor || '')) s.awningColor = o.awningColor.toLowerCase();
   if (o.porch === true) s.porch = true;
+  if (o.removed === true) s.removed = true;   // taken away: not drawn, blocks nothing (the ground beneath shows)
   const sg = cleanSign(o.sign); if (sg) s.sign = sg;
   return s;
 }
@@ -2064,7 +2152,10 @@ function insetFootprint(r, d, area) {
   return cover > pa * 0.97 ? pts : null;   // a triangulation that misses part of the shape means the inset folded over itself
 }
 function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes (separate, distance-culled meshes)
-  const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0], RR = roundedRings(rec);
+  const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0];
+  if (!!rec.removed !== !!s.removed) { if (rec.removed !== undefined || s.removed) (world.removedChanged || (world.removedChanged = new Set())).add(rec); rec.removed = !!s.removed; }
+  if (s.removed) { rec.top = base; rec.style = s; return; }
+  const RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
@@ -2370,7 +2461,7 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
         // the whole canopy must clear the buildings, and no two trunks crowd each other at the corners
         if ([[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].some(([a, b]) => buildingAt(x + ux * a * P.len / 2 + inx * b * P.depth / 2, z + uz * a * P.len / 2 + inz * b * P.depth / 2) >= 0)) break;
         const side = Math.abs(inz) > Math.abs(inx) ? (inz > 0 ? 'n' : 's') : (inx < 0 ? 'e' : 'w');   // which side of the plaza: the edge's outward normal, north = -z
-        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(-uz, ux), side });   // a turns the canopy's x (len) along the edge
+        if (!out.some((o) => Math.hypot(o.x - x, o.z - z) < P.gap * 0.8)) out.push({ x, z, a: Math.atan2(-uz, ux), side, inx, inz });   // a turns the canopy's x (len) along the edge
         break;
       }
     }
@@ -2378,7 +2469,22 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
   }
   return (f.pleach = out);
 }
-const pleachedFor = (f, s) => pleachedSpots(f).filter((p) => s.treeSides.includes(p.side));
+function pleachedInner(f) {   // pleachRows 2: a second row of canopies just inside the first, each behind its outer twin (cached per plaza)
+  if (f.pleach2) return f.pleach2;
+  const P = PLEACH, outer = pleachedSpots(f), out = [], D = P.depth + 3, r = softRings(f)[0], ring = [...r, r[0], r[1]];
+  for (const o of outer) {
+    const x = o.x + o.inx * D, z = o.z + o.inz * D, ux = o.inz, uz = -o.inx;   // (ux, uz) along the edge
+    const pts = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [x + ux * a * P.len / 2 + o.inx * b * P.depth / 2, z + uz * a * P.len / 2 + o.inz * b * P.depth / 2]);
+    if (!pointInRings(x, z, f.rings) || distToLine(ring, x, z) < P.inset + D - 1 || H(x, z) < 0.6) continue;
+    if (pts.some(([px, pz]) => buildingAt(px, pz) >= 0 || roadAt(px, pz, 0.3, false))) continue;
+    // at the corners the two inner rows converge: keep clear of every outer canopy and of inner ones turned the other way
+    if (outer.some((q) => Math.hypot(q.x - x, q.z - z) < P.depth * 0.95)) continue;
+    if (out.some((q) => Math.hypot(q.x - x, q.z - z) < (Math.abs(Math.sin(q.a - o.a)) > 0.3 ? P.depth * 0.95 : P.gap * 0.8))) continue;
+    out.push({ x, z, a: o.a, side: o.side, inx: o.inx, inz: o.inz });
+  }
+  return (f.pleach2 = out);
+}
+const pleachedFor = (f, s) => (s.pleachRows === 2 ? [...pleachedSpots(f), ...pleachedInner(f)] : pleachedSpots(f)).filter((p) => s.treeSides.includes(p.side));
 function flagpoleSpot(f) { return f.size > 600 && pointInRings(f.cx, f.cz, f.rings) && buildingAt(f.cx, f.cz) < 0 ? { x: f.cx, z: f.cz } : null; }
 function pleachedGeometries() {   // a rounded, clipped box of foliage (displaced, so the clipping reads a little soft) and a short trunk splitting into limbs
   if (world.pleachGeo) return world.pleachGeo;
@@ -2435,6 +2541,412 @@ function flagTexture() {   // Amparacán's flag, the author's design: blue, whit
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return (world.flagTex = t);
 }
+// ---- the kiosk (plaza style kiosk: true), after the author's reference photo of a zócalo bandstand at night: an octagonal stone podium
+// with two flights of steps (opposite sides, handrails), a wrought-iron railing, eight slender columns under a tiered roof, and warm string lights wound round the columns,
+// along the railing and the roof's ribs and rim, fanning out from the crown to iron masts round the plaza. kioskFlag: a small flag at the crown.
+// It takes the centre, so with a kiosk the flagpole is left out and the fountain moves toward one end. kioskLights: how many strands fan out (default 28).
+const KIOSK_STONE = '#c9a47a', KIOSK_ROOF = '#efe5cf';   // the kiosk's own colours unless kioskStone / kioskRoof say otherwise
+const KIOSK = { R: 6, podH: 1.7, colH: 4.1, steps: 10, tread: 0.32, stairW: 3.2, reach: 26, strands: 28, mastH: 4.8 };
+function kioskLayout(f, s) {   // where it stands, the stair sides (edge k toward the most open ground, and the edge opposite) and the masts the light strands run to (cached per plaza)
+  const nStr = s.kioskLights ?? KIOSK.strands, key = [nStr, s.trees, s.pleachRows, s.treeSides].join();
+  if (f.kioskL !== undefined && f.kioskKey === key) return f.kioskL;
+  f.kioskKey = key;
+  const K = KIOSK, pl = s.trees === 'pleached' ? pleachedFor(f, s) : [];
+  const ok = (x, z, m) => pointInRings(x, z, f.rings) && buildingAt(x, z) < 0 && H(x, z) > 0.6 && !roadAt(x, z, m, false);
+  const clearAt = (x, z) => [0, 1, 2, 3, 4, 5, 6, 7].every((k) => { const px = x + Math.sin(k * Math.PI / 4) * 9.5, pz = z + Math.cos(k * Math.PI / 4) * 9.5; return ok(px, pz, 0.3) && ok((x + px) / 2, (z + pz) / 2, 0.3); })
+    && !pl.some((q) => Math.hypot(q.x - x, q.z - z) < 9.5 + 5.3);   // clear of the pleached canopies too
+  let p = flagpoleSpot(f);
+  if (f.size < 1400) return (f.kioskL = null);
+  if (!p || !clearAt(p.x, p.z)) {   // the centre is taken (a building, a street, the trees): the open spot nearest it, on a 3 m grid
+    p = null; let bd = Infinity;
+    for (let x = f.bbox[0] + 9.5; x <= f.bbox[2] - 9.5; x += 3) for (let z = f.bbox[1] + 9.5; z <= f.bbox[3] - 9.5; z += 3) {
+      const d = Math.hypot(x - f.cx, z - f.cz); if (d < bd && clearAt(x, z)) { bd = d; p = { x, z }; }
+    }
+    if (!p) return (f.kioskL = null);
+  }
+  const ring = [...f.rings[0], f.rings[0][0], f.rings[0][1]];
+  let stairK = 0, best = -1;
+  for (let k = 0; k < 8; k++) { const a = (k + 0.5) * Math.PI / 4, d = distToLine(ring, p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12); if (ok(p.x + Math.sin(a) * 12, p.z + Math.cos(a) * 12, 0.3) && d > best) { best = d; stairK = k; } }
+  const masts = [];
+  for (let j = 0; j < nStr; j++) {
+    const a = (j + 0.5) * Math.PI * 2 / nStr, sx = Math.sin(a), sz = Math.cos(a);
+    for (let r = K.reach; r >= 11; r -= 1) {
+      const x = p.x + sx * r, z = p.z + sz * r;
+      if (ok(x, z, 0.5) && distToLine(ring, x, z) > 1.6 && buildingAt(x + sx * 1.5, z + sz * 1.5) < 0) { masts.push({ x, z, a, j }); break; }
+    }
+  }
+  return (f.kioskL = { x: p.x, z: p.z, stairK, stairs: [stairK, (stairK + 4) % 8], masts, n: nStr });
+}
+// ---- groves (plaza style groves: n): a few outcrops of tall broadleaf trees (mahogany, copal, chicozapote, magnolia) out on the paving,
+// clear of the kiosk and its stairs, the pleached rows and the edges; with a kiosk, its light strands run into their crowns instead of to masts.
+const GROVE = { sp: ['mahogany', 'copal', 'chico', 'magnolia'], rMin: 28, rMax: 46, spread: 12, gap: 8 };
+function plazaGroves(f, s, kio) {   // [{ x, z, sp, s (scale), rot, hue, grove }] (cached per plaza and settings)
+  const key = [s.groves, s.trees, s.pleachRows, s.treeSides, kio ? kio.stairK : -1].join();
+  if (f.grovesL && f.grovesL.key === key) return f.grovesL.trees;
+  const out = [], n = s.groves, rnd = mulberry(f.seed ^ 0x6a09e667), c = kio || { x: f.cx, z: f.cz }, ring = [...softRings(f)[0], softRings(f)[0][0], softRings(f)[0][1]];
+  const pl = s.trees === 'pleached' ? pleachedFor(f, s) : [], stairA = kio ? (kio.stairK + 0.5) * Math.PI / 4 : 0;
+  const ok = (x, z, cr) => pointInRings(x, z, f.rings) && buildingAt(x, z) < 0 && H(x, z) > 0.6 && !roadAt(x, z, 1, false) && distToLine(ring, x, z) > cr + 1
+    && !pl.some((p) => Math.hypot(p.x - x, p.z - z) < cr + 5) && (!kio || Math.hypot(x - c.x, z - c.z) > 16 + cr)
+    && !out.some((t) => Math.hypot(t.x - x, t.z - z) < GROVE.gap);
+  for (let g = 0; g < n; g++) {
+    // spread round the centre, diagonal to the stairs so their approaches stay open
+    const a0 = stairA + Math.PI / n + g * Math.PI * 2 / n;
+    let placed = false;
+    for (let r = GROVE.rMax; r >= GROVE.rMin && !placed; r -= 2) for (const da of [0, 0.12, -0.12, 0.24, -0.24]) {
+      const a = a0 + da, gx = c.x + Math.sin(a) * r, gz = c.z + Math.cos(a) * r;
+      if (!ok(gx, gz, 7)) continue;
+      const here = [];
+      for (let k = 0; k < 24 && here.length < 8; k++) {   // 4 to 8 trees, the first at the grove's middle
+        const t = k ? rnd() * 6.283 : 0, d = k ? 4 + rnd() * GROVE.spread : 0, x = gx + Math.sin(t) * d, z = gz + Math.cos(t) * d, sp = GROVE.sp[(rnd() * GROVE.sp.length) | 0], cr = SPECIES[sp].o.crownR;
+        if (!ok(x, z, cr * 0.8) || here.some((q) => Math.hypot(q.x - x, q.z - z) < GROVE.gap)) continue;
+        const tr = { x, z, sp, s: 0.95 + rnd() * 0.25, rot: rnd() * 6.283, hue: rnd(), grove: g, d: Math.hypot(x - c.x, z - c.z) }; here.push(tr); out.push(tr);
+      }
+      if (here.length >= 4) placed = true; else for (const t of here) out.splice(out.indexOf(t), 1);
+      if (placed) break;
+    }
+  }
+  f.grovesL = { key, trees: out };
+  return out;
+}
+function buildGroves(f, trees, lift) {   // one instanced mesh per species, using the park trees' geometry and wind-swayed materials
+  const g = new THREE.Group(), by = {}, M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
+  for (const t of trees) (by[t.sp] = by[t.sp] || []).push(t);
+  world.treeGeos = world.treeGeos || {}; world.treeMats = world.treeMats || {};
+  for (const [sp, list] of Object.entries(by)) {
+    const geo = world.treeGeos[sp] || (world.treeGeos[sp] = speciesGeometry(sp)), mat = world.treeMats[sp] || (world.treeMats[sp] = speciesMaterial(sp));
+    const m = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((t, i) => {
+      M4.compose(V.set(t.x, H(t.x, t.z) + LIFT + lift - 0.1, t.z), Q4.setFromAxisAngle(up, t.rot), Sc.set(t.s, t.s * (0.9 + t.hue * 0.25), t.s)); m.setMatrixAt(i, M4);
+      m.setColorAt(i, tint.setHSL(0.25 + (t.hue - 0.5) * 0.05, 0.3, 0.56 + t.hue * 0.08).lerp(white, 0.65));
+    });
+    m.castShadow = m.receiveShadow = true; m.renderOrder = 10; m.userData.shared = true; m.computeBoundingSphere(); g.add(m);
+  }
+  return g;
+}
+function groveAnchors(trees, n, lift, c) {   // n strand ends shared out over the groves, each tied into a different tree's crown, nearest trees first
+  const groves = [...new Set(trees.map((t) => t.grove))].map((g) => trees.filter((t) => t.grove === g).sort((a, b) => a.d - b.d)), out = [];
+  for (let i = 0; i < n && groves.length; i++) {
+    const gl = groves[i % groves.length], t = gl[Math.floor(i / groves.length) % gl.length], sp = SPECIES[t.sp];
+    const y = H(t.x, t.z) + LIFT + lift + (sp.o.trunkH + 0.6) * t.s;   // just under the crown
+    out.push({ x: t.x, z: t.z, y, a: Math.atan2(t.x - c.x, t.z - c.z), j: i });
+  }
+  return out;
+}
+function kioskBulbTexture() {
+  if (world.kioskBulbTex) return world.kioskBulbTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,246,225,1)'); gr.addColorStop(0.22, 'rgba(255,214,150,0.95)'); gr.addColorStop(1, 'rgba(255,170,80,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  return (world.kioskBulbTex = new THREE.CanvasTexture(c));
+}
+function buildKiosk(f, L, y0, withFlag, look = {}) {   // look: { stone, roof } colours, anchors: tree points the strands run to instead of masts
+  const K = KIOSK, R = K.R, kg = new THREE.Group(); kg.position.set(L.x, y0, L.z);
+  const parts = { stone: [], cap: [], iron: [], cream: [], gold: [], roof: [] };
+  const add = (k, g, x = 0, y = 0, z = 0, ry = 0) => { if (g.attributes.uv) g.deleteAttribute('uv'); if (ry) g.rotateY(ry); g.translate(x, y, z); parts[k].push(g); };
+  const box = (k, w, h, d, x, y, z, ry) => add(k, new THREE.BoxGeometry(w, h, d), x, y, z, ry);
+  const cyl = (k, rt, rb, h, seg, y, x = 0, z = 0) => add(k, new THREE.CylinderGeometry(rt, rb, h, seg), x, y + h / 2, z);
+  const V = (k, r) => [Math.sin(k * Math.PI / 4) * r, Math.cos(k * Math.PI / 4) * r];   // octagon vertex k (CylinderGeometry's own vertex angles)
+  // podium: a plinth band, the drum and a projecting cap; the floor is at FY
+  cyl('cap', R + 0.18, R + 0.22, 0.32, 8, 0); cyl('stone', R, R, K.podH, 8, 0.3); cyl('cap', R + 0.24, R + 0.2, 0.16, 8, K.podH + 0.3 - 0.02);
+  const FY = K.podH + 0.44, A = R * Math.cos(Math.PI / 8), n = K.steps, run = n * K.tread;
+  for (const sk of L.stairs) {   // a flight up each stair side: steps with a darker lip, a stone string either side and an iron handrail on each
+    const am = (sk + 0.5) * Math.PI / 4, ux = Math.sin(am), uz = Math.cos(am), sx = Math.cos(am), sz = -Math.sin(am);
+    for (let i = 0; i < n; i++) {
+      const h = (i + 1) * FY / n, d = A + (n - 1 - i + 0.5) * K.tread;
+      box('stone', K.stairW, h, K.tread + 0.02, ux * d, h / 2, uz * d, am);
+      box('cap', K.stairW + 0.04, 0.05, 0.09, ux * (d + K.tread / 2 - 0.03), h - 0.02, uz * (d + K.tread / 2 - 0.03), am);
+    }
+    const slope = Math.atan2(FY, run), L2 = Math.hypot(FY, run);
+    for (const s of [-1, 1]) {
+      const o = K.stairW / 2 + 0.16, cx = ux * (A + run / 2) + sx * s * o, cz = uz * (A + run / 2) + sz * s * o;
+      const string = new THREE.BoxGeometry(0.3, 0.42, L2 + 0.3); string.rotateX(slope); string.rotateY(am); string.translate(cx, FY / 2 + 0.06, cz); add('cap', string);
+      box('cap', 0.32, 0.5, 0.5, ux * (A + run + 0.1) + sx * s * o, 0.25, uz * (A + run + 0.1) + sz * s * o, am);   // a newel block at the foot
+      const rail = new THREE.BoxGeometry(0.05, 0.05, L2); rail.rotateX(slope); rail.rotateY(am); rail.translate(cx, FY / 2 + 0.95, cz); add('iron', rail);
+      for (const t of [0.04, 0.5, 0.96]) box('iron', 0.045, 0.95, 0.045, ux * (A + run * t) + sx * s * o, FY * (1 - t) + 0.47 + 0.04, uz * (A + run * t) + sz * s * o);
+    }
+  }
+  // wrought-iron railing round the platform, open over the stairs
+  const RR = R - 0.12, gapHalf = K.stairW / 2;
+  for (let k = 0; k < 8; k++) {
+    const [ax, az] = V(k, RR), [bx, bz] = V(k + 1, RR), dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len, ry = Math.atan2(-dz, dx), stair = L.stairs.includes(k);
+    box('iron', 0.1, 1.0, 0.1, ax, FY + 0.5, az); box('cream', 0.16, 0.12, 0.16, ax, FY + 1.05, az);
+    const runs = stair ? [[0, len / 2 - gapHalf], [len / 2 + gapHalf, len]] : [[0, len]];
+    for (const [s0, s1] of runs) {
+      const m = (s0 + s1) / 2, w = s1 - s0;
+      for (const y of [FY + 0.95, FY + 0.16]) box('iron', w, 0.05, 0.05, ax + ux * m, y, az + uz * m, ry);
+      for (let s = s0 + 0.12; s < s1 - 0.06; s += 0.13) box('iron', 0.022, 0.78, 0.022, ax + ux * s, FY + 0.55, az + uz * s);
+      for (let s = s0 + 0.45; s < s1 - 0.3; s += 0.9) add('iron', new THREE.TorusGeometry(0.16, 0.016, 4, 12), ax + ux * s, FY + 0.72, az + uz * s, ry);   // the scrollwork's rings
+      if (stair) for (const s of [s0, s1]) if (s > 0.01 && s < len - 0.01) box('iron', 0.09, 1.0, 0.09, ax + ux * s, FY + 0.5, az + uz * s);
+    }
+  }
+  // eight slender columns at the vertices, with bases and capitals, under a frieze
+  const RC = R - 0.5;
+  for (let k = 0; k < 8; k++) {
+    const [x, z] = V(k, RC);
+    cyl('cream', 0.2, 0.2, 0.22, 10, FY, x, z); cyl('cream', 0.1, 0.12, K.colH, 10, FY + 0.22, x, z); cyl('cream', 0.24, 0.11, 0.26, 10, FY + 0.22 + K.colH, x, z);
+  }
+  const TOP = FY + 0.22 + K.colH + 0.26;
+  cyl('cream', R - 0.1, R - 0.25, 0.5, 8, TOP); cyl('gold', R - 0.05, R - 0.05, 0.06, 8, TOP + 0.5);
+  const T1 = TOP + 0.56, T2 = T1 + 1.6, T3 = T2 + 0.62, CROWN = T3 + 1.1;
+  cyl('roof', 2.2, R + 0.4, 1.6, 8, T1); cyl('roof', 1.25, 1.3, 0.62, 8, T2); cyl('gold', 1.42, 1.42, 0.06, 8, T3 - 0.03); cyl('roof', 0.06, 1.5, 1.1, 8, T3);
+  add('gold', new THREE.SphereGeometry(0.2, 12, 8), 0, CROWN + 0.1, 0);
+  const stoneC = new THREE.Color(look.stone || KIOSK_STONE), roofC = look.roof || KIOSK_ROOF;   // per kiosk (kioskStone, kioskRoof), so their materials are its own
+  const mats = {
+    stone: new THREE.MeshStandardMaterial({ color: stoneC, roughness: 0.85, emissive: '#c0763a', emissiveIntensity: 0 }),
+    cap: new THREE.MeshStandardMaterial({ color: stoneC.clone().multiplyScalar(0.88), roughness: 0.8, emissive: '#c0763a', emissiveIntensity: 0 }),
+    roof: new THREE.MeshStandardMaterial({ color: roofC, roughness: 0.6, metalness: 0.15, emissive: '#ffb366', emissiveIntensity: 0 }),
+    iron: world.kioskIron || (world.kioskIron = new THREE.MeshStandardMaterial({ color: '#23252a', roughness: 0.5, metalness: 0.6 })),
+    cream: world.kioskCream || (world.kioskCream = new THREE.MeshStandardMaterial({ color: '#efe5cf', roughness: 0.55, emissive: '#ffb366', emissiveIntensity: 0 })),   // glows a little under its lights after dark (stepPlazaExtras)
+    gold: world.finialMat || (world.finialMat = new THREE.MeshStandardMaterial({ color: '#d6a64a', roughness: 0.3, metalness: 0.9 })),
+  };
+  for (const [k, list] of Object.entries(parts)) {
+    if (!list.length) continue;
+    const m = new THREE.Mesh(mergeGeometries(list), mats[k]); m.castShadow = m.receiveShadow = true; m.userData.ownMat = k === 'stone' || k === 'cap' || k === 'roof'; kg.add(m);
+    for (const g of list) g.dispose();
+  }
+  // masts round the plaza, each a thin iron pole with a ball on top (world coordinates, so they sit on their own ground)
+  const mastG = [], anchors = look.anchors;
+  if (!anchors) for (const m of L.masts) { const gy = H(m.x, m.z) + LIFT + (y0 - H(L.x, L.z) - LIFT); m.y = gy + K.mastH; const c = new THREE.CylinderGeometry(0.05, 0.07, K.mastH, 8); c.deleteAttribute('uv'); c.translate(m.x - L.x, gy - y0 + K.mastH / 2, m.z - L.z); mastG.push(c); const b = new THREE.SphereGeometry(0.1, 8, 6); b.deleteAttribute('uv'); b.translate(m.x - L.x, gy - y0 + K.mastH + 0.06, m.z - L.z); mastG.push(b); }
+  if (mastG.length) { const m = new THREE.Mesh(mergeGeometries(mastG), mats.iron); m.castShadow = true; kg.add(m); for (const g of mastG) g.dispose(); }
+  // the lights: bulbs as glowing points (night only), on dark wires (always)
+  const bl = [], wl = [];
+  const line = (ax, ay, az, bx, by, bz, sag, step) => {   // a strand from a to b sagging by sag in the middle, a bulb every step metres
+    const len = Math.hypot(bx - ax, by - ay, bz - az), n = Math.max(2, Math.round(len / step)); let px, py, pz;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t - sag * 4 * t * (1 - t), z = az + (bz - az) * t;
+      if (i > 0 && i < n) bl.push(x, y - 0.06, z);
+      if (i) wl.push(px, py, pz, x, y, z); px = x; py = y; pz = z;
+    }
+  };
+  const SR = 1.35, SY = T2 + 0.1;   // the strands leave the drum at the crown
+  const mastsW = (anchors || L.masts).map((m) => ({ ...m, lx: m.x - L.x, lz: m.z - L.z, ly: m.y - y0 }));
+  for (const m of mastsW) { const len = Math.hypot(m.lx, m.lz); line(Math.sin(m.a) * SR, SY, Math.cos(m.a) * SR, m.lx, m.ly - 0.1, m.lz, 0.2 + len * 0.018, 0.5); }
+  for (let i = 0; i < mastsW.length; i++) {   // and a sagging edge strand from mast to mast where neighbours are close
+    const a = mastsW[i], b = mastsW[(i + 1) % mastsW.length]; if (anchors || a === b || (b.j - a.j + L.n) % L.n !== 1) continue;
+    const d = Math.hypot(a.lx - b.lx, a.lz - b.lz); if (d < 12) line(a.lx, a.ly - 0.1, a.lz, b.lx, b.ly - 0.1, b.lz, 0.2 + d * 0.03, 0.5);
+  }
+  for (let k = 0; k < 8; k++) {
+    const [x, z] = V(k, RC), turns = 10, N = 54;   // a spiral down each column
+    let px, py, pz;
+    for (let i = 0; i <= N; i++) { const t = i / N, a = t * turns * Math.PI * 2 + k, cx = x + Math.sin(a) * 0.17, cy = FY + 0.3 + t * (K.colH - 0.15), cz = z + Math.cos(a) * 0.17; bl.push(cx, cy, cz); if (i) wl.push(px, py, pz, cx, cy, cz); px = cx; py = cy; pz = cz; }
+    const [ax, az] = V(k, R + 0.42), [bx, bz] = V(k + 1, R + 0.42); line(ax, T1 + 0.02, az, bx, T1 + 0.02, bz, 0.12, 0.26);   // the roof's rim, scalloped
+    const [cx, cz] = V(k, 2.25); line(ax, T1 + 0.05, az, cx, T2 + 0.02, cz, 0.05, 0.32);                                        // its ribs
+    const [rx, rz] = V(k, RR + 0.06), [sx, sz] = V(k + 1, RR + 0.06);                                                              // the railing's top
+    if (!L.stairs.includes(k)) line(rx, FY + 1.0, rz, sx, FY + 1.0, sz, 0.02, 0.24);
+    else { const g = gapHalf / Math.hypot(sx - rx, sz - rz); line(rx, FY + 1.0, rz, rx + (sx - rx) * (0.5 - g), FY + 1.0, rz + (sz - rz) * (0.5 - g), 0.02, 0.24); line(rx + (sx - rx) * (0.5 + g), FY + 1.0, rz + (sz - rz) * (0.5 + g), sx, FY + 1.0, sz, 0.02, 0.24); }
+  }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bl, 3));
+  const bulbs = new THREE.Points(bg, world.kioskBulbMat || (world.kioskBulbMat = new THREE.PointsMaterial({ size: 0.5, map: kioskBulbTexture(), color: '#ffd39a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
+  bulbs.renderOrder = 12; kg.add(bulbs);
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wl, 3));
+  const wires = new THREE.LineSegments(wg, world.kioskWireMat || (world.kioskWireMat = new THREE.LineBasicMaterial({ color: '#2a2a2e', transparent: true, opacity: 0.6 })));
+  wires.renderOrder = 11; kg.add(wires);
+  // a warm pool of light on the paving under the canopy (night only)
+  const reach = Math.max(12, ...(anchors || L.masts).map((m) => Math.hypot(m.x - L.x, m.z - L.z)));
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(reach * 0.95, 40).rotateX(-Math.PI / 2), world.kioskPoolMat || (world.kioskPoolMat = new THREE.MeshBasicMaterial({ map: kioskBulbTexture(), color: '#d98545', transparent: true, opacity: 0.42, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
+  pool.position.y = 0.05; pool.renderOrder = 7; kg.add(pool);
+  let flag = null;
+  if (withFlag) {   // a small flag on a short mast at the crown, rippling like the big one (scaled by k)
+    const mh = 2.3, mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, mh, 8), mats.iron); mast.position.y = CROWN + 0.2 + mh / 2; mast.castShadow = true; kg.add(mast);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), mats.gold); ball.position.y = CROWN + 0.2 + mh + 0.05; kg.add(ball);
+    const fw = 1.5, fh = 1.0, fg = new THREE.PlaneGeometry(fw, fh, 12, 6); fg.translate(fw / 2 + 0.04, 0, 0);
+    const fm = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8 })); fm.userData.ownMat = true; fm.castShadow = true;
+    const Wd = new THREE.Vector2(0.82, 0.48).normalize(); fm.position.y = CROWN + 0.2 + mh - fh / 2 - 0.08; fm.rotation.y = -Math.atan2(Wd.y, Wd.x);
+    flag = { mesh: fm, base: Float32Array.from(fg.attributes.position.array), w: fw, x0: 0.04, k: fw / 7.2 }; kg.add(fm);
+  }
+  return { g: kg, flag, night: [bulbs, pool], glow: [[mats.stone, 0.2], [mats.cap, 0.2], [mats.roof, 0.08]], bulbs: bl.length / 3, masts: anchors ? 0 : L.masts.length, anchors: anchors ? anchors.length : 0 };
+}
+// ---- boat yards (plaza use: "boatyard"), after the author's photo of a dinghy park: rows of sailing dinghies on launching trolleys, most
+// with a mast and its stays, some under a tarp; chain-link fencing along the sides that face a street, with a gate in the longest; a few
+// white lockers; and a jib crane in the larger lots. Everything is instanced per lot; the rows run along the lot's longest side.
+const YARD = { len: 4.6, beam: 1.7, pitch: 2.3, gap: 0.9, aisle: 3.2, mast: 0.65, tarp: 0.35, fenceH: 1.9 };   // rows in pairs, bow to bow across a gap, then an aisle
+function dinghyGeometries() {
+  if (world.yardGeo) return world.yardGeo;
+  const L = YARD.len, Bm = YARD.beam;
+  const squeeze = (g) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), u = Math.max(0, x / (L / 2)); p.setZ(i, p.getZ(i) * (1 - 0.72 * u * u)); } g.computeVertexNormals(); return g; };   // a pointed bow at +x
+  const hull = squeeze(new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(L / 2, 0.55, Bm / 2).translate(0, 0.78, 0));
+  const deck = squeeze(new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2).scale(L / 2 * 0.98, 1, Bm / 2 * 0.98).translate(0, 0.79, 0));
+  const tarp = squeeze(new THREE.SphereGeometry(1, 18, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(L / 2 * 1.02, 0.32, Bm / 2 * 1.06).translate(0, 0.78, 0));
+  const box = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+  const trolley = mergeGeometries([box(L * 0.7, 0.05, 0.05, 0, 0.32, 0.45), box(L * 0.7, 0.05, 0.05, 0, 0.32, -0.45), box(0.05, 0.4, 0.05, 0.6, 0.5, 0.45), box(0.05, 0.4, 0.05, 0.6, 0.5, -0.45), box(0.05, 0.4, 0.05, -0.6, 0.5, 0.45), box(0.05, 0.4, 0.05, -0.6, 0.5, -0.45),
+    box(0.05, 0.05, 0.95, 0.6, 0.32, 0), box(1.2, 0.04, 0.04, L * 0.35 + 0.6, 0.3, 0), new THREE.CylinderGeometry(0.17, 0.17, 0.09, 12).rotateX(Math.PI / 2).translate(0, 0.17, 0.58), new THREE.CylinderGeometry(0.17, 0.17, 0.09, 12).rotateX(Math.PI / 2).translate(0, 0.17, -0.58)].map(stripUV));
+  const mast = new THREE.CylinderGeometry(0.035, 0.05, 1, 6).translate(0, 0.5, 0);
+  const locker = mergeGeometries([box(2.4, 1.25, 1.1, 0, 0.62, 0), box(2.5, 0.06, 1.2, 0, 1.27, 0)].map(stripUV));
+  return (world.yardGeo = { hull, deck, tarp, trolley, mast, locker });
+}
+function chainLinkTexture() {
+  if (world.chainTex) return world.chainTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(210,214,216,1)'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.moveTo(-32, 0); g.lineTo(32, 64); g.moveTo(32, 0); g.lineTo(96, 64); g.moveTo(96, 0); g.lineTo(32, 64); g.moveTo(32, 0); g.lineTo(-32, 64); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return (world.chainTex = t);
+}
+function buildBoatyard(f, lift) {
+  const g = new THREE.Group(), G = dinghyGeometries(), rnd = mulberry(f.seed ^ 0x2f1c3a5b), r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, n = r.length / 2, ring = [...r, r[0], r[1]];
+  const y = (x, z) => H(x, z) + LIFT + lift;
+  // the rows run along the longest side
+  let best = 0, ax = 1, az = 0;
+  for (let k = 0; k < n; k++) { const dx = r[(k * 2 + 2) % r.length] - r[k * 2], dz = r[(k * 2 + 3) % r.length] - r[k * 2 + 1], L = Math.hypot(dx, dz); if (L > best) { best = L; ax = dx / L; az = dz / L; } }
+  const bx = -az, bz = ax;   // across the rows
+  let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+  for (let i = 0; i < r.length; i += 2) { const u = (r[i] - f.cx) * ax + (r[i + 1] - f.cz) * az, v = (r[i] - f.cx) * bx + (r[i + 1] - f.cz) * bz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+  const boats = [], free = (x, z, m) => pointInRings(x, z, f.rings) && distToLine(ring, x, z) > m && buildingAt(x, z) < 0 && !roadAt(x, z, 0.3, true);
+  // a crane and lockers first, so the boats keep clear of them
+  const things = [];
+  if (f.size > 700) for (let t = 0; t < 120; t++) { const x = f.cx + (rnd() - 0.5) * (u1 - u0) * 0.8 * ax + (rnd() - 0.5) * (v1 - v0) * 0.8 * bx, z = f.cz + (rnd() - 0.5) * (u1 - u0) * 0.8 * az + (rnd() - 0.5) * (v1 - v0) * 0.8 * bz; if (free(x, z, 2.5)) { things.push({ kind: 'crane', x, z, r: 3.5 }); break; } }
+  for (let k = 0, want = f.size > 600 ? 1 + ((rnd() * 2) | 0) : 0; k < 60 && want > 0; k++) {
+    const t = rnd() * n | 0, px = r[t * 2], pz = r[t * 2 + 1], qx = r[(t * 2 + 2) % r.length], qz = r[(t * 2 + 3) % r.length], s0 = rnd(), L = Math.hypot(qx - px, qz - pz); if (L < 4) continue;
+    const ex = (qx - px) / L, ez = (qz - pz) / L, ix = -ez * sgn, iz = ex * sgn, x = px + (qx - px) * s0 + ix * 1.4, z = pz + (qz - pz) * s0 + iz * 1.4;
+    if (!free(x, z, 0.9) || things.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 2)) continue;
+    things.push({ kind: 'locker', x, z, r: 1.6, a: Math.atan2(-ez, ex) }); want--;
+  }
+  for (let v = v0 + YARD.len / 2 + 0.9, row = 0; v <= v1 - YARD.len / 2 - 0.9; v += YARD.len + (row % 2 ? YARD.aisle : YARD.gap), row++) for (let u = u0 + 1.4; u <= u1 - 1.4; u += YARD.pitch) {
+    const x = f.cx + ax * u + bx * v, z = f.cz + az * u + bz * v, face = row % 2 ? Math.PI : 0;   // the even row's bows point across the gap to the odd row's
+    const ends = [YARD.len / 2 + 0.5, -YARD.len / 2 - 0.3].map((d) => [x + bx * d, z + bz * d]);
+    if (!free(x, z, 1.0) || ends.some(([ex, ez]) => !free(ex, ez, 0.3)) || things.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 1.5) || rnd() < 0.1) continue;   // the odd empty berth
+    boats.push({ x, z, a: Math.atan2(-bz, bx) + face + (rnd() - 0.5) * 0.08, mast: rnd() < YARD.mast, tarp: rnd() < YARD.tarp, h: 6 + rnd() * 2.8, c: rnd(), t: rnd() });
+  }
+  const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0), C = new THREE.Color();
+  const HULLS = ['#f4f4f0', '#f4f4f0', '#f4f4f0', '#eae6da', '#f4f4f0', '#9cc3d8', '#c8463c', '#22406a', '#f4f4f0', '#d9e3e6'], TARPS = ['#2f6fb3', '#3a83c7', '#6f7a80', '#2b4f78', '#7a8a6a', '#9aa3a8'];
+  const mat = (k, o) => world[k] || (world[k] = new THREE.MeshStandardMaterial(o));
+  const inst = (geo, m, list, fn, shadow = true) => { if (!list.length) return null; const im = new THREE.InstancedMesh(geo, m, list.length); list.forEach((b, i) => fn(b, i, im)); im.castShadow = shadow; im.receiveShadow = true; im.userData.shared = true; im.computeBoundingSphere(); g.add(im); return im; };
+  const place = (b, i, im, extra) => { im.setMatrixAt(i, M4.compose(V.set(b.x, y(b.x, b.z), b.z), Q4.setFromAxisAngle(up, b.a), extra || one)); };
+  inst(G.trolley, mat('yardSteel', { color: '#8f969a', roughness: 0.5, metalness: 0.6 }), boats, (b, i, im) => place(b, i, im));
+  inst(G.hull, mat('yardHull', { color: '#ffffff', roughness: 0.35 }), boats, (b, i, im) => { place(b, i, im); im.setColorAt(i, C.set(HULLS[(b.c * HULLS.length) | 0])); });
+  const open = boats.filter((b) => !b.tarp), covered = boats.filter((b) => b.tarp);
+  inst(G.deck, mat('yardDeck', { color: '#e9e4d6', roughness: 0.7 }), open, (b, i, im) => place(b, i, im));
+  inst(G.tarp, mat('yardTarp', { color: '#ffffff', roughness: 0.8 }), covered, (b, i, im) => { place(b, i, im); im.setColorAt(i, C.set(TARPS[(b.t * TARPS.length) | 0])); });
+  const masted = boats.filter((b) => b.mast), wires = [];
+  inst(G.mast, mat('yardMast', { color: '#c9ccce', roughness: 0.35, metalness: 0.7 }), masted, (b, i, im) => {
+    const fx = Math.cos(b.a), fz = -Math.sin(b.a), mx = b.x + fx * 0.5, mz = b.z + fz * 0.5, y0 = y(b.x, b.z) + 0.8;   // stepped a little forward of amidships
+    im.setMatrixAt(i, M4.compose(V.set(mx, y0, mz), Q4.identity(), new THREE.Vector3(1, b.h, 1)));
+    const sx = -fz * YARD.beam / 2, sz = fx * YARD.beam / 2, top = y0 + b.h * 0.92;   // forestay to the bow, shrouds to either side, backstay to the stern
+    wires.push(mx, top, mz, b.x + fx * YARD.len / 2, y0, b.z + fz * YARD.len / 2, mx, top, mz, b.x + fx * 0.3 + sx, y0, b.z + fz * 0.3 + sz, mx, top, mz, b.x + fx * 0.3 - sx, y0, b.z + fz * 0.3 - sz, mx, top, mz, b.x - fx * YARD.len / 2, y0 + 0.1, b.z - fz * YARD.len / 2);
+  }, false);
+  if (wires.length) { const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3)); const wl = new THREE.LineSegments(wg, world.yardWire || (world.yardWire = new THREE.LineBasicMaterial({ color: '#6c7276', transparent: true, opacity: 0.55 }))); g.add(wl); }
+  const lockers = things.filter((o) => o.kind === 'locker');
+  inst(G.locker, mat('yardLocker', { color: '#e7e8e4', roughness: 0.6 }), lockers, (b, i, im) => place(b, i, im));
+  for (const c of things.filter((o) => o.kind === 'crane')) {   // a jib crane: a lattice-grey column, a slewing jib and a hook on its line
+    const cg = new THREE.Group(), steel = mat('yardCrane', { color: '#d9a531', roughness: 0.5, metalness: 0.4 }), y0 = y(c.x, c.z), a = rnd() * 6.28;
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5).translate(0, 4.5, 0), steel), jib = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.4, 0.35).translate(2.6, 8.7, 0), steel), base = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 1.8).translate(0, 0.2, 0), mat('yardSteel', {}));
+    const hookLine = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 4.5, 4).translate(5.6, 6.3, 0), mat('yardSteel', {})), hook = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 0.25).translate(5.6, 3.9, 0), mat('yardSteel', {}));
+    for (const m of [col, jib, base, hookLine, hook]) { m.castShadow = m.receiveShadow = true; cg.add(m); }
+    cg.position.set(c.x, y0, c.z); cg.rotation.y = a; g.add(cg);
+  }
+  // chain-link fence round the outside of the yard (sides that don't face another boat-yard lot across a path), with a 4 m gate in the longest
+  const yards = world.features.filter((q) => q.kind === 'plaza' && q !== f && featureStyle(q).use === 'boatyard' && Math.abs(q.cx - f.cx) < 300 && Math.abs(q.cz - f.cz) < 300), runs = [];
+  for (let k = 0; k < n; k++) {
+    const px = r[k * 2], pz = r[k * 2 + 1], qx = r[(k * 2 + 2) % r.length], qz = r[(k * 2 + 3) % r.length], L = Math.hypot(qx - px, qz - pz); if (L < 1) continue;
+    const ex = (qx - px) / L, ez = (qz - pz) / L, ox = ez * sgn, oz = -ex * sgn, mx = (px + qx) / 2, mz = (pz + qz) / 2;   // (ox, oz) outward
+    if ([4, 8, 12].some((d) => yards.some((q) => pointInRings(mx + ox * d, mz + oz * d, q.rings))) || buildingAt(mx - ox * 1, mz - oz * 1) >= 0) continue;
+    runs.push({ px: px - ox * 0.3, pz: pz - oz * 0.3, ex, ez, L });
+  }
+  const gateRun = runs.reduce((a, b) => (!a || b.L > a.L ? b : a), null), panels = [], posts = [];
+  for (const rn of runs) {
+    const segs = rn === gateRun && rn.L > 8 ? [[0, rn.L / 2 - 2], [rn.L / 2 + 2, rn.L]] : [[0, rn.L]];
+    for (const [s0, s1] of segs) {
+      for (let t = s0; t < s1 - 0.01; t += 2.8) {
+        const t1 = Math.min(s1, t + 2.8), x0 = rn.px + rn.ex * t, z0 = rn.pz + rn.ez * t, x1 = rn.px + rn.ex * t1, z1 = rn.pz + rn.ez * t1, ya = y(x0, z0), yb = y(x1, z1);
+        panels.push([x0, ya, z0, x1, yb, z1, t1 - t]); posts.push(x0, z0);
+      }
+      posts.push(rn.px + rn.ex * s1, rn.pz + rn.ez * s1);
+    }
+  }
+  if (panels.length) {
+    const pos = [], uv = [], H2 = YARD.fenceH;
+    for (const [x0, ya, z0, x1, yb, z1, w] of panels) { pos.push(x0, ya + 0.05, z0, x1, yb + 0.05, z1, x1, yb + H2, z1, x0, ya + 0.05, z0, x1, yb + H2, z1, x0, ya + H2, z0); uv.push(0, 0, w / 0.12, 0, w / 0.12, H2 / 0.12, 0, 0, w / 0.12, H2 / 0.12, 0, H2 / 0.12); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.computeVertexNormals();
+    g.add(new THREE.Mesh(geo, world.chainMat || (world.chainMat = new THREE.MeshStandardMaterial({ map: chainLinkTexture(), alphaMap: chainLinkTexture(), alphaTest: 0.35, transparent: false, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.5, color: '#b9bec1' }))));
+    const pg = world.yardPostGeo || (world.yardPostGeo = new THREE.CylinderGeometry(0.04, 0.04, YARD.fenceH + 0.1, 6).translate(0, (YARD.fenceH + 0.1) / 2, 0));
+    const pl = []; for (let i = 0; i < posts.length; i += 2) pl.push({ x: posts[i], z: posts[i + 1], a: 0 });
+    inst(pg, mat('yardSteel', {}), pl, (b, i, im) => place(b, i, im));
+  }
+  return { g, boats: boats.length, masts: masted.length, fence: panels.length, cranes: things.filter((o) => o.kind === 'crane').length, lockers: lockers.length };
+}
+// ---- street bollards (street style bollards: true): a row of bollards across each end of the street, set back from the street it meets
+function streetBollards(f) {
+  const P = f.pts, out = [], n = P.length / 2, hw = f.w / 2;
+  const others = (x, z) => { for (const idx of world.fGrid.get(gkey(Math.floor(x / FGRID) + 2000, Math.floor(z / FGRID) + 2000)) || []) { const g = world.features[idx]; if (g !== f && (g.kind === 'street' || g.kind === 'path') && distToLine(g.pts, x, z) < g.w / 2 + 0.9) return true; } return false; };
+  let total = 0; for (let i = 0; i < n - 1; i++) total += Math.hypot(P[i * 2 + 2] - P[i * 2], P[i * 2 + 3] - P[i * 2 + 1]);
+  for (const end of [0, 1]) {
+    for (let d = 0.8; d < Math.min(30, total / 2); d += 0.5) {
+      const at = end ? total - d : d, [x, z] = pointAlong(P, at), [x2, z2] = pointAlong(P, Math.min(total, at + 0.5)), dx = x2 - x, dz = z2 - z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L;
+      if ([-hw, 0, hw].some((o) => others(x + nx * o, z + nz * o))) continue;   // still inside the junction
+      const k = Math.max(2, Math.round(f.w / 1.5));
+      for (let i = 0; i <= k; i++) { const o = -hw + 0.35 + (f.w - 0.7) * i / k; out.push([x + nx * o, z + nz * o]); }
+      break;
+    }
+  }
+  return out;
+}
+// ---- the majestic fountain (plaza style fountainStyle: "majestic"): a baroque, three-tier fountain in a wide stone basin, after the great
+// fountains of Spanish and Mexican plazas: a stepped plinth, a moulded basin rim, a fluted pedestal carrying three cascading bowls, water
+// curtains falling from every rim (scrolling sheets), a jet from the crowning finial and eight arcing jets from the rim toward the middle.
+const MAJ = { R: 9, rimH: 0.8 };
+function majesticSpot(f, s) {   // the centre, or with a kiosk or flagpole there, the clear end of the plaza (as the plain fountain moves)
+  const ok = (x, z) => pointInRings(x, z, f.rings) && [0, 1, 2, 3, 4, 5, 6, 7].every((k) => { const px = x + Math.sin(k * Math.PI / 4) * (MAJ.R + 1), pz = z + Math.cos(k * Math.PI / 4) * (MAJ.R + 1); return pointInRings(px, pz, f.rings) && buildingAt(px, pz) < 0 && !roadAt(px, pz, 0.3, false); });
+  if (s.fountainAt) {   // placed by hand: there, or the nearest spot within 25 m where the basin fits
+    const { x, z } = s.fountainAt;
+    for (let d = 0; d <= 25; d += 1.5) for (let k = 0, n = d ? Math.ceil(d * 4) : 1; k < n; k++) { const a = k / n * Math.PI * 2, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d; if (ok(px, pz)) return { x: px, z: pz }; }
+  }
+  const taken = (s.kiosk && kioskLayout(f, s)) || (s.flagpole && flagpoleSpot(f)), wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1];
+  const spots = taken ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
+  const p = spots.find(([x, z]) => ok(x, z)); return p ? { x: p[0], z: p[1] } : null;
+}
+function curtainTexture() {   // falling water: soft vertical streaks, scrolled down in stepPlazaExtras
+  if (world.curtainTex) return world.curtainTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d'), r = mulberry(77);
+  g.fillStyle = 'rgba(220,244,250,0.35)'; g.fillRect(0, 0, 128, 256);
+  for (let k = 0; k < 90; k++) { const x = r() * 128, w = 1 + r() * 3, y = r() * 256, h = 40 + r() * 160; g.fillStyle = `rgba(255,255,255,${0.25 + r() * 0.5})`; for (const dy of [-256, 0, 256]) g.fillRect(x, y + dy, w, h); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return (world.curtainTex = t);
+}
+function buildMajestic(f, p, y0) {
+  const g = new THREE.Group(); g.position.set(p.x, y0, p.z);
+  const stone = world.majStone || (world.majStone = new THREE.MeshStandardMaterial({ color: '#e6ddca', roughness: 0.75 }));
+  const stoneD = world.majStoneD || (world.majStoneD = new THREE.MeshStandardMaterial({ color: '#cfc4ad', roughness: 0.8 }));
+  const water = world.majWater || (world.majWater = new THREE.MeshStandardMaterial({ color: '#4fb3c6', roughness: 0.08, metalness: 0.25, emissive: '#0d3c48', emissiveIntensity: 0.25 }));
+  const parts = { s: [], d: [] }, cyl = (k, rt, rb, h, y, seg = 48) => { const c = new THREE.CylinderGeometry(rt, rb, h, seg); c.deleteAttribute('uv'); c.translate(0, y + h / 2, 0); parts[k].push(c); };
+  const R = MAJ.R;
+  cyl('d', R + 1.3, R + 1.4, 0.18, 0); cyl('s', R + 0.8, R + 0.9, 0.18, 0.18);                       // two shallow steps round it
+  const rim = new THREE.LatheGeometry([[R - 0.35, 0.3], [R - 0.35, MAJ.rimH], [R - 0.25, MAJ.rimH + 0.12], [R + 0.25, MAJ.rimH + 0.12], [R + 0.38, MAJ.rimH], [R + 0.3, MAJ.rimH - 0.1], [R + 0.3, 0.36], [R + 0.45, 0.3]].map(([x, y]) => new THREE.Vector2(x, y)), 64);
+  rim.deleteAttribute('uv'); parts.s.push(rim);                                                       // the basin's moulded rim
+  // the pedestal and three bowls, each a lathe profile: a cup with a rolled lip
+  const bowl = (r, y, d) => { const b = new THREE.LatheGeometry([[0.4, y - d], [r * 0.55, y - d * 0.8], [r * 0.92, y - 0.12], [r, y + 0.04], [r * 0.96, y + 0.12], [r * 0.88, y + 0.02], [0.3, y + 0.02]].map(([x, yy]) => new THREE.Vector2(x, yy)), 48); b.deleteAttribute('uv'); parts.s.push(b); };
+  const ped = new THREE.LatheGeometry([[1.3, 0.3], [1.2, 0.6], [0.75, 0.8], [0.62, 1.2], [0.7, 1.5], [0.55, 1.8]].map(([x, y]) => new THREE.Vector2(x, y)), 24); ped.deleteAttribute('uv'); parts.d.push(ped);
+  const B = [[3.8, 2.0, 0.7], [2.3, 3.9, 0.55], [1.15, 5.4, 0.4]];
+  cyl('d', 0.42, 0.5, 2.0, 1.8, 16); cyl('d', 0.3, 0.36, 1.5, 3.9, 16); cyl('d', 0.2, 0.26, 1.2, 5.4, 12);
+  for (const [r, y, d] of B) bowl(r, y, d);
+  const fin = new THREE.LatheGeometry([[0.01, 6.6], [0.28, 6.7], [0.18, 6.95], [0.32, 7.25], [0.12, 7.6], [0.2, 7.75], [0.01, 8.05]].map(([x, y]) => new THREE.Vector2(x, y)), 16); fin.deleteAttribute('uv'); parts.s.push(fin);   // a crowning urn
+  for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, sp = new THREE.SphereGeometry(0.32, 10, 8); sp.deleteAttribute('uv'); sp.translate(Math.sin(a) * (R - 0.05), MAJ.rimH + 0.42, Math.cos(a) * (R - 0.05)); parts.s.push(sp); }   // the jets' stone heads on the rim
+  for (const [k, list] of Object.entries(parts)) { const m = new THREE.Mesh(mergeGeometries(list), k === 's' ? stone : stoneD); m.castShadow = m.receiveShadow = true; g.add(m); for (const q of list) q.dispose(); }
+  // water: the basin, each bowl's pool, and the falling curtains between them
+  const disc = (r, y) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 48).rotateX(-Math.PI / 2), water); m.position.y = y; m.receiveShadow = true; g.add(m); };
+  disc(R - 0.36, 0.62); for (const [r, y] of B) disc(r * 0.88, y - 0.02);
+  const cm = new THREE.MeshBasicMaterial({ map: curtainTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.85 }); cm.userData = {};
+  const curtains = [];
+  B.forEach(([r, y], i) => {
+    const below = i === 0 ? 0.62 : B[i - 1][1] - 0.02, h = y - below, c = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.02, r + 0.35, h, 48, 1, true), cm.clone());
+    c.material.map = curtainTexture().clone(); c.material.map.needsUpdate = true; c.material.map.repeat.set(6 * r, h / 2.2);
+    c.position.y = below + h / 2; c.renderOrder = 8; c.userData.ownMat = true; g.add(c); curtains.push(c);
+  });
+  // the jets: particles flying along parabolas (CPU, near the camera only)
+  const NJ = 8, PER = 26, TOP = 40, pts = new Float32Array((NJ * PER + TOP) * 3), pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+  const spray = new THREE.Points(pg, world.majSprayMat || (world.majSprayMat = new THREE.PointsMaterial({ size: 0.22, map: kioskBulbTexture(), color: '#e6f8fc', transparent: true, depthWrite: false, opacity: 0.9 })));
+  spray.frustumCulled = false; spray.renderOrder = 9; g.add(spray);
+  return { g, curtains, spray, NJ, PER, TOP, R };
+}
+function stepMajestic(o, t) {   // scroll the curtains and move the jets' water along their arcs
+  for (const c of o.curtains) c.material.map.offset.y = (t * 0.9) % 1;
+  const A = o.spray.geometry.attributes.position.array, R = o.R - 0.1; let k = 0;
+  for (let j = 0; j < o.NJ; j++) {
+    const a = j * Math.PI / 4, sx = Math.sin(a) * R, sz = Math.cos(a) * R, ex = Math.sin(a) * 4.6, ez = Math.cos(a) * 4.6;   // from the rim head toward the lowest bowl's edge
+    for (let i = 0; i < o.PER; i++) { const u = ((t * 0.55 + i / o.PER + j * 0.37) % 1); A[k++] = sx + (ex - sx) * u; A[k++] = MAJ.rimH + 0.45 + 3.2 * u * (1 - u) * 2.2 - u * 0.7; A[k++] = sz + (ez - sz) * u; }
+  }
+  for (let i = 0; i < o.TOP; i++) {   // the finial's jet: up, then falling back in a loose crown
+    const u = ((t * 0.7 + i / o.TOP) % 1), a = i * 2.39996, rr = 0.15 + u * 0.9;
+    A[k++] = Math.cos(a) * rr; A[k++] = 8.05 + 2.4 * 4 * u * (1 - u) - u * 1.4; A[k++] = Math.sin(a) * rr;
+  }
+  o.spray.geometry.attributes.position.needsUpdate = true;
+}
 function dropPlazaExtras(id) {
   const o = PLAZAX.get(id); if (!o) return;
   world.plazaX.remove(o.g);
@@ -2445,6 +2957,7 @@ function buildPlazaExtras(f) {
   dropPlazaExtras(f.id);
   const s = featureStyle(f); if (s.use === 'chinampa') return;
   const g = new THREE.Group(), o = { g, f, flag: null };
+  if (s.use === 'boatyard') { const y = buildBoatyard(f, (s.curb || 0) / 100); g.add(y.g); o.yard = y; world.plazaX.add(g); PLAZAX.set(f.id, o); return; }
   if (s.trees === 'pleached') {
     const spots = pleachedFor(f, s), G = pleachedGeometries(), r = mulberry(f.seed ^ 0x51ea), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), T = new THREE.Vector3(), c = new THREE.Color();
     if (spots.length) {
@@ -2477,7 +2990,16 @@ function buildPlazaExtras(f) {
     const m = new THREE.Mesh(geo, world.curbMat || (world.curbMat = new THREE.MeshStandardMaterial({ color: '#9d9488', roughness: 0.85, side: THREE.DoubleSide })));
     m.receiveShadow = true; g.add(m);
   }
-  const pole = s.flagpole && flagpoleSpot(f);
+  const kio = s.kiosk && kioskLayout(f, s);
+  const grv = s.groves > 0 && s.use !== 'chinampa' ? plazaGroves(f, s, kio) : [];
+  if (grv.length) g.add(buildGroves(f, grv, lift));
+  if (kio) {
+    const anchors = grv.length ? groveAnchors(grv, s.kioskLights, lift, kio) : null;
+    const k = buildKiosk(f, kio, H(kio.x, kio.z) + LIFT + lift, s.kioskFlag, { stone: s.kioskStone, roof: s.kioskRoof, anchors });
+    g.add(k.g); o.flag = k.flag; o.night = k.night; o.glow = k.glow; o.kiosk = k;
+  }
+  o.groves = grv.length;
+  const pole = !kio && s.flagpole && flagpoleSpot(f);
   if (pole) {
     const pg = new THREE.Group(), y0 = H(pole.x, pole.z) + LIFT + lift; pg.position.set(pole.x, y0, pole.z);
     const stone = world.plinthMat || (world.plinthMat = new THREE.MeshStandardMaterial({ color: '#cdbfae', roughness: 0.8 }));
@@ -2490,10 +3012,12 @@ function buildPlazaExtras(f) {
     const fw = 7.2, fh = 4.8, fg = new THREE.PlaneGeometry(fw, fh, 24, 10); fg.translate(fw / 2 + 0.15, 0, 0);
     const flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8 })); flag.userData.ownMat = true;
     const Wd = new THREE.Vector2(0.82, 0.48).normalize(); flag.position.y = y + POLE_H - fh / 2 - 0.35; flag.rotation.y = -Math.atan2(Wd.y, Wd.x);
-    o.flag = { mesh: flag, base: Float32Array.from(fg.attributes.position.array), w: fw }; pg.add(flag);
+    o.flag = { mesh: flag, base: Float32Array.from(fg.attributes.position.array), w: fw, x0: 0.15, k: 1 }; pg.add(flag);
     pg.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     g.add(pg);
   }
+  const maj = s.fountain && s.fountainStyle === 'majestic' && majesticSpot(f, s);
+  if (maj) { const m = buildMajestic(f, maj, H(maj.x, maj.z) + LIFT + lift); g.add(m.g); o.majestic = m; }
   if (!g.children.length) return;
   world.plazaX.add(g); PLAZAX.set(f.id, o);
 }
@@ -2503,15 +3027,19 @@ function rebuildPlazaExtras(ids) {
 }
 function stepPlazaExtras(t) {
   if (!PLAZAX.size) return;
-  const cam = camera.position, gust = WINDK.value || 1;
+  const cam = camera.position, gust = WINDK.value || 1, lit = NIGHT.value > 0.5;
+  if (world.kioskCream) world.kioskCream.emissiveIntensity = NIGHT.value * 0.22;   // lit by its own bulbs after dark
+  for (const o of PLAZAX.values()) if (o.glow) for (const [m, k] of o.glow) m.emissiveIntensity = NIGHT.value * k;
   for (const o of PLAZAX.values()) {
     const d = Math.hypot(o.f.cx - cam.x, o.f.cz - cam.z); o.g.visible = d < 2200;
+    if (o.night) for (const m of o.night) m.visible = lit;
+    if (o.majestic && d < 600) stepMajestic(o.majestic, t);
     const fl = o.flag; if (!fl || d > 700) continue;
-    const a = fl.mesh.geometry.attributes.position, A = a.array, B = fl.base;
+    const a = fl.mesh.geometry.attributes.position, A = a.array, B = fl.base, k = fl.k;   // k scales the ripple to the flag's size
     for (let i = 0; i < A.length; i += 3) {
-      const u = (B[i] - 0.15) / fl.w, x = B[i], yv = B[i + 1];
-      A[i + 2] = u * (0.32 + 0.12 * gust) * Math.sin(x * 0.9 - t * (3.2 + gust) + yv * 0.35) + u * 0.12 * Math.sin(x * 2.1 - t * 6.1);
-      A[i + 1] = yv - u * u * 0.5 / (0.6 + gust);   // a light flag droops a little at the fly end in a calm
+      const u = (B[i] - fl.x0) / fl.w, x = B[i] / k, yv = B[i + 1];
+      A[i + 2] = k * (u * (0.32 + 0.12 * gust) * Math.sin(x * 0.9 - t * (3.2 + gust) + yv / k * 0.35) + u * 0.12 * Math.sin(x * 2.1 - t * 6.1));
+      A[i + 1] = yv - k * u * u * 0.5 / (0.6 + gust);   // a light flag droops a little at the fly end in a calm
     }
     a.needsUpdate = true; fl.mesh.geometry.computeVertexNormals();
   }
@@ -2615,7 +3143,19 @@ function stepDetail() {
 }
 const dirtyTiles = new Set();
 function markDirty(id) { const r = world.byId.get(id); if (r) dirtyTiles.add(r.tile); }
-function flushDirty() { for (const tk of dirtyTiles) rebuildTile(tk); if (dirtyTiles.size && plan.active) plan.invalidate(true); dirtyTiles.clear(); }
+function flushDirty() { for (const tk of dirtyTiles) rebuildTile(tk); if (dirtyTiles.size && plan.active) plan.invalidate(true); dirtyTiles.clear(); removedChanged(); }
+function removedChanged() {   // a building taken away (or brought back): the plazas round it re-plan their kiosk, trees and groves, and the furniture moves
+  const set = world.removedChanged; if (!set || !set.size || !world.plazaX) return;
+  const ids = [];
+  for (const f of world.features) {
+    if (f.kind !== 'plaza') continue;
+    if (![...set].some((r) => r.cx > f.bbox[0] - 20 && r.cx < f.bbox[2] + 20 && r.cz > f.bbox[1] - 20 && r.cz < f.bbox[3] + 20)) continue;
+    for (const k of ['kioskL', 'kioskKey', 'grovesL', 'pleach', 'pleach2']) delete f[k];
+    ids.push(f.id);
+  }
+  set.clear();
+  if (ids.length) { rebuildPlazaExtras(ids); world.furniture = addStreetFurniture(); }
+}
 
 // Per-building animation state lives in a float texture the shaders read by building index:
 // R = sink depth (m), G = hover glow, B = selected, A = search highlight.
@@ -3194,9 +3734,10 @@ const SPECIES = {
   cassia:     { name: 'Cassia grandis', common: 'pink shower tree', form: 'crown', h: 16, o: { trunkH: 6, trunkR: 0.45, crownR: 7, greens: ['#4a8f3a', '#3f8035', '#5a9c40'], flower: '#e59ad6', share: 0.7 } },
   jacaranda:  { name: 'Jacaranda mimosifolia', common: 'jacaranda', form: 'crown', h: 12, o: { trunkH: 4.5, trunkR: 0.32, crownR: 5.2, greens: ['#5a9c4a', '#4f8f44', '#6aa852'], flower: '#8f7bd6', share: 0.8 } },
   magnolia:   { name: 'Magnolia yoroconte', common: 'yoroconte magnolia', form: 'crown', h: 22, o: { trunkH: 8, trunkR: 0.55, crownR: 6.5, greens: ['#2f6a35', '#3b7a3a', '#285e2d'], flower: '#fbf7e8', share: 0.3 } },
+  ceiba:      { name: 'Ceiba pentandra', common: 'ceiba', form: 'crown', h: 24, o: { trunkH: 14, trunkR: 0.95, crownR: 9.5, trunkC: '#a39c88', greens: ['#3f8a35', '#357a2f', '#4a9440'] } },   // only in lush parks (treeType "ceibas"), so the other parks' mix is untouched
   havardia:   { name: 'Havardia albicans', common: 'havardia', form: 'crown', h: 7, o: { trunkH: 2.6, trunkR: 0.22, crownR: 3.5, greens: ['#6aa05a', '#79ae63', '#5a914e'], flower: '#f5f0e6', share: 0.35 } },
 };
-const SP_KEYS = Object.keys(SPECIES), SP_SHORT = SP_KEYS.filter((k) => SPECIES[k].h <= 15), isPalmSp = (k) => SPECIES[k].form === 'palm';
+const SP_KEYS = Object.keys(SPECIES).filter((k) => k !== 'ceiba'), SP_SHORT = SP_KEYS.filter((k) => SPECIES[k].h <= 15), isPalmSp = (k) => SPECIES[k].form === 'palm';
 const STREET_PALMS = SP_SHORT.filter(isPalmSp), STREET_TREES = SP_SHORT.filter((k) => !isPalmSp(k));     // only species of 15 m or under line the streets
 const PARK_PALMS = SP_KEYS.filter(isPalmSp), PARK_TREES = SP_KEYS.filter((k) => !isPalmSp(k));          // parks get everything, the giants included
 const WILD_PALMS = ['thatch', 'cherryPalm', 'peachPalm', 'oilPalm'], WILD_TREES = ['guava', 'craboo', 'havardia', 'geiger', 'ziricote', 'jacaranda', 'flame', 'pacaya'];
@@ -3320,9 +3861,9 @@ const PAVINGS = ['flagstones', 'cobbles', 'pavers'];
 const CURB_MAX = 60;   // a plaza's curb, in cm
 const cleanSides = (v) => 'nesw'.split('').filter((c) => v.toLowerCase().includes(c)).join('');   // compass sides, e.g. "esw" (north = -z)
 const FSTYLE = {   // the fields Claude may set per kind (and the edit panel offers)
-  park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense'], treeType: ['palms', 'broadleaf', 'mixed'] },
-  plaza: { use: ['plaza', 'chinampa'], paving: PAVINGS, tint: 'hex', trees: ['none', 'pleached'], treeSides: 'sides', curb: 'cm', flagpole: 'bool' },
-  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct' },
+  park: { grass: 'hex', trees: ['none', 'sparse', 'normal', 'dense', 'lush'], treeType: ['palms', 'broadleaf', 'mixed', 'ceibas'], fence: 'bool' },
+  plaza: { use: ['plaza', 'chinampa', 'boatyard'], paving: [...PAVINGS, 'waves'], tint: 'hex', trees: ['none', 'pleached'], pleachRows: 'rows', treeSides: 'sides', curb: 'cm', flagpole: 'bool', kiosk: 'bool', kioskFlag: 'bool', kioskLights: 'strands', kioskStone: 'hex', kioskRoof: 'hex', groves: 'groves', fountain: 'bool', fountainStyle: ['simple', 'majestic'], fountainAt: 'point' },
+  street: { paving: PAVINGS, tint: 'hex', lights: ['bulbs', 'papel', 'none'], trees: ['canopy', 'palms', 'none'], canopy: 'pct', bollards: 'bool' },
   path: { paving: [...PAVINGS, 'dirt'], tint: 'hex' },
   canal: {}, water: {},
   beach: { look: ['copacabana', 'natural'] },
@@ -3330,7 +3871,7 @@ const FSTYLE = {   // the fields Claude may set per kind (and the edit panel off
 function featureStyle(f) {
   const o = (store.features.get(f.id) || {}).style || {}, r = mulberry(f.seed), s = {};
   if (f.kind === 'park') Object.assign(s, { grass: ['#5aa845', '#4f9e3f', '#63b04b'][(r() * 3) | 0], trees: 'normal', treeType: 'mixed' });
-  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', treeSides: 'nesw', curb: 0, flagpole: false });
+  if (f.kind === 'plaza') Object.assign(s, { use: 'plaza', paving: 'flagstones', tint: ['#ffffff', '#f6f4f0', '#eef1f4'][(r() * 3) | 0], trees: 'none', pleachRows: 1, treeSides: 'nesw', curb: 0, flagpole: false, kiosk: false, kioskFlag: false, kioskLights: KIOSK.strands, kioskStone: KIOSK_STONE, kioskRoof: KIOSK_ROOF, groves: 0, fountain: true, fountainStyle: 'simple' });
   if (f.kind === 'street') Object.assign(s, { paving: f.sub ? 'flagstones' : f.w < 9 ? 'cobbles' : 'pavers', tint: '#ffffff', lights: !f.sub && f.w >= 3 && f.w < 9 ? 'auto' : 'none',
     trees: f.sub || f.w < 5 ? 'none' : (f.seed % 100) < 38 ? 'canopy' : 'palms' });     // about a third of the wider streets are tree-shaded
   if (f.kind === 'path') Object.assign(s, { paving: f.sub ? 'dirt' : 'flagstones', tint: f.sub ? '#c2a271' : '#f3f1ec' });
@@ -3340,6 +3881,10 @@ function featureStyle(f) {
     if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; continue; }
     if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); continue; }
     if (spec === 'cm') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); continue; }
+    if (spec === 'rows') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); continue; }
+    if (spec === 'strands') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); continue; }
+    if (spec === 'groves') { if (Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 8); continue; }
+    if (spec === 'point') { if (v && Number.isFinite(+v.x) && Number.isFinite(+v.z)) s[k] = { x: +v.x, z: +v.z }; continue; }
     if (spec === 'pct' ? Number.isFinite(+v) : spec === 'hex' ? HEX.test(v) : spec.includes(v)) s[k] = spec === 'pct' ? clamp(Math.round(+v), 0, 100) : v;
   }
   if (f.kind === 'street') {      // the canopy slider (0–100) rules; the older none/palms/canopy word is kept in step with it
@@ -3350,11 +3895,28 @@ function featureStyle(f) {
 }
 const CANOPY_WORDS = [[1, 'No trees'], [25, 'A few palms'], [45, 'Palm-lined'], [70, 'Shaded'], [90, 'Leafy canopy'], [101, 'Full canopy']];
 const canopyWord = (c) => CANOPY_WORDS.find(([m]) => c < m)[1];
-const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass' };
+const GW_SCALE = 12;   // the grey wave paving's tile, in metres (other paving: 6)
+const TEX_OF = { flagstones: 'flags', cobbles: 'setts', pavers: 'slabs', dirt: 'grass', waves: 'gwaves' };
 const LIFT = 0.25;
 // ---- canals: straight stone-walled trenches. Vertical walls from below the water up to quay level with a pale coping along the edge, and a flagstone
 // quay strip beside them that covers the hole left in the terrain mesh (which is too coarse to follow a canal's edge). Pieces that would stand in
 // another canal, or in the sea, are left out, so junctions and mouths stay open.
+// the bank of every pond set in a park or paving: an earthy, mossy face from the lawn's edge down under the water, leaning in a little
+function buildPondBanks() {
+  const pos = [], col = [], top = linear('#6d6a4a'), bot = linear('#33402f');
+  for (const q of world.ponds || []) {
+    const r = q.p[0], sgn = ringArea(r) > 0 ? 1 : -1, n = r.length / 2;
+    for (let k = 0; k < n; k++) {
+      const ax = r[k * 2], az = r[k * 2 + 1], bx = r[(k * 2 + 2) % r.length], bz = r[(k * 2 + 3) % r.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
+      const ix = -(bz - az) / L * sgn * 0.5, iz = (bx - ax) / L * sgn * 0.5, ya = H(ax, az) + LIFT, yb = H(bx, bz) + LIFT;   // (ix, iz): half a metre in toward the water
+      pos.push(ax, ya, az, bx, yb, bz, bx + ix, -0.8, bz + iz, ax, ya, az, bx + ix, -0.8, bz + iz, ax + ix, -0.8, az + iz);
+      for (const c of [top, top, bot, top, bot, bot]) col.push(c.r, c.g, c.b);
+    }
+  }
+  if (!pos.length) return;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.receiveShadow = true; scene.add(m); world.pondBanks = m;
+}
 function buildCanalWalls(canals) {
   const geo = new Geo(), STONE = linear('#b9b0a0'), STAIN = linear('#5a6457'), MOSS = linear('#6a9447'), MOSS_D = linear('#44653a'), COPING = linear('#aea697'), KERB = linear('#b4ac9e'), KERB2 = linear('#aaa294'), QUAY = linear('#e4ded2'), QUAY2 = linear('#d9d2c4'), _ca = new THREE.Color(), _cb = new THREE.Color();
   const BANDS = [[0.55, 2.6, KERB, KERB2], [2.6, 7.1, QUAY, QUAY2], [7.1, 11.6, QUAY2, QUAY], [11.6, 16.1, QUAY, QUAY2], [16.1, 18, QUAY2, QUAY]];   // the stone nearest the water is darker than the pavement beyond
@@ -3599,7 +4161,7 @@ function buildGround(kind) {
     g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
-  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
+  world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -3864,7 +4426,7 @@ function updateVeg(p, alt) {
   for (const m of world.veg) {
     const u = m.userData, d = Math.hypot(u.cx - p.x, u.cz - p.z);
     const near = d < (u.small ? t.nearR * 0.8 : t.nearR), far = !near && d < t.farR;
-    const vis = u.role === 'grove' ? (high || d > t.farR * 0.6) : !high && (u.role === 'near' ? near : far && !u.small);
+    const vis = u.role === 'grove' ? (high || d > t.farR * 0.6) : u.lush ? (u.role === 'near' ? near && !high : !u.small && (!near || high)) : !high && (u.role === 'near' ? near : far && !u.small);
     if (m.visible !== vis) m.visible = vis;
     if (u.role === 'near' && m.castShadow !== t.treeShadow) m.castShadow = t.treeShadow;
   }
@@ -3880,15 +4442,17 @@ function rebuildParkTrees(onlyTiles) {
   let count = 0;
   for (const tk of tiles) {
     dropVeg(world.parkTrees.get(tk));
-    const buckets = {}, groves = [];
+    const buckets = {}, lushB = {}, groves = [];
     for (const f of world.features) {
       if (f.kind !== 'park' || treeTile(f.cx, f.cz) !== tk || f.rings[0].length < 6) continue;
-      const s = featureStyle(f), per = { none: 0, sparse: 0.5, normal: 1.5, dense: 3 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5 }[s.treeType];
+      const s = featureStyle(f), per = { none: 0, sparse: 0.5, normal: 1.5, dense: 3, lush: 5 }[s.trees], palmShare = { palms: 0.92, broadleaf: 0.08, mixed: 0.5, ceibas: 0.62 }[s.treeType];
+      const BK = s.trees === 'lush' ? lushB : buckets, broad = (r) => s.treeType === 'ceibas' && r() < 0.75 ? 'ceiba' : pickSp(PARK_TREES, r);   // lush parks get their own meshes (seen from afar)
       if (!per) continue;
       const rnd = mulberry(f.seed ^ 0x9e3779b9), { pts, tris } = triangulate(f.rings);
       let area = 0; for (const t of tris) { const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]]; area += Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2; }
       // a few groves or orchards for when the park is seen from far away: either a loose cluster or tidy rows of ruffled crowns
       const gr = mulberry(f.seed ^ 0x51ed270b); let ng = Math.min(3, Math.floor(area / 5000) + (gr() < 0.5 ? 1 : 0)); if (area < 900) ng = 0;
+      if (s.trees === 'lush') ng = Math.min(8, Math.max(ng, Math.ceil(area / 1800)));   // and more far-off stand-ins
       for (let tries = 0; ng > 0 && tries < 40; tries++) {
         let r = gr() * area, pick = tris[0]; for (const t of tris) { const A = pts[t[0]], B = pts[t[1]], C = pts[t[2]], a = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2; if ((r -= a) <= 0) { pick = t; break; } }
         const A = pts[pick[0]], B = pts[pick[1]], C = pts[pick[2]]; let u = gr(), v = gr(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
@@ -3910,7 +4474,7 @@ function rebuildParkTrees(onlyTiles) {
           let u = rnd(), v = rnd(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
           if (occParkAt(x, z) > 0.5 || hardAt(x, z, 1.4)) continue;
-          const sp = rnd() < palmShare ? pickSp(PARK_PALMS, rnd) : pickSp(PARK_TREES, rnd); bucketAdd(buckets, sp, x, z, 0.85 + rnd() * 0.3, rnd); count++;   // any species, the tall ones included: parks are the only place they grow
+          const sp = rnd() < palmShare ? pickSp(PARK_PALMS, rnd) : broad(rnd); bucketAdd(BK, sp, x, z, 0.85 + rnd() * 0.3, rnd); count++;   // any species, the tall ones included: parks are the only place they grow
         }
         // shrubs and flowering bushes, in loose drifts
         let nb = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 / 55 * per; nb = Math.floor(nb) + (rnd() < nb % 1 ? 1 : 0);
@@ -3919,13 +4483,52 @@ function rebuildParkTrees(onlyTiles) {
           const x = A.x + u * (B.x - A.x) + v * (C.x - A.x), z = A.y + u * (B.y - A.y) + v * (C.y - A.y);
           if (occParkAt(x, z) > 0.5 || hardAt(x, z, 1.0)) continue;
           const drift = 2 + ((rnd() * 3) | 0), flower = rnd() < 0.3;
-          for (let d = 0; d < drift; d++) { const bx = x + (rnd() - 0.5) * 3.2, bz = z + (rnd() - 0.5) * 3.2; if (occParkAt(bx, bz) > 0.5 || H(bx, bz) < 0.5 || hardAt(bx, bz, 0.9)) continue; bucketAdd(buckets, flower && d < 2 ? 'flowerBush' : 'bush', bx, bz, 0.7 + rnd() * 0.7, rnd); count++; }
+          for (let d = 0; d < drift; d++) { const bx = x + (rnd() - 0.5) * 3.2, bz = z + (rnd() - 0.5) * 3.2; if (occParkAt(bx, bz) > 0.5 || H(bx, bz) < 0.5 || hardAt(bx, bz, 0.9)) continue; bucketAdd(BK, flower && d < 2 ? 'flowerBush' : 'bush', bx, bz, 0.7 + rnd() * 0.7, rnd); count++; }
         }
       }
     }
-    world.parkTrees.set(tk, [...treeMeshes(buckets), ...groveMeshes(groves)]);
+    const lush = treeMeshes(lushB); for (const m of lush) m.userData.lush = true;   // lush parks stay full from afar: their stand-ins show at any height (updateVeg)
+    world.parkTrees.set(tk, [...treeMeshes(buckets), ...lush, ...groveMeshes(groves)]);
   }
   return count;
+}
+// ---- park fences (park style fence: true): a black wrought-iron railing 0.3 m inside the park's edge, open where a path or street comes in
+// and left out along building walls. Posts every 2.4 m with ball finials, two rails, balusters every 0.14 m (instanced). Rebuilt with the park trees.
+function rebuildParkFences() {
+  world.parkFences = world.parkFences || new Map();
+  for (const f of world.features) {
+    if (f.kind !== 'park') continue;
+    const want = !!featureStyle(f).fence, key = want ? 'fence' : '', old = world.parkFences.get(f.id);
+    if (old && old.key === key) continue;
+    if (old) { scene.remove(old.g); old.g.traverse((m) => { if (m.isInstancedMesh) m.dispose(); else if (m.geometry) m.geometry.dispose(); }); world.parkFences.delete(f.id); }
+    if (!want) continue;
+    const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, n = r.length / 2, posts = [], bars = [], rails = [];
+    const open = (x, z) => roadAt(x, z, 0.4, true) || buildingAt(x, z) >= 0 || H(x, z) < 0.3;
+    for (let k = 0; k < n; k++) {
+      const ax = r[k * 2], az = r[k * 2 + 1], bx = r[(k * 2 + 2) % r.length], bz = r[(k * 2 + 3) % r.length], L = Math.hypot(bx - ax, bz - az); if (L < 0.2) continue;
+      const ux = (bx - ax) / L, uz = (bz - az) / L, ix = -uz * sgn * 0.3, iz = ux * sgn * 0.3, ry = Math.atan2(-uz, ux);
+      let run = null;   // the current unbroken stretch [s0, s1]
+      const flush = (s1) => { if (run && s1 - run > 0.6) { const m = (run + s1) / 2, x = ax + ux * m + ix, z = az + uz * m + iz; rails.push({ x, z, L: s1 - run, ry }); posts.push(ax + ux * run + ix, az + uz * run + iz, ax + ux * s1 + ix, az + uz * s1 + iz); } run = null; };
+      for (let t = 0; t <= L; t += 0.14) {
+        const x = ax + ux * t + ix, z = az + uz * t + iz;
+        if (open(x, z)) { flush(t - 0.14); continue; }
+        if (run === null) run = t;
+        bars.push(x, z);
+        if (Math.round(t / 0.14) % 17 === 0) posts.push(x, z);
+      }
+      flush(Math.min(L, Math.floor(L / 0.14) * 0.14));
+    }
+    const g = new THREE.Group(), iron = world.fenceMat || (world.fenceMat = new THREE.MeshStandardMaterial({ color: '#1f2326', roughness: 0.45, metalness: 0.6 }));
+    const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0), lift = (x, z) => H(x, z) + LIFT;
+    const inst = (geo, list, step, place) => { const cnt = list.length / step; if (!cnt) return; const m = new THREE.InstancedMesh(geo, iron, cnt); for (let i = 0; i < cnt; i++) m.setMatrixAt(i, place(i, M4)); m.castShadow = true; m.computeBoundingSphere(); g.add(m); };
+    world.fenceGeo = world.fenceGeo || { bar: new THREE.BoxGeometry(0.022, 1.3, 0.022).translate(0, 0.72, 0), post: mergeGeometries([new THREE.BoxGeometry(0.08, 1.6, 0.08).translate(0, 0.8, 0), new THREE.SphereGeometry(0.06, 8, 6).translate(0, 1.66, 0)].map(stripUV)), rail: new THREE.BoxGeometry(1, 0.045, 0.045) };
+    for (const b of [world.fenceGeo.bar]) b.attributes.uv && b.deleteAttribute('uv');
+    inst(world.fenceGeo.bar, bars, 2, (i, M) => M.compose(V.set(bars[i * 2], lift(bars[i * 2], bars[i * 2 + 1]), bars[i * 2 + 1]), Q4.identity(), one));
+    inst(world.fenceGeo.post, posts, 2, (i, M) => M.compose(V.set(posts[i * 2], lift(posts[i * 2], posts[i * 2 + 1]), posts[i * 2 + 1]), Q4.identity(), one));
+    const railList = rails.flatMap((rl) => [rl, rl]);
+    inst(world.fenceGeo.rail, railList, 1, (i, M) => { const rl = railList[i]; return M.compose(V.set(rl.x, lift(rl.x, rl.z) + (i % 2 ? 1.34 : 0.14), rl.z), Q4.setFromAxisAngle(up, rl.ry), new THREE.Vector3(rl.L, 1, 1)); });
+    scene.add(g); world.parkFences.set(f.id, { g, key, bars: bars.length / 2 });
+  }
 }
 // Big shade trees for street canopies: tall trunk and a broad, flat-topped crown (laurel / flamboyant)
 function canopyGeometry() {
@@ -3996,6 +4599,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   world.occP = new Uint8Array(occP.length); for (let i = 0; i < occP.length; i++) world.occP[i] = occP[i] * 255;
   const rnd = mulberry(2024), buckets = {};
   const parks = rebuildParkTrees();
+  rebuildParkFences();
   // Countryside: forest clumps and scattered palms near the coast
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
   for (let z = minZ; z < maxZ && wild < 60000; z += S) for (let x = minX; x < maxX && wild < 60000; x += S) {
@@ -4261,6 +4865,7 @@ function addStreetFurniture() {
     const rnd = mulberry(f.seed ^ 0x7f4a7c15);
     if (f.kind === 'street' && f.w >= 3) {
       const hw = f.w / 2, both = f.w >= 12; let side = rnd() < 0.5 ? 1 : -1, k = 0;
+      if (featureStyle(f).bollards) for (const b of streetBollards(f)) { claim(b[0], b[1]); put('bollard', b[0], b[1], 0); }   // pedestrian-only: a row across each end
       walk(f.pts, f.w >= 9 ? 24 : 28, 6 + rnd() * 10, (x, z, nx, nz) => {
         for (const sd of both ? [side, -side] : [side]) lamp(x + nx * (hw + 0.45) * sd, z + nz * (hw + 0.45) * sd);
         side = -side;
@@ -4290,10 +4895,12 @@ function addStreetFurniture() {
           if (rnd() < 0.42 && clear(sx, sz, 0.5)) { claim(sx, sz); put('shrub', sx + (rnd() - 0.5) * 0.3, sz + (rnd() - 0.5) * 0.3, rnd() * 6.28, 0.75 + rnd() * 0.55); }
         }
       });
-    } else if (f.kind === 'plaza' && featureStyle(f).use !== 'chinampa' && f.rings[0].length >= 6) {
+    } else if (f.kind === 'plaza' && featureStyle(f).use === 'plaza' && f.rings[0].length >= 6) {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
-      const pole = ps.flagpole && flagpoleSpot(f); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      const kio = ps.kiosk && kioskLayout(f, ps), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      if (ps.groves > 0) for (const t of plazaGroves(f, ps, kio)) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) claim(t.x + a * 1.4, t.z + b * 1.4);   // the groves' trunks
+      if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
       // (nx, nz) from walk() is the left-hand normal, which points into a positive ring
       walk(ring, 3.4, 1.5, (x, z, nx, nz) => {
@@ -4306,9 +4913,11 @@ function addStreetFurniture() {
         const bx = x + nx * sgn * 3.4, bz = z + nz * sgn * 3.4; if (!pointInRings(bx, bz, f.rings) || !clear(bx, bz, 1.2)) return;
         claim(bx, bz); put((kb++ % 3) === 2 ? 'planter' : 'bench', bx, bz, facing(bx, bz, x + nx * sgn * 10, z + nz * sgn * 10));
       });
-      if (f.size > 1400) {
+      const maj = ps.fountain && ps.fountainStyle === 'majestic' && majesticSpot(f, ps);
+      if (maj) for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < MAJ.R + 1.5) claim(maj.x + a * 1.4, maj.z + b * 1.4);   // the majestic fountain (plaza extras) and its step
+      if (f.size > 1400 && ps.fountain && !maj) {
         // the fountain stands at the centre, or with a flagpole there, a third of the way toward one end along the plaza's length
-        const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]];
+        const wx = f.bbox[2] - f.bbox[0], wz = f.bbox[3] - f.bbox[1], spots = [...(ps.fountainAt ? [[ps.fountainAt.x, ps.fountainAt.z]] : []), ...(pole ? [1, -1].map((k) => wx > wz ? [f.cx + k * wx * 0.3, f.cz] : [f.cx, f.cz + k * wz * 0.3]) : [[f.cx, f.cz]])];
         const [fx, fz] = spots.find(([x, z]) => pointInRings(x, z, f.rings) && clear(x, z, 3.5)) || [NaN, NaN];
         if (Number.isFinite(fx)) { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(fx + a * 1.4, fz + b * 1.4); put('fountain', fx, fz, 0); put('fountainWater', fx, fz, 0); }
       }
@@ -4339,7 +4948,7 @@ function addStreetFurniture() {
   // potted plants by front doors (and a few along street walls), and a pool of lantern light on the pavement
   const POTS = ['potBush', 'potFlower', 'potAgave', 'potBush', 'potFlower'];
   for (const rec of world.buildings) {
-    if (styleOf(rec).facade === 'neoclassical') continue;
+    if (rec.removed || styleOf(rec).facade === 'neoclassical') continue;
     const rnd = mulberry(rec.seed ^ 0x1b873593);
     for (const d of doorsOf(rec)) {
       const f = d.f, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L;
@@ -4934,7 +5543,7 @@ function pointInRings(x, z, rings) {
 }
 function nearbyBuildings(x, z, out) {
   const G = world.GRID, ix = Math.floor(x / G) + 2000, iz = Math.floor(z / G) + 2000; out.clear();
-  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = world.bGrid.get(gkey(ix + a, iz + b)); if (l) for (const k of l) out.add(k); }
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = world.bGrid.get(gkey(ix + a, iz + b)); if (l) for (const k of l) if (!world.buildings[k].removed) out.add(k); }
   return out;
 }
 // Building whose footprint contains (x, z), or -1
@@ -4943,7 +5552,7 @@ function buildingAt(x, z, test) {
   if (!l) return -1;
   for (const k of l) {
     const b = world.buildings[k], bb = b.bbox;
-    if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || (test && !test(b))) continue;
+    if (b.removed || x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || (test && !test(b))) continue;
     if (pointInRings(x, z, b.rings)) return k;
   }
   return -1;
@@ -4982,7 +5591,7 @@ function flagSink(x, z, test, t) {
   if (!l) return;
   for (const k of l) {
     const b = world.buildings[k], bb = b.bbox;
-    if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || !test(b)) continue;
+    if (b.removed || x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3] || !test(b)) continue;
     if (pointInRings(x, z, b.rings)) { const a = animOf(k); a.wantSink = 1; a.lastFlag = t; }
   }
 }
@@ -5004,12 +5613,12 @@ function updateSinking(t) {
 
 // ─────────────────────────── saved edits (artifact db, owner-only writes) ───────────────────────────
 // buildings/{id} and features/{id}: {name, address, tags[], history, details, attrs{}, style{}}
-// prompts/{id}: {bId (target id), text, status, result}; changes/{id}: the history log
+// prompts/{id}: {bId (target id), text, status, result}; changes/{id}: the history log; groups/{id}: {name, ids[]} (⌘G)
 const store = {
-  kind: 'none', canEdit: false, buildings: new Map(), features: new Map(), prompts: new Map(), changes: new Map(), listeners: new Set(),
+  kind: 'none', canEdit: false, buildings: new Map(), features: new Map(), prompts: new Map(), changes: new Map(), groups: new Map(), listeners: new Set(),
   on(fn) { this.listeners.add(fn); }, emit(what, ids) { for (const f of this.listeners) f(what, ids); },
 };
-const COLLECTIONS = ['buildings', 'features', 'prompts', 'changes'];
+const COLLECTIONS = ['buildings', 'features', 'prompts', 'changes', 'groups'];
 let DB = null, SAMPLE;
 const LOCAL_KEY = 'amparacan-map-edits';
 const pending = new Map(); // "col/id" → { body, timer, inflight }
@@ -5027,7 +5636,7 @@ async function initStore() {
     store.kind = 'local'; store.canEdit = true; document.body.classList.add('local-preview');
     setTimeout(() => toast('Local preview: edits stay in this browser and “Apply now” can’t run Claude here. Open the published map to edit instantly.'), 1500);
     try { const j = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}'); for (const c of COLLECTIONS) for (const [k, v] of Object.entries(j[c] || {})) store[c].set(k, v); } catch (e) {}
-    store.emit('buildings', [...store.buildings.keys()]); store.emit('features', [...store.features.keys()]); store.emit('prompts'); store.emit('changes'); store.emit('ready');
+    store.emit('buildings', [...store.buildings.keys()]); store.emit('features', [...store.features.keys()]); store.emit('prompts'); store.emit('changes'); store.emit('groups'); store.emit('ready');
     return;
   }
   const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
@@ -5097,12 +5706,33 @@ function applyUndoStep(step, dir) {
 }
 function undoEdit() { const st = undo.stack.pop(); if (!st) return; applyUndoStep(st, 'undo'); undo.redo.push(st); toast(`Undone${st.size > 1 ? ` (${st.size} items)` : ''}.`); refreshUndo(); }
 function redoEdit() { const st = undo.redo.pop(); if (!st) return; applyUndoStep(st, 'redo'); undo.stack.push(st); toast('Redone.'); refreshUndo(); }
-// Compass and Measure sit by the minimap: the compass to its right, Measure under it (or under the altitude counter while flying)
+// The readouts under the minimap: small "alt" (flying only) and "xy" chips that open, when clicked, to the altitude and the position
+// (Shift G / G; remembered in localStorage). The position is the character's x and z in map metres, the same
+// numbers a prompt's "at" and fountainAt use. A click copies them.
+const COORDS = { on: false, alt: true };   // alt: the altitude counter while flying (on unless hidden)
+try { COORDS.on = localStorage.getItem('amparacan-map-coords') === '1'; COORDS.alt = localStorage.getItem('amparacan-map-alt') !== '0'; } catch (e) {}
+function toggleAlt(on = !COORDS.alt) {
+  COORDS.alt = on; try { localStorage.setItem('amparacan-map-alt', on ? '1' : '0'); } catch (e) {}
+  $('mm-alt').setAttribute('aria-pressed', String(on)); $('alt-val').hidden = !on; mm.last = 0; _hudSig = '';
+  if (player.mode !== 'fly') toast(on ? 'Altitude on: it shows while you fly.' : 'Altitude hidden.');
+}
+function toggleCoords(on = !COORDS.on) {
+  COORDS.on = on; try { localStorage.setItem('amparacan-map-coords', on ? '1' : '0'); } catch (e) {}
+  $('mm-xy').setAttribute('aria-pressed', String(on)); $('coord-val').hidden = !on; mm.last = 0;
+  if (!(player.mode === 'walk' || player.mode === 'fly')) toast(on ? 'Coordinates on: they show while you walk or fly.' : 'Coordinates off.');
+  _hudSig = '';
+}
+function copyCoords() {
+  const t = `x ${player.pos.x.toFixed(1)}, z ${player.pos.z.toFixed(1)}`;
+  const done = () => toast(`Copied ${t}`), fail = () => toast(t);
+  try { navigator.clipboard.writeText(t).then(done, fail); } catch (e) { fail(); }
+}
+// Compass and Measure sit by the minimap: the compass to its right, Measure under it (under the readouts)
 let _hudSig = '';
 function placeHud() {
-  const mmEl = $('minimap'), sr = $('search').getBoundingClientRect(), vis = !mmEl.hidden, mr = mmEl.getBoundingClientRect(), alt = $('alt-box');
+  const mmEl = $('minimap'), sr = $('search').getBoundingClientRect(), vis = !mmEl.hidden, mr = mmEl.getBoundingClientRect(), ro = $('readouts');
   const cl = vis ? mr.right + 8 : sr.right + 8, ct = vis ? mr.top : sr.top;
-  const ml = vis ? mr.left : sr.left, ar = alt.hidden ? null : alt.getBoundingClientRect(), mt = ar ? ar.bottom + 6 : vis ? mr.bottom + 6 : sr.bottom + 7;
+  const ml = vis ? mr.left : sr.left, ar = !ro.hidden ? ro.getBoundingClientRect() : null, mt = ar ? ar.bottom + 6 : vis ? mr.bottom + 6 : sr.bottom + 7;
   const sig = [cl, ct, ml, mt].map(Math.round).join();
   if (sig === _hudSig) return; _hudSig = sig;
   const c = $('compass').style, m = $('measure-btn').style;
@@ -5118,9 +5748,14 @@ function refreshUndo() {
 function docFor(id) { return { ...blankDoc(), ...clone(store[colFor(id)].get(id)) }; }
 function saveTarget(id, body, delay) { saveDoc(colFor(id), id, body, delay); store.emit(colFor(id), [id]); }
 const newId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// where "here" is when a prompt is written: the character (walking or flying now, or where it was last left standing), otherwise the point the map camera looks at
+function whereNow() {
+  const walking = player.mode === 'walk' || player.mode === 'fly', p = walking ? player.pos : player.lastWalk || (controls && controls.target);
+  return p ? { x: +p.x.toFixed(1), z: +p.z.toFixed(1), by: walking || player.lastWalk ? 'character' : 'camera' } : null;
+}
 function newPrompt(bId, text, status, extra = {}) {
   const id = newId('p'), now = new Date().toISOString();
-  saveDoc('prompts', id, { bId, text, status, result: '', createdAt: now, updatedAt: now, ...extra }, 0);
+  saveDoc('prompts', id, { bId, text, status, result: '', createdAt: now, updatedAt: now, at: whereNow(), ...extra }, 0);
   store.emit('prompts'); return id;
 }
 function patchPrompt(id, patch) { const p = store.prompts.get(id); if (!p) return; saveDoc('prompts', id, { ...p, ...patch, updatedAt: new Date().toISOString() }, 0); store.emit('prompts'); }
@@ -5143,7 +5778,7 @@ const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofT
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
 const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
-  trees: 'tree density', treeSides: 'tree sides', curb: 'curb', flagpole: 'flagpole', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
+  trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', fountainStyle: 'fountain style', fountainAt: 'fountain position', bollards: 'bollards', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
 function diffDocs(a, b) {
   const out = [];
@@ -5183,6 +5818,7 @@ function cleanStyleFor(kind, o) {
     if (AWNINGS.includes(o.awning)) s.awning = o.awning;
     if (typeof o.awningColor === 'string' && HEX.test(o.awningColor.trim())) s.awningColor = o.awningColor.trim().toLowerCase();
     if (typeof o.porch === 'boolean') s.porch = o.porch;
+    if (typeof o.removed === 'boolean') s.removed = o.removed;
     if (o.sign === null || (o.sign && o.sign.kind === 'none')) s.sign = null; else { const sg = cleanSign(o.sign); if (sg) s.sign = sg; }
     return s;
   }
@@ -5190,6 +5826,10 @@ function cleanStyleFor(kind, o) {
     const v = typeof o[k] === 'string' ? o[k].trim() : o[k];
     if (spec === 'pct') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 100); }
     else if (spec === 'cm') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, CURB_MAX); }
+    else if (spec === 'rows') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 1, 2); }
+    else if (spec === 'strands') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 40); }
+    else if (spec === 'groves') { if (v !== '' && v != null && Number.isFinite(+v)) s[k] = clamp(Math.round(+v), 0, 8); }
+    else if (spec === 'point') { if (v === null) s[k] = null; else if (v && Number.isFinite(+v.x) && Number.isFinite(+v.z)) s[k] = { x: +(+v.x).toFixed(1), z: +(+v.z).toFixed(1) }; }
     else if (spec === 'bool') { if (typeof v === 'boolean') s[k] = v; }
     else if (spec === 'sides') { if (typeof v === 'string') s[k] = cleanSides(v); }
     else if (spec === 'hex' ? HEX.test(v || '') : spec.includes(v)) s[k] = spec === 'hex' ? v.toLowerCase() : v;
@@ -5217,27 +5857,40 @@ const STYLE_DOCS = {
 - awning: "all" (one continuous striped canvas awning all the way round the ground floor), "doors" (an awning over each front door) or "none"
 - awningColor: the awning stripes' colour, "#rrggbb" (they alternate with cream; default the shutter colour)
 - porch: true for a covered porch in front of the main door (stone platform and step, lime columns, terracotta lean-to roof); false removes it
+- removed: true takes the building away altogether (nothing is drawn and the ground beneath is open, e.g. so a plaza's kiosk can stand there); false brings it back
 - sign: a shop sign over the ground floor, {"kind": "pharmacy" (a green cross on a bracket that glows at night, plus a green sign board) or "shop" (a sign board), "text": the board's lettering, short and in capitals, e.g. "FARMACIA" or "PANADERÍA", "color": the board colour "#rrggbb" (optional)}; null removes it. The lettering is shop signage, not the building's name.`,
   park: `- grass: lawn colour, "#rrggbb"
-- trees: "none", "sparse", "normal" or "dense"
-- treeType: "palms", "broadleaf" (ceibas and flamboyants) or "mixed"`,
-  plaza: `- use: "plaza" (a paved square) or "chinampa" (Xochimilco-style floating garden plots between little canals, with ahuejote willows and trajinera boats)
-- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
+- trees: "none", "sparse", "normal", "dense" or "lush" (a jungle of trees and undergrowth that stays green and full even from high above and on Low graphics)
+- treeType: "palms", "broadleaf" (flowering and shade trees), "mixed" or "ceibas" (palms and towering ceibas)
+- fence: true for a wrought-iron railing round the park, open where paths and streets come in; false removes it"`,
+  plaza: `- use: "plaza" (a paved square), "chinampa" (Xochimilco-style floating garden plots between little canals, with ahuejote willows and trajinera boats) or "boatyard" (a dinghy park: rows of sailing dinghies on trolleys with masts, some under tarps, chain-link fencing on the street sides with a gate, lockers and a jib crane; no benches or fountain)
+- paving: "flagstones" (large pale slabs), "cobbles" (blue-white granite setts), "pavers" (modern large-format) or "waves" (grey Portuguese stone setts, light and mid grey in broad wave bands)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
+- pleachRows: 1 or 2, how many rows of pleached trees (2 = a double row, the second just inside the first)
 - trees: "pleached" for a ring of pleached trees round the edge (clipped boxy canopies on bare trunks joined into a shaded walk, like the Jardín Guerrero in Querétaro) or "none"
 - treeSides: which sides of the plaza get the pleached trees, letters from "nesw" ("nesw" = all four, "esw" = all but the north side)
 - curb: the plaza raised on a stone curb above the streets around it, in cm (0 = level, 10 = a low curb, up to 60)
-- flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it`,
+- flagpole: true for a tall flagpole on a stepped stone plinth at the centre (any fountain moves toward one end); false removes it
+- kiosk: true for an octagonal bandstand at the centre (stone podium with steps, wrought-iron railing, slender columns, tiered roof, warm string lights round the columns and railing and fanning out from the crown to masts round the plaza); it takes the place of the flagpole and the fountain moves toward one end; false removes it
+- kioskLights: how many strands of string lights fan out from the kiosk's crown to masts round the plaza, 0-40 (default 28)
+- fountain: false for no fountain on the plaza, true (the default) for one
+- fountainAt: where the fountain stands, {"x": number, "z": number} in map metres (a prompt's "at" is where the author was when writing it, so "put the fountain here" means that point); null puts it back in the middle
+- fountainStyle: "simple" (the default: a small two-tier fountain) or "majestic" (a grand baroque fountain at the centre: an 18 m stone basin on two steps, three cascading bowls with water curtains, a crowning urn and jet, and eight arcing jets from the rim)
+- kioskStone: the kiosk's stone (podium, steps), "#rrggbb" (limestone is about "#e3dccb"; default "#c9a47a" sandstone)
+- kioskRoof: the kiosk's roof colour, "#rrggbb" (default "#efe5cf" cream)
+- groves: 0-8 outcrops of tall broadleaf trees (mahogany, copal, chicozapote, magnolia) out on the paving, clear of the kiosk's stairs and the pleached rows; with a kiosk, its light strands run into these trees' crowns instead of to masts
+- kioskFlag: true for a small flag on a short mast at the top of the kiosk's roof (use this, not flagpole, when the flag should be on the kiosk)`,
   street: `- paving: "flagstones", "cobbles" (blue-white granite setts) or "pavers" (modern large-format)
 - tint: colour multiplied over the paving, "#rrggbb" ("#ffffff" keeps the stone's own colour)
 - lights: "bulbs" (string lights across the street), "papel" (papel picado bunting) or "none"
+- bollards: true for a row of bollards across each end of the street, making it pedestrian-only; false removes them"
 - canopy: tree cover as a number 0-100 (0 = no trees, about 30 = a line of palms, about 75 = shade trees on both sides, 100 = a full canopy of overlapping crowns, on both sides of the street). Prefer this over "trees".
 - trees: "canopy" (large shade trees on both sides whose crowns meet over the street), "palms" (a line of palms) or "none"`,
   path: `- paving: "flagstones", "cobbles", "pavers" or "dirt"
 - tint: colour multiplied over the surface, "#rrggbb"`,
   beach: `- look: "copacabana" (wide golden sand, black-and-white wave-pattern calçadão promenade, palms, kiosks, lifeguard posts, umbrellas) or "natural" (plain sand)`,
 };
-function promptFor(t, doc, text, nImages = 0) {
+function promptFor(t, doc, text, nImages = 0, at = null) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
   if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
     current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [], doorSide: cur.doorSide || null, awning: cur.awning || null, porch: !!cur.porch, sign: cur.sign || null } });
@@ -5248,7 +5901,7 @@ function promptFor(t, doc, text, nImages = 0) {
 Feature: ${JSON.stringify(info)}
 
 The author's request: ${JSON.stringify(text)}
-${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
+${at ? `When writing it the author's ${at.by === 'character' ? 'character stood' : 'camera was looking'} at x ${at.x}, z ${at.z} (map metres): that is where "here" is.\n` : ''}${nImages ? `\nThe author attached ${nImages} reference image${nImages > 1 ? 's' : ''} showing the look they want. Match its colours, materials, proportions and character as closely as the fields below allow, and put anything you can see in the image that these fields cannot express into "needsCode" (be specific: e.g. "a central dome", "Moorish horseshoe arches").\n` : ''}
 ${fields ? `Style fields you may set (include only the ones that change):\n${fields}` : 'This kind of feature has no style fields yet; only its attributes can change here.'}
 A request like "make this a pharmacy" or "turn it into a school" means "style it like one": change only the look. Set "attributes" (name, ${t.kind === 'building' ? 'address, ' : ''}tags as an array of strings, history, details) only for what the request explicitly asks for in words such as name, call, rename, tag, categorise, history or details. Never invent or propose a name. When the request implies a use but doesn't ask for tags, you may propose tags in "suggest" instead ({"tags": ["pharmacy"]}); the author is asked before they are added.
 
@@ -5336,7 +5989,7 @@ async function applyPrompt(pid) {
     if (p.bIds) return await applyGroupPrompt(pid, p, canSee ? images : [], opts);
     const before = docFor(t.id);
     if ((p.segments || p.segment) && t.kind === 'building') return await applySegmentPrompt(pid, p, canSee ? images.length : 0, opts);
-    const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0), opts);
+    const r = await SAMPLE.json(promptFor(t, before, p.text, canSee ? images.length : 0, p.at), opts);
     const style = cleanStyleFor(t.kind, r && r.style), attrs = cleanAttrs(r && r.attributes), sug = cleanAttrs(r && r.suggest);
     // "make this a pharmacy" means style it like one: an unasked name is dropped, unasked tags are only offered
     if (attrs.name != null && !ASKS_NAME.test(p.text)) delete attrs.name;
@@ -5373,7 +6026,7 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 let toastTimer = 0;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3600); }
+function toast(msg, ms = 3600) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms); }
 function setHover(id) {
   if (id === ui.hover) return;
   const prev = targetOf(ui.hover); if (prev && prev.b) animOf(prev.b.idx).wantHover = 0;
@@ -5390,7 +6043,8 @@ function endEditing() {
   if (ui.editSnapshot) logChange({ id: ui.selected, source: 'manual', before: ui.editSnapshot, after, tags: diffDocs(ui.editSnapshot, after).map((f) => FIELD_LABEL[f] || f) });
   ui.editing = false; ui.editSnapshot = null;
 }
-function select(id, { edit = false, focusPrompt = false, keepSegs = false } = {}) {
+function select(id, { edit = false, focusPrompt = false, keepSegs = false, one = false } = {}) {
+  if (id && !one && !keepSegs && groupIds(groupOf(id)).length >= 2) { selectGroup(groupOf(id)); return; }   // a member of a group brings the whole group
   if (multi.size) clearMulti(true);
   if (ui.segs.length && !keepSegs) clearSegment(true);
   if (id !== ui.selected) { endEditing(); for (const x of attach.list) URL.revokeObjectURL(x.url); attach.list = []; }
@@ -5414,6 +6068,45 @@ function multiMark(id, on) {
   const m = fxMulti.get(id);
   if (on && !m) fxMulti.set(id, featureShape(t.f, '#3d7bd9', 0.4));
   if (!on && m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); fxMulti.delete(id); }
+}
+// ---- named groups (⌘G groups the selection, ⇧⌘G ungroups): groups/{gId} {name, ids[], at}. Clicking any member selects the whole
+// group (⌥-click picks one alone); the group panel's edits, tags and prompts then go to every member. A thing is in one group at most.
+const GROUPS = { of: new Map() };
+function indexGroups() { GROUPS.of.clear(); for (const [gid, g] of store.groups) for (const id of g.ids || []) GROUPS.of.set(id, gid); }
+store.on((what) => { if (what === 'groups' || what === 'ready') indexGroups(); });
+const groupOf = (id) => (id && GROUPS.of.get(id)) || null;
+const groupIds = (gid) => { const g = gid && store.groups.get(gid); return g ? (g.ids || []).filter((x) => targetOf(x)) : []; };
+function currentGroup() {   // the group the multi-selection is, exactly
+  if (multi.size < 2) return null;
+  const gid = groupOf([...multi][0]), ids = groupIds(gid);
+  return gid && ids.length === multi.size && ids.every((x) => multi.has(x)) ? gid : null;
+}
+function selectGroup(gid) { const ids = groupIds(gid); if (ids.length >= 2) setMulti(ids); else if (ids.length) select(ids[0], { one: true }); }
+function groupSelection() {
+  if (!store.canEdit) { toast('Only the map’s owner can group things.'); return; }
+  if (multi.size < 2) { toast('Select two or more things first (Shift-click or Shift-drag), then press ⌘G.'); return; }
+  const ids = [...multi], taken = new Set(ids);
+  if (currentGroup()) { toast('These are already one group. ⇧⌘G ungroups them.'); return; }
+  const counts = new Map(); for (const id of ids) { const g = groupOf(id); if (g) counts.set(g, (counts.get(g) || 0) + 1); }
+  let gid = null; for (const [g, n] of counts) if (!gid || n > counts.get(gid)) gid = g;   // grouping a group with more things grows it, keeping its name
+  for (const [og, g] of [...store.groups]) {   // anything taken from another group leaves it; a group left with one thing is dissolved
+    if (og === gid) continue;
+    const rest = (g.ids || []).filter((x) => !taken.has(x)); if (rest.length === (g.ids || []).length) continue;
+    if (rest.length < 2) deleteDoc('groups', og); else saveDoc('groups', og, { ...g, ids: rest, updatedAt: new Date().toISOString() }, 0);
+  }
+  const base = gid && store.groups.get(gid), now = new Date().toISOString();
+  gid = gid || 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  saveDoc('groups', gid, { name: (base && base.name) || '', ids, at: (base && base.at) || now, updatedAt: now }, 0);
+  store.emit('groups');
+  toast(base ? `Added to “${base.name || 'the group'}”: ${ids.length.toLocaleString()} things now.` : `Grouped ${ids.length.toLocaleString()} things. Give the group a name in the panel.`);
+  setTimeout(() => { const x = $('g-name'); if (x && !x.value) x.focus(); }, 0);
+}
+function ungroupSelection() {
+  if (!store.canEdit) return;
+  const gid = currentGroup() || (ui.selected && groupOf(ui.selected)), g = gid && store.groups.get(gid);
+  if (!g) { toast('Select a group first (click any of its members).'); return; }
+  deleteDoc('groups', gid); store.emit('groups');
+  toast(`Ungrouped ${g.name ? `“${g.name}”` : `${(g.ids || []).length} things`}. They stay selected.`);
 }
 function clearMulti(silent) { for (const id of multi) multiMark(id, false); multi.clear(); if (!silent) afterMulti(); }
 function setMulti(ids, { add = false } = {}) {
@@ -5573,8 +6266,8 @@ function attachBoxSelect(el, pick, boxPick) {
       const ids = boxPick(Math.min(b.sx, e.clientX), Math.min(b.sy, e.clientY), Math.max(b.sx, e.clientX), Math.max(b.sy, e.clientY));
       if (ids.length) setMulti(ids, { add: b.shift && (multi.size > 0 || !!ui.selected) }); else if (!b.shift) toast('Nothing in that area. Drag across some buildings.');
     } else {
-      const id = pick(e.clientX, e.clientY);
-      if (b.shift) toggleMulti(id); else select(id);
+      const id = pick(e.clientX, e.clientY), g = !e.altKey && groupOf(id);
+      if (b.shift) { if (g) setMulti(groupIds(g), { add: true }); else toggleMulti(id); } else select(id, { one: e.altKey });
     }
   }, true);
 }
@@ -5617,6 +6310,31 @@ function toggleBoxTool(on = !ui.boxTool) {
   if (on) toast('Drag across the map to select an area. Shift adds to the selection.');
 }
 // ---- bulk edits over the selection
+// Before a group edit changes a style field set on one member by itself, the author decides case by case (`askOwn`):
+// conflicts [{id, f, from, to}] → a Set of "id|field" to change; everything else keeps its own setting. Esc keeps them all.
+function askOwn(conflicts, what) {
+  if (!conflicts.length) return Promise.resolve(new Set());
+  return new Promise((done) => {
+    const byId = new Map(); for (const c of conflicts) { if (!byId.has(c.id)) byId.set(c.id, []); byId.get(c.id).push(c); }
+    const word = currentGroup() ? 'member' : 'item', n = byId.size, boxes = [];
+    const fmt = (v) => (v === undefined || v === null ? 'generated look' : typeof v === 'object' ? JSON.stringify(v).slice(0, 40) : String(v));
+    const rows = [...byId].slice(0, 80).map(([id, cs]) => el('div', {}, el('div', { class: 'own-name' }, nameOf(id)),
+      cs.map((c) => { const cb = el('input', { type: 'checkbox' }); boxes.push([cb, c]); return el('label', { class: 'own-row' }, cb, el('span', {}, `${FIELD_LABEL[c.f] || c.f}: `, el('b', {}, fmt(c.from)), ' → ', el('b', {}, fmt(c.to)))); })));
+    const key = (c) => c.id + '|' + c.f;
+    const finish = (pick) => { veil.remove(); removeEventListener('keydown', onKey, true); done(pick); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); finish(new Set()); } };
+    const veil = el('div', { id: 'own-veil' }, el('div', { class: 'plaque', id: 'own-ask', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'own-h' },
+      el('h3', { id: 'own-h' }, `${n} ${word}${n === 1 ? ' has its' : 's have their'} own settings`),
+      el('p', { class: 'hint' }, `${what} would change ${n === 1 ? 'it' : 'them'}. Tick what should change; the rest keep their own setting.`),
+      el('div', { class: 'own-list' }, rows, n > 80 ? el('div', { class: 'hint' }, `+${(n - 80).toLocaleString()} more, kept unless you change all`) : null),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn small', type: 'button', onclick: () => finish(new Set()) }, 'Keep all'),
+        el('button', { class: 'btn small', type: 'button', onclick: () => finish(new Set(conflicts.map(key))) }, 'Change all'),
+        el('button', { class: 'btn primary small', type: 'button', onclick: () => finish(new Set(boxes.filter(([cb]) => cb.checked).map(([, c]) => key(c)))) }, 'Apply'))));
+    document.body.append(veil); addEventListener('keydown', onKey, true);
+    setTimeout(() => { const b = veil.querySelector('.btn.primary'); if (b) b.focus(); }, 0);
+  });
+}
 function bulkUpdate(ids, mutate) {
   const changed = [], before = {};
   for (const id of ids) {
@@ -5643,11 +6361,14 @@ function logGroupChange({ ids, before, source, prompt = '', summary, category, t
   saveDoc('changes', cid, entry, 0); store.emit('changes');
 }
 const groupFloors = { timer: 0, before: null, ids: null };
-function bulkFloors(delta, absolute) {
+async function bulkFloors(delta, absolute) {
   const ids = [...multi].filter(isBuildingId); if (!ids.length) return;
+  const nextOf = (id) => { const cur = styleFor(targetOf(id)).floors; return [cur, clamp(absolute ? absolute : cur + delta, 1, 40)]; };
+  const conflicts = ids.filter((id) => isOwn(docFor(id), 'floors') && nextOf(id)[0] !== nextOf(id)[1]).map((id) => ({ id, f: 'floors', from: nextOf(id)[0], to: nextOf(id)[1] }));
+  const ok = await askOwn(conflicts, absolute ? `Setting ${absolute} floors` : delta > 0 ? 'Adding a floor' : 'Removing a floor');
   let held = 0;
-  const r = bulkUpdate(ids, (d, id) => { if (isOwn(d, 'floors')) { held++; return false; } const t = targetOf(id), cur = styleFor(t).floors, next = clamp(absolute ? absolute : cur + delta, 1, 40); if (next === cur) return false; d.style = { ...d.style, floors: next }; markAuto(d, ['floors']); return true; });
-  if (held) toast(`Left ${held} building${held === 1 ? '' : 's'} alone: they have their own floor count.`);
+  const r = bulkUpdate(ids, (d, id) => { if (isOwn(d, 'floors') && !ok.has(id + '|floors')) { held++; return false; } const [cur, next] = nextOf(id); if (next === cur) return false; d.style = { ...d.style, floors: next }; markAuto(d, ['floors']); return true; });
+  if (held) toast(`Kept the own floor count of ${held} building${held === 1 ? '' : 's'}.`);
   if (!groupFloors.before) { groupFloors.before = r.before; groupFloors.ids = new Set(); } else for (const [k, v] of Object.entries(r.before)) if (!(k in groupFloors.before)) groupFloors.before[k] = v;
   r.changed.forEach((x) => groupFloors.ids.add(x));
   clearTimeout(groupFloors.timer);
@@ -5664,23 +6385,33 @@ function bulkTags(text) {
   logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Tagged ${r.changed.length} items “${add.join(', ')}”`, category: 'Details', tags: add, fields: ['tags'] });
   toast(`Tagged ${r.changed.length} item${r.changed.length === 1 ? '' : 's'}.`); renderInfo();
 }
-function bulkReset() {
+async function bulkReset() {
+  const ids = [...multi], conflicts = [];
+  for (const id of ids) { const d = docFor(id); for (const [f, v] of Object.entries(d.style || {})) if (isOwn(d, f)) conflicts.push({ id, f, from: v, to: undefined }); }
+  const ok = await askOwn(conflicts, 'Reset look');
   let held = 0;
-  const r = bulkUpdate([...multi], (d) => { const keep = {}; let drop = 0; for (const [f, v] of Object.entries(d.style || {})) { if (isOwn(d, f)) { keep[f] = v; held++; } else drop++; } if (!drop) return false; d.style = keep; d.auto = {}; return true; });
+  const r = bulkUpdate(ids, (d, id) => { const keep = {}; let drop = 0; for (const [f, v] of Object.entries(d.style || {})) { if (isOwn(d, f) && !ok.has(id + '|' + f)) { keep[f] = v; held++; } else drop++; } if (!drop) return false; d.style = keep; d.auto = {}; return true; });
   logGroupChange({ ids: r.changed, before: r.before, source: 'manual', summary: `Reset ${r.changed.length} items to their generated look` + (held ? ` (kept individual settings)` : ''), category: 'Revert', fields: ['style'] });
   toast(r.changed.length ? (held ? 'Back to the generated look, apart from settings made on individual items.' : 'Back to the generated look.') : (held ? 'Only individual settings were left, so nothing changed.' : 'Nothing in the selection had been restyled.')); renderInfo();
 }
 function selectionCentre(ids) { let x = 0, z = 0, n = 0; for (const id of ids) { const t = targetOf(id); if (t) { x += t.cx; z += t.cz; n++; } } return n ? [x / n, z / n] : null; }
 function renderGroupInfo() {
-  const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId);
+  const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId), gid = currentGroup(), grp = gid && store.groups.get(gid);
   box.dataset.pinned = 'true'; box.hidden = false;
   const kinds = {}; for (const id of ids) { const k = targetOf(id).kind; kinds[k] = (kinds[k] || 0) + 1; }
   const title = Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
   const fl = bIds.map((id) => styleFor(targetOf(id)).floors), fmin = Math.min(...fl), fmax = Math.max(...fl);
-  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, 'Selection'), el('h3', {}, title),
-      bIds.length ? el('div', { class: 'facts' }, `${fmin === fmax ? fmin : fmin + '–' + fmax} floors`) : null),
+  const floorsTxt = bIds.length ? `${fmin === fmax ? fmin : fmin + '–' + fmax} floors` : '';
+  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || 'Unnamed group' : title),
+      el('div', { class: 'facts' }, grp ? [title, floorsTxt].filter(Boolean).join(' · ') : floorsTxt || null)),
     el('button', { class: 'close', type: 'button', 'aria-label': 'Clear selection', onclick: () => clearMulti() }, '×'))];
-  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', onclick: () => focusTarget(id) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
+  if (grp && store.canEdit) {
+    const nm = el('input', { type: 'text', id: 'g-name', value: grp.name || '', placeholder: 'Name this group', autocomplete: 'off' });
+    nm.addEventListener('input', () => { const g = store.groups.get(gid); if (!g) return; saveDoc('groups', gid, { ...g, name: nm.value.trim(), updatedAt: new Date().toISOString() }, 600); const h = box.querySelector('header h3'); if (h) h.textContent = nm.value.trim() || 'Unnamed group'; });
+    nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); });
+    kids.push(el('div', { class: 'field' }, el('label', { for: 'g-name' }, 'Group name'), nm));
+  }
+  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
   if (store.canEdit) {
     if (bIds.length) {
       const setIn = el('input', { type: 'number', id: 'g-floors', min: 1, max: 40, value: fmax, 'aria-label': 'Set every building to this many floors', style: 'width:64px' });
@@ -5693,7 +6424,9 @@ function renderGroupInfo() {
     const tagIn = el('input', { type: 'text', id: 'g-tags', placeholder: 'e.g. Barrio Viejo, colonial' });
     kids.push(el('div', { class: 'field' }, el('label', { for: 'g-tags' }, 'Add tags to all'), el('div', { class: 'row' }, tagIn, el('button', { class: 'btn small', type: 'button', onclick: () => bulkTags(tagIn.value) }, 'Add'))));
     kids.push(el('hr', { class: 'sep' }), groupPromptBox(ids, bIds));
-    kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: bulkReset }, 'Reset look'), el('button', { class: 'btn small', type: 'button', onclick: () => clearMulti() }, 'Clear selection')));
+    kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: bulkReset }, 'Reset look'),
+      grp ? el('button', { class: 'btn small', type: 'button', title: '⇧⌘G', onclick: ungroupSelection }, 'Ungroup') : el('button', { class: 'btn small', type: 'button', title: '⌘G', onclick: groupSelection }, 'Group'),
+      el('button', { class: 'btn small', type: 'button', onclick: () => clearMulti() }, 'Clear selection')));
   }
   const mine = [...store.changes].filter(([, c]) => c.kind === 'group' && c.targets && c.targets.length === ids.length && ids.every((x) => c.targets.includes(x))).sort((a, b) => b[1].at.localeCompare(a[1].at));
   if (mine.length) kids.push(el('hr', { class: 'sep' }), el('h4', { class: 'eyebrow', style: 'margin:0' }, `History · ${mine.length}`), el('div', { class: 'plist' }, mine.slice(0, 3).map(([cid, c]) => changeItem(cid, c, false))));
@@ -5705,7 +6438,7 @@ function groupPromptBox(ids, bIds) {
   const area = el('textarea', { id: 'prompt-text', rows: 3, placeholder: 'Describe desired changes here' });
   area.addEventListener('paste', (e) => { const fs = [...(e.clipboardData && e.clipboardData.files) || []]; if (fs.length) { e.preventDefault(); addAttachments(fs); } });
   return el('div', { class: 'field', id: 'prompt-box', style: 'gap:8px' },
-    el('label', { for: 'prompt-text' }, `Change all ${ids.length.toLocaleString()}`),
+    el('label', { for: 'prompt-text' }, currentGroup() ? `Change the whole group (${ids.length.toLocaleString()})` : `Change all ${ids.length.toLocaleString()}`),
     area,
     el('div', { class: 'attach-row' }, el('div', { class: 'attach-row', id: 'attach-thumbs' }), el('button', { class: 'btn small', type: 'button', onclick: () => file.click() }, '+ Reference image'), file),
     el('div', { class: 'hint' }, 'Attach, paste or drop a photo to show what you want them to look like.'),
@@ -5718,7 +6451,7 @@ async function submitGroupPrompt(how) {
   if (!text && !attach.list.length) { x.focus(); return; }
   const files = attach.list.splice(0); x.value = ''; renderAttachments();
   const id = newPrompt(ids[0], text || 'Make them look like the attached image.', 'draft');
-  patchPrompt(id, { bIds: ids, group: true });
+  const gid = currentGroup(); patchPrompt(id, { bIds: ids, group: true, ...(gid ? { groupId: gid } : {}) });
   if (files.length) { sessionBlobs.set(id, files.map((f) => f.blob)); patchPrompt(id, { images: await storeImages(files) }); files.forEach((f) => URL.revokeObjectURL(f.url)); }
   if (how === 'now') await applyPrompt(id); else toast(`Added to your batch (${ids.length.toLocaleString()} items).`);
 }
@@ -5747,19 +6480,25 @@ Reply with only JSON: {"styles": {"building": {...}, "park": {...}}, "variants":
   const r = await SAMPLE.json(input, opts);
   const styles = (r && r.styles) || {}, variants = (r && r.variants) || {};
   const hash = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h; };
-  let kept = 0;   // items where something this request would change was already set on that item itself
-  const res = bulkUpdate(ids, (d, id) => {
+  const wants = new Map(ids.map((id) => {
     const k = targetOf(id).kind, common = cleanStyleFor(k, styles[k]), vs = Array.isArray(variants[k]) ? variants[k].map((v) => cleanStyleFor(k, v)).filter((v) => Object.keys(v).length) : [];
-    const pick = vs.length ? vs[hash(id) % vs.length] : {}, want = { ...common, ...pick }, next = { ...d.style }, wrote = [];
+    return [id, { ...common, ...(vs.length ? vs[hash(id) % vs.length] : {}) }];
+  }));
+  const conflicts = [];   // fields set on one item by itself that this request would change: the author decides each
+  for (const id of ids) { const d = docFor(id); for (const [f, v] of Object.entries(wants.get(id))) if (isOwn(d, f) && JSON.stringify(d.style[f]) !== JSON.stringify(v)) conflicts.push({ id, f, from: d.style[f], to: v }); }
+  const ok = await askOwn(conflicts, 'This request');
+  let kept = 0;   // items that kept something of their own this request would have changed
+  const res = bulkUpdate(ids, (d, id) => {
+    const next = { ...d.style }, wrote = [];
     let held = false;
-    for (const [f, v] of Object.entries(want)) { if (isOwn(d, f)) { if (next[f] !== v) held = true; continue; } if (next[f] !== v) { next[f] = v; wrote.push(f); } }
+    for (const [f, v] of Object.entries(wants.get(id))) { if (isOwn(d, f) && !ok.has(id + '|' + f)) { if (next[f] !== v) held = true; continue; } if (next[f] !== v) { next[f] = v; wrote.push(f); } }
     if (held) kept++;
     if (!wrote.length) return false; d.style = next; markAuto(d, wrote); return true;
   });
   const fields = [...new Set(Object.values(styles).flatMap((o) => Object.keys(o || {})).concat(Object.values(variants).flatMap((a) => (Array.isArray(a) ? a.flatMap((o) => Object.keys(o || {})) : []))))];
-  const summary = (String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 280) + (kept ? ` (worked around the individual settings of ${kept} item${kept === 1 ? '' : 's'})` : '')), needs = String((r && r.needsCode) || '').trim();
+  const summary = (String((r && r.summary) || `Restyled ${res.changed.length} items`).slice(0, 280) + (kept ? ` (kept, as chosen, the individual settings of ${kept} item${kept === 1 ? '' : 's'})` : '')), needs = String((r && r.needsCode) || '').trim();
   patchPrompt(pid, { status: 'applied', result: summary + (needs ? ' · Sent the rest to Claude Code.' : '') });
-  if (kept) toast(`Kept the individual settings of ${kept} item${kept === 1 ? '' : 's'} and changed the rest.`);
+  if (kept) toast(`Kept the own settings of ${kept} item${kept === 1 ? "" : "s"}, as you chose, and changed the rest.`);
   logGroupChange({ ids: res.changed, before: res.before, source: 'prompt', prompt: p.text, summary, category: r && r.category, tags: Array.isArray(r && r.changeTags) ? r.changeTags : [], fields, images: p.images });
   if (needs) { const q = newPrompt(ids[0], `${p.text}\n\nStill needed: ${needs}`, 'queued'); patchPrompt(q, { bIds: ids, group: true }); if (p.images) patchPrompt(q, { images: p.images }); }
   return true;
@@ -5935,20 +6674,42 @@ function renderAttachments() {
 function initDropAttach() {   // drop a picture anywhere on the page to attach it to the open prompt box (never lets the browser open the file)
   let depth = 0;
   const veil = el('div', { id: 'drop-veil', hidden: true }, 'Drop to attach as a reference image'); document.body.append(veil);
-  const files = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  // a file from the computer arrives as Files; a picture dragged from another web page usually arrives only as its address
+  const files = (e) => e.dataTransfer && [...e.dataTransfer.types].some((ty) => ty === 'Files' || ty === 'text/uri-list');
   const target = () => $('prompt-box') || (ui.editing && store.canEdit ? $('info') : null);   // Edit details: drop closes the form to reach the prompt box
   const mark = (on) => { const b = $('prompt-box'); if (b) b.classList.toggle('dragover', on); veil.hidden = !(on && target()); };
   addEventListener('dragenter', (e) => { if (files(e)) { depth++; mark(true); } });
   addEventListener('dragleave', (e) => { if (files(e) && --depth <= 0) { depth = 0; mark(false); } });
   addEventListener('dragover', (e) => { if (!files(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = target() ? 'copy' : 'none'; });
-  addEventListener('drop', (e) => {
+  addEventListener('drop', async (e) => {
     if (!files(e)) return;
     e.preventDefault(); depth = 0; mark(false);
     if (!target()) { toast(store.canEdit ? 'Select a building or feature first, then drop a picture to use as a reference.' : 'Only the map’s editors can attach reference images.'); return; }
     if (!$('prompt-box')) { endEditing(); renderInfo(); }
-    addAttachments(e.dataTransfer.files);
+    const dt = e.dataTransfer, list = [...dt.files], url = list.length ? null : droppedImageUrl(dt);
+    if (list.length) addAttachments(list);
+    else if (url) {
+      const blob = await fetchImage(url);
+      if (blob) addAttachments([new File([blob], (/^data:/i.test(url) ? 'image' : url.split(/[?#]/)[0].split('/').pop() || 'image').slice(0, 60), { type: blob.type })]);
+      else toast('That picture is on another website, which the map isn’t allowed to download. Right-click it, choose Copy Image, then click in the prompt box and paste (⌘/Ctrl V). Or save it and drag the file in.', 9000);
+    } else return;
     const b = $('prompt-box'); if (b) b.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
+}
+function droppedImageUrl(dt) {   // the picture's own address: the <img> in the dragged HTML first (a linked image's uri-list is the link), then the uri-list
+  const html = dt.getData('text/html'), m = html && /<img[^>]+src\s*=\s*["']([^"']+)["']/i.exec(html);
+  const src = m && m[1].replace(/&amp;/g, '&');
+  const uri = (dt.getData('text/uri-list') || '').split(/\r?\n/).find((l) => l && !l.startsWith('#'));
+  for (const u of [src, uri]) if (u && /^(https?:|data:image\/|blob:)/i.test(u)) return u;
+  return null;
+}
+async function fetchImage(url) {   // works for data: URLs and sites that allow it (CORS); the published artifact can't reach other sites at all
+  try { const r = await fetch(url, { mode: 'cors', credentials: 'omit' }); if (r.ok) { const b = await r.blob(); if (/^image\//.test(b.type)) return b; } } catch (err) {}
+  try {
+    const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+    return await new Promise((r) => c.toBlob(r, 'image/png'));   // throws (tainted) or rejects when the site doesn't allow it
+  } catch (err) { return null; }
 }
 function promptBox(t, seg = null) {
   const file = el('input', { type: 'file', id: 'attach-input', accept: 'image/*', multiple: true, hidden: true, onchange: (e) => { addAttachments(e.target.files); e.target.value = ''; } });
@@ -6015,9 +6776,9 @@ function renderPromptHistory() {
   const items = [...store.prompts].filter(([, p]) => p.bId === ui.selected && p.status !== 'applied' && p.status !== 'done').sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || '')).slice(0, 4);
   list.replaceChildren(...items.map(([pid, p]) => promptItem(pid, p, false)));
 }
-function focusTarget(id) {
+function focusTarget(id, one = false) {
   const t = targetOf(id); if (!t) return;
-  select(id);
+  select(id, { one });
   const top = t.b ? t.b.top : H(t.cx, t.cz), base = t.b ? t.b.base : top;
   const span = t.b ? 0 : Math.min(Math.sqrt(KINDS[t.kind].geom === 'poly' ? t.f.size : t.f.size * 20), 900);
   if (player.mode === 'plan') { plan.cx = t.cx; plan.cz = t.cz; plan.scale = t.b ? Math.max(plan.scale, 1.2) : clamp(innerHeight / (span * 2.2 + 40), 0.05, 4); plan.invalidate(); return; }
@@ -6199,6 +6960,7 @@ function planBuildings() {
     for (const idx of list) {
       const b = world.buildings[idx], d = store.buildings.get(b.id);
       x0 = Math.min(x0, b.bbox[0]); z0 = Math.min(z0, b.bbox[1]); x1 = Math.max(x1, b.bbox[2]); z1 = Math.max(z1, b.bbox[3]);
+      if (b.removed) continue;   // taken away
       if (d && ((d.style && HEX.test(d.style.wall || '')) || d.name)) { plan.custom.push(idx); continue; }
       addRings(p, b.rings);
     }
@@ -6274,7 +7036,7 @@ function initPlanInput() {
   });
   c.addEventListener('pointerup', (e) => {
     c.classList.remove('dragging');
-    if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale)); } }
+    if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else { const [x, z] = planWorld(e.clientX, e.clientY); select(pickAt(x, z, 3 / plan.scale), { one: e.altKey }); } }
     drag = null;
   });
   c.addEventListener('pointerleave', (e) => { if (e.relatedTarget !== $('edit-pill')) setHover(null); });
@@ -6729,13 +7491,14 @@ const joy = { x: 0, y: 0, active: false }, pad = { up: false, down: false };
 
 function setMode(mode) {
   const prev = player.mode; if (prev === mode) return;
+  if (prev === 'walk' || prev === 'fly') player.lastWalk = player.pos.clone();   // where the character was left standing (a prompt's "here")
   player.mode = mode;
   for (const m of ['walk', 'fly', 'map', 'plan']) $('mode-' + m).setAttribute('aria-pressed', String(m === mode));
   controls.enabled = mode === 'map';
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
   plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
-  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = mode !== 'fly'; mm.last = 0; placeMinimap();
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('readouts').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = mode !== 'fly'; mm.last = 0; _hudSig = ''; placeMinimap();
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -6764,7 +7527,14 @@ function dropIn(x, z) {
 
 const START = { x: -2727.8, z: 1618.3, yaw: 3.024 };   // where walking and flying begin: the plaza by the fountain, facing just west of north (chosen by the author)
 function spawnPoint() {
-  if (H(START.x, START.z) > 0.3 && buildingAt(START.x, START.z) < 0) { const p = new THREE.Vector3(START.x, 0, START.z); collide(p, 0.4); p.y = H(p.x, p.z); return p; }
+  if (H(START.x, START.z) > 0.3 && buildingAt(START.x, START.z) < 0) {
+    const p = new THREE.Vector3(START.x, 0, START.z);
+    for (const o of PLAZAX.values()) {   // a kiosk on the start plaza: step out from it along the same line, to just past its steps
+      const L = o.kiosk && o.f.kioskL; if (!L) continue;
+      const dx = p.x - L.x, dz = p.z - L.z, d = Math.hypot(dx, dz); if (d < 11) { const k = 11 / (d || 1); p.x = L.x + (d ? dx : 1) * k; p.z = L.z + (d ? dz : 0) * k; }
+    }
+    collide(p, 0.4); p.y = H(p.x, p.z); return p;
+  }
   // otherwise (the plaza no longer exists after a re-import): the heart of the densest neighbourhood, on the nearest street
   const C = 250, count = new Map(); let best = null, bestN = 0;
   for (const b of world.buildings) { const k = gkey(Math.floor(b.cx / C) + 2000, Math.floor(b.cz / C) + 2000), n = (count.get(k) || 0) + 1; count.set(k, n); if (n > bestN) { bestN = n; best = b; } }
@@ -6865,9 +7635,11 @@ function initControls() {
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key.toLowerCase(); keys.add(k);
     if (k === 'escape') { if (measure.on) toggleMeasure(false); else if (ui.trayOpen) toggleTray(); else if (multi.size) clearMulti(); else if (ui.segs.length) clearSegment(); else if (ui.boxTool) toggleBoxTool(false); else select(null); }
+    if ((e.metaKey || e.ctrlKey) && k === 'g') { e.preventDefault(); if (e.shiftKey) ungroupSelection(); else groupSelection(); return; }
     if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
+    if (k === 'g') { if (e.shiftKey) toggleAlt(); else toggleCoords(); }
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
     if (k === 'p') setMode(player.mode === 'plan' ? 'map' : 'plan');
@@ -6894,7 +7666,7 @@ function initControls() {
     const run = () => { lastPick = performance.now(); if (document.body.classList.contains('pegging')) return; setHover(measure.on ? null : pick3D(e.clientX, e.clientY)); };
     clearTimeout(pickTimer); if (performance.now() - lastPick > 50) run(); else pickTimer = setTimeout(run, 50);
   });
-  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else select(pick3D(e.clientX, e.clientY)); } drag = null; });
+  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) { if (measure.on) measureClick(e.clientX, e.clientY); else select(pick3D(e.clientX, e.clientY), { one: e.altKey }); } drag = null; });
   canvas.addEventListener('pointerleave', (e) => { clearTimeout(pickTimer); if (e.relatedTarget !== $('edit-pill')) setHover(null); });
   canvas.addEventListener('wheel', (e) => { if (player.mode === 'map') return; e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 2.5, 600); }, { passive: false });
   canvas.addEventListener('dblclick', (e) => {
@@ -6903,6 +7675,11 @@ function initControls() {
     const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
   });
   $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
+  $('mm-xy').addEventListener('click', (e) => { e.stopPropagation(); toggleCoords(); });
+  $('mm-xy').setAttribute('aria-pressed', String(COORDS.on)); $('coord-val').hidden = !COORDS.on;
+  $('mm-alt').addEventListener('click', (e) => { e.stopPropagation(); toggleAlt(); });
+  $('mm-alt').setAttribute('aria-pressed', String(COORDS.alt)); $('alt-val').hidden = !COORDS.alt;
+  $('coord-val').addEventListener('click', (e) => { e.stopPropagation(); copyCoords(); });
   $('undo-btn').addEventListener('click', (e) => { e.stopPropagation(); undoEdit(); });
   $('redo-btn').addEventListener('click', (e) => { e.stopPropagation(); redoEdit(); });
   $('edit-pill').addEventListener('click', (e) => { if (!ui.hover) return; if (e.shiftKey) toggleMulti(ui.hover); else select(ui.hover, { focusPrompt: true }); });
@@ -7462,9 +8239,10 @@ function drawMinimap(now) {
   // a scale bar label: the map's width in metres
   // altitude above the street, and a scale bar a nice round number of metres long
   const up = Math.max(0, player.pos.y - H(player.pos.x, player.pos.z) - GROUND_SKIN);
-  const box = $('alt-box'), mr = $('minimap').getBoundingClientRect();
-  $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
-  box.hidden = player.mode !== 'fly'; box.style.left = Math.round(mr.left) + 'px'; box.style.top = Math.round(mr.bottom + 6) + 'px';
+  const ro = $('readouts'), mr = $('minimap').getBoundingClientRect();
+  ro.style.left = Math.round(mr.left) + 'px'; ro.style.top = Math.round(mr.bottom + 6) + 'px'; ro.style.maxWidth = Math.round(Math.max(mr.width, 150)) + 'px';
+  if (COORDS.alt && player.mode === 'fly') $('alt-val').textContent = up >= 1000 ? (up / 1000).toFixed(2) + ' km' : up >= 100 ? Math.round(up) + ' m' : up.toFixed(1) + ' m';
+  if (COORDS.on) $('coord-val').textContent = `x ${player.pos.x.toFixed(1)}  z ${player.pos.z.toFixed(1)}`;
   const maxPx = clamp(W * 0.38, 40, 110); let nice = 0.1; for (let e = -1; e < 7; e++) for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v * s <= maxPx) nice = v; }   // the longest round length (…10, 20, 50, 100, 200, 500 m, 1, 2, 5 km…) that fits
   const bar = $('mm-bar'); bar.firstChild.style.width = Math.max(4, Math.round(nice * s)) + 'px'; bar.lastChild.textContent = nice >= 1000 ? `${nice / 1000} km` : `${nice < 1 ? nice.toFixed(1) : nice} m`;
 }
@@ -7549,6 +8327,10 @@ function runSearch(q) {
     else if (addr.includes(full)) score = 65; else if (toks.every((t) => addr.includes(t))) score = 55; else if (tags.some((t) => toks.every((k) => t.includes(k)))) score = 45; else if (toks.every((t) => tags.join(' ').includes(t) || name.includes(t) || addr.includes(t))) score = 40;
     out.push({ id, kind, score, d }); seen.add(id);
   }
+  if (!SEARCH.cats.size) for (const [gid, g] of store.groups) {   // groups by name
+    const name = norm(g.name), first = groupIds(gid)[0]; if (!name || !first || !toks.every((t) => name.includes(t))) continue;
+    out.push({ id: first, kind: 'group', group: gid, score: name === norm(q) ? 125 : name.startsWith(toks.join(' ')) ? 105 : 88, d: { name: g.name, tags: [], address: `${groupIds(gid).length.toLocaleString()} things` } });
+  }
   if (/^[a-z]{1,2}[0-9a-f]{3,}$/i.test(q.trim())) for (const [id] of world.byId) { if (!seen.has(id) && id.startsWith(q.trim().toLowerCase())) { out.push({ id, kind: 'building', score: 30, d: docFor(id) }); if (out.length > 60) break; } }
   return out.sort((a, b) => b.score - a.score || (a.d.name || '').localeCompare(b.d.name || '')).slice(0, 60);
 }
@@ -7610,7 +8392,7 @@ function initSearch() {
     setOpen(true);
     if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Names, addresses and tags come from each building’s Edit details.`)); return; }
     rs.slice(0, 12).forEach((r, i) => {
-      const t = targetOf(r.id), label = t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
+      const t = targetOf(r.id), label = r.group ? 'Group' : t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
       const li = el('li', { role: 'option', id: 's-opt-' + i, 'aria-selected': String(i === SEARCH.active) });
       li.innerHTML = `<div class="t"><span>${hl(name, SEARCH.q)}</span><span class="k">${esc(label)}</span></div>${sub ? `<div class="s">${hl(sub, SEARCH.q)}</div>` : `<div class="s">${esc(r.id)}</div>`}`;
       li.addEventListener('mousedown', (e) => e.preventDefault());
@@ -7653,15 +8435,21 @@ window.amparacan = {
   laundry() { return world.buildings.filter((b) => b.laundry).map((b) => b.laundry); },
   eye() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, grass: world.grass ? world.grass.size : 0, furn: world.furniture }; },
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
-  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), bbox: f.bbox.map((v) => Math.round(v)) }; },
+  plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: o && o.majestic ? { x: +(o.majestic.g.position.x).toFixed(1), z: +(o.majestic.g.position.z).toFixed(1) } : null, yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
+  bollardsOf(id) { const f = world.featById.get(id); return f && f.kind === 'street' ? { on: !!featureStyle(f).bollards, spots: streetBollards(f).map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]) } : null; },
+  parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
+  ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
   // a building's drawn style (generated + edits), its doors (wall length, bay) and its street walls' lengths, for batch work
   styleOf(id) { const r = world.byId.get(id); return r ? { ...styleOf(r), doorList: doorsOf(r).map((d) => ({ wall: +d.f.L.toFixed(1), bay: d.bay })), streetWalls: facadesOf(r).map((f) => +f.L.toFixed(1)), sign: SIGNS.has(id) } : null; },
   get buildings() { return world.buildings.map((b) => ({ id: b.id, x: b.cx, z: b.cz, height: +(b.top - b.base).toFixed(1) })); },
   highlight, clearHighlight,
   select(id) { const t = targetOf(id); if (t) focusTarget(id); return !!t; },
+  selectMany(ids) { setMulti(ids); return multi.size; },
+  selection() { return { ids: [...multi], selected: ui.selected, group: currentGroup() }; },
+  groups() { return Object.fromEntries(store.groups); },
   features(kind) { return world.features.filter((f) => !kind || f.kind === kind).map((f) => ({ id: f.id, kind: f.kind, x: f.cx, z: f.cz, size: Math.round(f.size) })); },
-  stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.drawRange.count, y0: world.rain.geometry.attributes.position.array[1] } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
+  stats() { return { boats: world.boats ? { n: world.boats.list.length, moored: world.boats.list.filter((b) => b.kind === 'moored').length, cruise: world.boats.list.filter((b) => b.kind === 'cruise').length, inlet: world.boats.list.filter((b) => b.inlet).length } : null, groves: [...(world.veg || [])].filter((m) => m.userData.role === 'grove').map((m) => [m.count, m.visible]), buildings: world.buildings.length, trees: world.trees, lights: world.lights, bridges: world.bridges, weather: wx.name, rain: world.rain ? { visible: world.rain.visible, count: world.rain.geometry.instanceCount, fall: +RAIN.fall.toFixed(1), speed: RAIN.speed } : null, tiles: world.tileMeshes.size, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, store: store.kind, edits: store.buildings.size + store.features.size, prompts: store.prompts.size, changes: store.changes.size, features: world.features.length }; },
   dropIn(x, z) { dropIn(x, z); },
   // local preview only: stand-in for an "Apply now" answer, to exercise styling and the history log
   testApply(id, style, { summary = 'Test change', category, tags = [], prompt = '' } = {}) {
@@ -7690,14 +8478,15 @@ store.on((what, ids) => {
       if (js === f.lastStyle) continue;
       kinds.add(f.kind);
       if (f.kind === 'park') treeTiles.add(treeTile(f.cx, f.cz));
-      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.flagpole !== st.flagpole || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
+      if (f.kind === 'plaza') { plazas.push(f.id); const o = f.lastStyle ? JSON.parse(f.lastStyle) : {}; if (o.trees !== st.trees || o.treeSides !== st.treeSides || o.pleachRows !== st.pleachRows || o.flagpole !== st.flagpole || o.kiosk !== st.kiosk || o.kioskLights !== st.kioskLights || o.groves !== st.groves || o.fountain !== st.fountain || o.fountainStyle !== st.fountainStyle || JSON.stringify(o.fountainAt) !== JSON.stringify(st.fountainAt) || o.use !== st.use) streetTrees = true; }   // the fountain and benches make way
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).lights !== st.lights)) lights = true;
+      if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).bollards !== st.bollards)) streetTrees = true;   // the furniture follows
       if (f.kind === 'street' && (!f.lastStyle || JSON.parse(f.lastStyle).canopy !== st.canopy)) streetTrees = true;
     }
     if (kinds.has('street') || kinds.has('path')) { kinds.add('street'); kinds.add('path'); }
     for (const k of kinds) if (ORDER[k]) buildGround(k);
     if (kinds.has('park')) clearGrass();
-    if (treeTiles.size) rebuildParkTrees(treeTiles);
+    if (treeTiles.size) { rebuildParkTrees(treeTiles); rebuildParkFences(); }
     if (lights) world.lights = addStreetLights();
     if (streetTrees) { rebuildStreetTrees(); world.furniture = addStreetFurniture(); }
     if (plazas.length) rebuildPlazaExtras(plazas);
@@ -7705,6 +8494,7 @@ store.on((what, ids) => {
   }
   if ((what === 'buildings' || what === 'features' || what === 'changes') && sel && !ui.editing && (touched || what === 'changes')) renderInfo();
   if (what === 'prompts') renderPromptHistory();
+  if (what === 'groups' && (multi.size || ui.selected) && !ui.editing && document.activeElement?.id !== 'g-name') renderInfo();   // never while the name is being typed
   renderTray();
 });
 (async function boot() {
