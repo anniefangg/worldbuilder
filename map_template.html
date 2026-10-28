@@ -1697,6 +1697,7 @@ function styleOf(rec) {
   if (HEX.test(o.awningColor || '')) s.awningColor = o.awningColor.toLowerCase();
   if (o.porch === true) s.porch = true;
   if (o.removed === true) s.removed = true;   // taken away: not drawn, blocks nothing (the ground beneath shows)
+  if (REPLACE_KINDS.includes(o.replace)) s.replace = o.replace;   // something else stands on the footprint instead (stepReplacements)
   const sg = cleanSign(o.sign); if (sg) s.sign = sg;
   return s;
 }
@@ -2153,8 +2154,10 @@ function insetFootprint(r, d, area) {
 }
 function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes (separate, distance-culled meshes)
   const s = styleOf(rec), { rings, base, cx, cz, area, nv } = rec, outer = rings[0];
-  if (!!rec.removed !== !!s.removed) { if (rec.removed !== undefined || s.removed) (world.removedChanged || (world.removedChanged = new Set())).add(rec); rec.removed = !!s.removed; }
-  if (s.removed) { rec.top = base; rec.style = s; return; }
+  const gone = !!(s.removed || s.replace);   // a replaced building is not drawn either; its stand-in is built by stepReplacements
+  if (!!rec.removed !== gone) { if (rec.removed !== undefined || gone) (world.removedChanged || (world.removedChanged = new Set())).add(rec); rec.removed = gone; }
+  if ((rec.replace || null) !== (s.replace || null)) { rec.replace = s.replace || null; (world.replaceDirty || (world.replaceDirty = new Set())).add(rec); }
+  if (gone) { rec.top = base; rec.style = s; return; }
   const RR = roundedRings(rec);
   const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
   rec.top = top; rec.style = s;
@@ -2467,12 +2470,43 @@ function pleachedSpots(f) {   // trunk spots on a line PLEACH.inset metres insid
     }
     run += len;
   }
+  pleachedCorners(f, P.inset, out);
   return (f.pleach = out);
+}
+// Each row stops short of a corner (its trunks would stand within the other edge's inset, or a corner building is in the way), which
+// left a gap where two rows met. Wherever the ring of trees turns (consecutive canopies at an angle), both rows are carried on to where
+// their lines cross, a canopy every PLEACH.gap, with a square one (depth × depth, `sx`) at the crossing, stopping at anything in the way.
+function pleachedCorners(f, d, out) {
+  if (out.length < 4) return;
+  const P = PLEACH, dirOf = (q) => [Math.cos(q.a), -Math.sin(q.a)];
+  const clear = (x, z, pts) => pointInRings(x, z, f.rings) && H(x, z) > 0.6 && !roadAt(x, z, 0.3, false) && pts.every(([px, pz]) => buildingAt(px, pz) < 0);
+  const fill = [], n = out.length;
+  for (let i = 0; i < n; i++) {
+    const p = out[i], q = out[(i + 1) % n], [ax, az] = dirOf(p), [bx, bz] = dirOf(q);
+    if (Math.abs(ax * bz - az * bx) < 0.5) continue;   // the same side: no turn here
+    // where p's line meets q's: p + t·a = q + s·b
+    const den = ax * bz - az * bx, t = ((q.x - p.x) * bz - (q.z - p.z) * bx) / den, sQ = ((q.x - p.x) * az - (q.z - p.z) * ax) / den;
+    const cx = p.x + ax * t, cz = p.z + az * t; if (Math.abs(t) > 40 || Math.abs(sQ) > 40) continue;
+    const run = (from, dx, dz, len, side, a, inx, inz) => {   // canopies from a row's end toward the crossing
+      const sg = Math.sign(len); for (let u = P.gap; u < Math.abs(len) - P.len * 0.75; u += P.gap) {
+        const x = from.x + dx * u * sg, z = from.z + dz * u * sg, ends = [[x + dx * P.len / 2, z + dz * P.len / 2], [x - dx * P.len / 2, z - dz * P.len / 2], [x + inx * P.depth / 2, z + inz * P.depth / 2]];
+        if (!clear(x, z, [[x, z], ...ends])) return false;
+        fill.push({ x, z, a, side, inx, inz });
+      }
+      return true;
+    };
+    const okP = run(p, ax, az, t, p.side, p.a, p.inx, p.inz), okQ = run(q, bx, bz, sQ, q.side, q.a, q.inx, q.inz);
+    const h = P.depth * 0.3, sq = [[cx, cz], [cx + ax * h + bx * h, cz + az * h + bz * h], [cx - ax * h - bx * h, cz - az * h - bz * h], [cx + ax * h - bx * h, cz + az * h - bz * h], [cx - ax * h + bx * h, cz - az * h + bz * h]];
+    if (okP && okQ && Math.hypot(cx - p.x, cz - p.z) > P.len * 0.6 && Math.hypot(cx - q.x, cz - q.z) > P.len * 0.6 && clear(cx, cz, sq))
+      fill.push({ x: cx, z: cz, a: p.a, side: p.side, side2: q.side, inx: p.inx, inz: p.inz, sx: P.depth / P.len, corner: true });
+  }
+  for (const c of fill) if (!out.some((o) => Math.hypot(o.x - c.x, o.z - c.z) < P.len * 0.7)) out.push(c);
 }
 function pleachedInner(f) {   // pleachRows 2: a second row of canopies just inside the first, each behind its outer twin (cached per plaza)
   if (f.pleach2) return f.pleach2;
   const P = PLEACH, outer = pleachedSpots(f), out = [], D = P.depth + 3, r = softRings(f)[0], ring = [...r, r[0], r[1]];
   for (const o of outer) {
+    if (o.corner) continue;
     const x = o.x + o.inx * D, z = o.z + o.inz * D, ux = o.inz, uz = -o.inx;   // (ux, uz) along the edge
     const pts = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [x + ux * a * P.len / 2 + o.inx * b * P.depth / 2, z + uz * a * P.len / 2 + o.inz * b * P.depth / 2]);
     if (!pointInRings(x, z, f.rings) || distToLine(ring, x, z) < P.inset + D - 1 || H(x, z) < 0.6) continue;
@@ -2482,9 +2516,10 @@ function pleachedInner(f) {   // pleachRows 2: a second row of canopies just ins
     if (out.some((q) => Math.hypot(q.x - x, q.z - z) < (Math.abs(Math.sin(q.a - o.a)) > 0.3 ? P.depth * 0.95 : P.gap * 0.8))) continue;
     out.push({ x, z, a: o.a, side: o.side, inx: o.inx, inz: o.inz });
   }
+  pleachedCorners(f, P.inset + D, out);
   return (f.pleach2 = out);
 }
-const pleachedFor = (f, s) => (s.pleachRows === 2 ? [...pleachedSpots(f), ...pleachedInner(f)] : pleachedSpots(f)).filter((p) => s.treeSides.includes(p.side));
+const pleachedFor = (f, s) => (s.pleachRows === 2 ? [...pleachedSpots(f), ...pleachedInner(f)] : pleachedSpots(f)).filter((p) => s.treeSides.includes(p.side) && (!p.side2 || s.treeSides.includes(p.side2)));   // a corner canopy needs both its sides
 function flagpoleSpot(f) { return f.size > 600 && pointInRings(f.cx, f.cz, f.rings) && buildingAt(f.cx, f.cz) < 0 ? { x: f.cx, z: f.cz } : null; }
 function pleachedGeometries() {   // a rounded, clipped box of foliage (displaced, so the clipping reads a little soft) and a short trunk splitting into limbs
   if (world.pleachGeo) return world.pleachGeo;
@@ -2964,7 +2999,7 @@ function buildPlazaExtras(f) {
       const crown = new THREE.InstancedMesh(G.canopy, leafMaterial(), spots.length), trunk = new THREE.InstancedMesh(G.trunk, world.barkMat || (world.barkMat = new THREE.MeshStandardMaterial({ color: '#6d6458', roughness: 0.9 })), spots.length * 2), off = new THREE.Vector3();
       spots.forEach((p, i) => {
         const y = H(p.x, p.z) + LIFT + (s.curb || 0) / 100;
-        Q.setFromAxisAngle(Y, p.a); S.set(1 + r() * 0.06, 0.94 + r() * 0.12, 0.95 + r() * 0.1); T.set(p.x, y, p.z);
+        Q.setFromAxisAngle(Y, p.a); S.set((p.sx || 1) * (1 + r() * 0.06), 0.94 + r() * 0.12, 0.95 + r() * 0.1); T.set(p.x, y, p.z);
         crown.setMatrixAt(i, M.compose(T, Q, S)); crown.setColorAt(i, c.setHSL(0.27 + r() * 0.03, 0.9, 0.9 + r() * 0.12));
         for (const k of [0, 1]) {   // two trunks under each canopy, one either side of the walk's middle
           off.set(0, 0, (k ? 1 : -1) * PLEACH.rows).applyQuaternion(Q).add(T);
@@ -3140,6 +3175,254 @@ function stepDetail() {
     want.shift(); if (d.mesh) d.mesh.visible = true;
     if (!more) break;
   }
+}
+// ─────────────────────────── replaced buildings (building style `replace`) ───────────────────────────
+// The footprint stays the author's; what stands on it is built here instead of a building, one group per building in world.replaced.
+// The building itself counts as removed (not drawn, blocks nothing); its stand-in can be clicked (world.replaceMeshes → userData.bid).
+const REPLACE_KINDS = ['galleon', 'breakwater'];
+const RP = {
+  tint(g, hex, jit = 0) {   // non-indexed, position + normal + colour only, so pieces merge into one vertex-coloured mesh
+    g = g.index ? g.toNonIndexed() : g;
+    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const m = 1 + (jit ? (Math.sin(i * 12.9898) * 43758.5453 % 1) * jit : 0); a[i * 3] = c.r * m; a[i * 3 + 1] = c.g * m; a[i * 3 + 2] = c.b * m; }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+  },
+  at(g, x, y, z, rx = 0, ry = 0, rz = 0) { g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1))); return g; },
+  rod(a, b, r0, r1, hex, seg = 8) {   // a tapered cylinder from point a to point b
+    const d = new THREE.Vector3().subVectors(b, a), L = d.length(), g = new THREE.CylinderGeometry(r1, r0, L, seg, 1);
+    g.applyMatrix4(new THREE.Matrix4().compose(a.clone().addScaledVector(d, 0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()), new THREE.Vector3(1, 1, 1)));
+    return RP.tint(g, hex);
+  },
+};
+function replaceFrame(rec) {   // the footprint's long axis, its extents along and across it, and which way the far end lies
+  const r = rec.rings[0], n = r.length / 2;
+  let mx = 0, mz = 0; for (let i = 0; i < n; i++) { mx += r[i * 2]; mz += r[i * 2 + 1]; } mx /= n; mz /= n;
+  let sxx = 0, szz = 0, sxz = 0; for (let i = 0; i < n; i++) { const dx = r[i * 2] - mx, dz = r[i * 2 + 1] - mz; sxx += dx * dx; szz += dz * dz; sxz += dx * dz; }
+  const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz); let ux = Math.cos(ang), uz = Math.sin(ang);
+  const ext = () => { let p0 = Infinity, p1 = -Infinity, q0 = Infinity, q1 = -Infinity, far = 0, fp = 0; for (let i = 0; i < n; i++) { const dx = r[i * 2] - mx, dz = r[i * 2 + 1] - mz, p = dx * ux + dz * uz, q = -dx * uz + dz * ux; p0 = Math.min(p0, p); p1 = Math.max(p1, p); q0 = Math.min(q0, q); q1 = Math.max(q1, q); const d = Math.hypot(dx, dz); if (d > far) { far = d; fp = p; } } return { p0, p1, q0, q1, fp }; };
+  let e = ext(); if (e.fp < 0) { ux = -ux; uz = -uz; e = ext(); }   // +u points at the end that reaches furthest (a ship's bowsprit)
+  return { mx, mz, ux, uz, ...e, toWorld: (x, z) => [mx + ux * x - uz * z, mz + uz * x + ux * z] };
+}
+let _sailTex = null, _burgundy = null;
+function sailTexture() {   // left half plain canvas, right half the Cross of Burgundy (a red ragged saltire) on canvas
+  if (_sailTex) return _sailTex;
+  const W = 512, H2 = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = H2; const g = cv.getContext('2d'), r = mulberry(0x5a11);
+  for (const x0 of [0, 256]) {
+    g.fillStyle = '#efe5cc'; g.fillRect(x0, 0, 256, H2);
+    for (let i = 0; i < 9; i++) { g.fillStyle = `rgba(120,96,60,${0.06 + r() * 0.05})`; g.fillRect(x0 + i * 28.4, 0, 1.6, H2); }   // the cloths' seams
+    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(110,90,60,${r() * 0.06})`; g.beginPath(); g.arc(x0 + r() * 256, r() * H2, 6 + r() * 30, 0, 6.283); g.fill(); }
+    g.strokeStyle = 'rgba(90,70,45,0.35)'; g.lineWidth = 3; g.strokeRect(x0 + 2, 2, 252, H2 - 4);
+  }
+  burgundyCross(g, 256 + 40, 30, 176, 196);
+  _sailTex = new THREE.CanvasTexture(cv); _sailTex.colorSpace = THREE.SRGBColorSpace; _sailTex.anisotropy = 4; return _sailTex;
+}
+function burgundyCross(g, x, y, w, h) {   // two crossed, knotted red staves
+  g.save(); g.strokeStyle = '#b3141b'; g.fillStyle = '#b3141b'; g.lineCap = 'round'; g.lineWidth = Math.min(w, h) * 0.11;
+  for (const [ax, ay, bx, by] of [[x, y, x + w, y + h], [x + w, y, x, y + h]]) {
+    g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+    for (let i = 1; i < 6; i++) {   // the knots where branches were lopped off
+      const t = i / 6, px = ax + (bx - ax) * t, py = ay + (by - ay) * t, nx = -(by - ay), ny = bx - ax, L = Math.hypot(nx, ny), k = (i % 2 ? 1 : -1) * g.lineWidth * 0.8;
+      g.beginPath(); g.moveTo(px, py); g.lineTo(px + nx / L * k, py + ny / L * k); g.lineWidth *= 0.6; g.stroke(); g.lineWidth /= 0.6;
+    }
+  }
+  g.restore();
+}
+function burgundyFlag() {
+  if (_burgundy) return _burgundy;
+  const cv = document.createElement('canvas'); cv.width = 192; cv.height = 128; const g = cv.getContext('2d');
+  g.fillStyle = '#f4f1ea'; g.fillRect(0, 0, 192, 128); burgundyCross(g, 22, 14, 148, 100);
+  _burgundy = new THREE.CanvasTexture(cv); _burgundy.colorSpace = THREE.SRGBColorSpace; return _burgundy;
+}
+function flagMesh(w, h, tex) {   // a flag hung from its left edge, rippled near the camera by stepReplacements
+  const geo = new THREE.PlaneGeometry(w, h, 12, 6); geo.translate(w / 2, 0, 0);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 }));
+  m.userData.pick = false; return { mesh: m, base: Float32Array.from(geo.attributes.position.array), w, k: w / 3 };
+}
+// An early 18th-century Spanish galleon on the footprint: a lofted hull with a high stern castle, a forecastle and a gilded transom,
+// gun ports in two tiers, three masts (square-rigged fore and main, lateen mizzen), a bowsprit, set sails with the Cross of Burgundy,
+// shrouds and stays, stern lanterns and lit gallery windows after dark. It rides at the waterline and rocks a little.
+function buildGalleon(rec) {
+  const F = replaceFrame(rec), sea = world.sea ? world.sea.position.y : 0;
+  const Lh = (F.p1 - F.p0) * 0.84, B = Math.min((F.q1 - F.q0) * 0.4, Lh * 0.19), k = Lh / 45, xc = F.p0 + Lh / 2, qc = (F.q0 + F.q1) / 2;
+  const X0 = -Lh / 2, tipX = F.p1 - xc;
+  const sm = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const top = (s) => k * (3.4 + 2.2 * (1 - sm(0.39, 0.41, s)) + 2.3 * (1 - sm(0.15, 0.17, s)) + 2.6 * sm(0.79, 0.81, s) + 1.0 * (1 - sm(0, 0.06, s)) + 1.2 * sm(0.9, 1, s));
+  const keel = (s) => -k * 3.2 * (1 - 0.85 * sm(0.8, 1, s));
+  const beam = (s) => B * (s < 0.5 ? 0.66 + 0.34 * Math.sin(s / 0.5 * Math.PI / 2) : Math.pow(Math.max(0, Math.cos((s - 0.5) / 0.5 * Math.PI / 2)), 0.7));
+  const prof = (v) => (v < 0.55 ? Math.pow(Math.sin(v / 0.55 * Math.PI / 2), 0.55) : 1 - 0.16 * Math.pow((v - 0.55) / 0.45, 1.6));
+  const halfAt = (s, y) => { const y0 = keel(s), y1 = top(s); return beam(s) * prof(clamp((y - y0) / (y1 - y0), 0, 1)); };
+  const deckY = (s) => top(s) - 1.05 * k, xs = (s) => X0 + s * Lh;
+  const hullHex = (s, y) => (y < 0.25 ? '#2a2320' : Math.abs(y - 1.35 * k) < 0.18 * k || Math.abs(y - 2.75 * k) < 0.16 * k ? '#b5862e' : y > top(s) - 0.28 * k ? '#c9a14a' : y > 3.5 * k ? '#7b231c' : '#4b3424');
+  const parts = [], C = new THREE.Color(), rnd = mulberry(rec.seed ^ 0x9a11);
+  // hull: both sides lofted from keel to rail, and the flat transom
+  const NS = 72, NV = 16, pos = [], col = [], idx = [];
+  for (const side of [1, -1]) {
+    const o = pos.length / 3;
+    for (let i = 0; i <= NS; i++) {
+      const s0 = i / NS, y0 = keel(s0), y1 = top(s0);
+      for (let j = 0; j <= NV; j++) { const v = j / NV, y = y0 + (y1 - y0) * v, n = 0.92 + rnd() * 0.14; pos.push(xs(s0), y, side * beam(s0) * prof(v)); C.set(hullHex(s0, y)); col.push(C.r * n, C.g * n, C.b * n); }
+    }
+    for (let i = 0; i < NS; i++) for (let j = 0; j < NV; j++) { const a = o + i * (NV + 1) + j, b = a + NV + 1; if (side > 0) idx.push(a, b, a + 1, b, b + 1, a + 1); else idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  }
+  { const o = pos.length / 3, y0 = keel(0), y1 = top(0); pos.push(X0, (y0 + y1) / 2, 0); C.set('#6e1c18'); col.push(C.r, C.g, C.b);
+    const ring = []; for (let j = 0; j <= NV; j++) ring.push(j); for (let j = NV; j >= 0; j--) ring.push(-j - 1);
+    for (const j of ring) { const side = j >= 0 ? 1 : -1, v = (j >= 0 ? j : -j - 1) / NV, y = y0 + (y1 - y0) * v; pos.push(X0, y, side * beam(0) * prof(v)); C.set(y > y1 - 0.3 * k ? '#c9a14a' : y < 0.25 ? '#2a2320' : '#6e1c18'); col.push(C.r, C.g, C.b); }
+    for (let i = 1; i < ring.length; i++) idx.push(o, o + i, o + i + 1 > o + ring.length ? o + 1 : o + i + 1); }
+  const hull = new THREE.BufferGeometry(); hull.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); hull.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); hull.setIndex(idx); hull.computeVertexNormals();
+  parts.push(hull.toNonIndexed());
+  // decks: a planked strip inside the bulwarks at each level (the steps between levels read as the castles' bulkheads)
+  { const dp = [], dc = []; for (let i = 0; i < NS; i++) { const sa = i / NS, sb = (i + 1) / NS, ya = deckY(sa), yb = deckY(sb), wa = Math.max(0, halfAt(sa, ya) - 0.3 * k), wb = Math.max(0, halfAt(sb, yb) - 0.3 * k), xa = xs(sa), xb = xs(sb);
+      dp.push(xa, ya, -wa, xb, yb, -wb, xb, yb, wb, xa, ya, -wa, xb, yb, wb, xa, ya, wa); const n = 0.9 + rnd() * 0.15; C.set('#a0805a'); for (let q = 0; q < 6; q++) dc.push(C.r * n, C.g * n, C.b * n); }
+    const d = new THREE.BufferGeometry(); d.setAttribute('position', new THREE.Float32BufferAttribute(dp, 3)); d.setAttribute('color', new THREE.Float32BufferAttribute(dc, 3)); d.computeVertexNormals(); parts.push(d); }
+  // gun ports with their muzzles, two tiers a side, and a few on the castles
+  const ports = [[1.95, 0.22, 0.78, 11], [4.25, 0.2, 0.37, 3], [4.45, 0.83, 0.88, 2]];
+  for (const [yy, s0, s1, nP] of ports) for (let i = 0; i < nP; i++) for (const side of [1, -1]) {
+    const sP = s0 + (s1 - s0) * (nP > 1 ? i / (nP - 1) : 0.5), y = yy * k, z = side * halfAt(sP, y), x = xs(sP);
+    parts.push(RP.at(RP.tint(new THREE.BoxGeometry(0.75 * k, 0.7 * k, 0.3), '#120d0a'), x, y, z));
+    parts.push(RP.at(RP.tint(new THREE.BoxGeometry(0.85 * k, 0.12 * k, 0.34), '#7b231c'), x, y + 0.42 * k, z));
+    parts.push(RP.rod(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, z + side * 0.9 * k), 0.17 * k, 0.15 * k, '#1d1c1a', 6));
+  }
+  // masts, tops, yards and the bowsprit
+  const MAST = [{ s: 0.79, h: 0.6, sq: true }, { s: 0.53, h: 0.72, sq: true }, { s: 0.27, h: 0.46, sq: false }].map((m) => ({ ...m, x: xs(m.s), y: deckY(m.s), H: m.h * Lh }));
+  const lines = [], V = (x, y, z) => new THREE.Vector3(x, y, z), line = (a, b) => lines.push(a.x, a.y, a.z, b.x, b.y, b.z);
+  const sails = [], sailUV = [], sailIdx = [];
+  const sail = (corners, u0, u1, belly, axis) => {   // corners: top-left, top-right, bottom-right, bottom-left; bellied along axis ('x' forward, 'z' sideways)
+    const o = sails.length / 3, NU = 10, NVs = 8;
+    for (let j = 0; j <= NVs; j++) for (let i = 0; i <= NU; i++) {
+      const u = i / NU, v = j / NVs, top0 = corners[0].clone().lerp(corners[1], u), bot = corners[3].clone().lerp(corners[2], u), p = top0.lerp(bot, v), b = belly * Math.sin(Math.PI * u) * (0.35 + 0.65 * Math.sin(Math.PI * Math.min(1, v * 1.15)));
+      if (axis === 'x') p.x += b; else p.z += b;
+      sails.push(p.x, p.y, p.z); sailUV.push(u0 + (u1 - u0) * u, 1 - v);
+    }
+    for (let j = 0; j < NVs; j++) for (let i = 0; i < NU; i++) { const a = o + j * (NU + 1) + i, b = a + NU + 1; sailIdx.push(a, b, a + 1, b, b + 1, a + 1); }
+  };
+  for (const m of MAST) {
+    const r0 = (m.sq ? 0.6 : 0.45) * k, topY = m.y + m.H * 0.58, tm = m.y + m.H * 0.9;
+    parts.push(RP.rod(V(m.x, m.y - 1, 0), V(m.x, topY + 0.6 * k, 0), r0, r0 * 0.8, '#6b4a2e', 10));
+    parts.push(RP.rod(V(m.x, topY - 0.3 * k, 0), V(m.x, tm, 0), r0 * 0.55, r0 * 0.42, '#6b4a2e', 8));
+    parts.push(RP.rod(V(m.x, tm - 0.4 * k, 0), V(m.x, m.y + m.H, 0), r0 * 0.3, r0 * 0.16, '#6b4a2e', 6));
+    parts.push(RP.at(RP.tint(new THREE.CylinderGeometry(1.7 * k, 1.5 * k, 0.45 * k, 12), '#5a3f2a'), m.x, topY, 0));   // the fighting top
+    const halfB = halfAt(m.s, m.y + 0.5);
+    for (const side of [1, -1]) for (let i = 0; i < 5; i++) {   // shrouds to the channels, and topmast shrouds to the top's rim
+      const x = m.x - 0.05 * Lh + i * 0.016 * Lh; line(V(m.x, topY - 0.2 * k, side * 0.4 * k), V(x, top(m.s) - 0.15 * k, side * (halfB + 0.45 * k)));
+      if (i < 3) line(V(m.x, tm - 0.2 * k, side * 0.25 * k), V(m.x - 0.6 * k + i * 0.6 * k, topY + 0.2 * k, side * 1.6 * k));
+    }
+    if (m.sq) {
+      const cy = m.y + m.H * 0.52, ty = m.y + m.H * 0.86, cw = B * 2.15 * (m.s > 0.7 ? 0.88 : 1), tw = cw * 0.68, fx = m.x + 0.75 * k;
+      parts.push(RP.rod(V(fx, cy, -cw / 2), V(fx, cy, cw / 2), 0.22 * k, 0.22 * k, '#5d412a', 6), RP.rod(V(fx, ty, -tw / 2), V(fx, ty, tw / 2), 0.16 * k, 0.16 * k, '#5d412a', 6));
+      const foot = m.y + m.H * 0.17;
+      sail([V(fx, cy, -cw * 0.47), V(fx, cy, cw * 0.47), V(fx + 0.5 * k, foot, cw * 0.52), V(fx + 0.5 * k, foot, -cw * 0.52)], 0.5, 1, cw * 0.13, 'x');   // the course, with the cross
+      sail([V(fx, ty, -tw * 0.47), V(fx, ty, tw * 0.47), V(fx + 0.3 * k, cy + 1.1 * k, cw * 0.44), V(fx + 0.3 * k, cy + 1.1 * k, -cw * 0.44)], 0, 0.5, tw * 0.12, 'x');
+      line(V(fx, cy, -cw / 2), V(m.x, ty, 0)); line(V(fx, cy, cw / 2), V(m.x, ty, 0));   // lifts
+    } else {   // the lateen mizzen: a long yard slung aslant, its sail hanging aft
+      const a = V(m.x + 0.17 * Lh, m.y + 2.4 * k, 0), b = V(m.x - 0.2 * Lh, m.y + m.H * 0.95, 0);
+      parts.push(RP.rod(a, b, 0.2 * k, 0.12 * k, '#5d412a', 6));
+      sail([a.clone().lerp(b, 0.04), b.clone().lerp(a, 0.03), V(m.x - 0.19 * Lh, m.y + 1.6 * k, 0), V(m.x + 0.15 * Lh, m.y + 2.2 * k, 0)], 0, 0.5, 0.06 * Lh, 'z');
+    }
+  }
+  const bowX = xs(0.985), bowY = top(0.98), tip = V(tipX, bowY + (tipX - bowX) * 0.45, 0);
+  parts.push(RP.rod(V(bowX - 2 * k, bowY - 0.6 * k, 0), tip, 0.5 * k, 0.18 * k, '#6b4a2e', 8));
+  const [fm, mm, zm] = MAST;
+  line(V(mm.x, mm.y + mm.H * 0.9, 0), V(fm.x, fm.y + fm.H * 0.6, 0)); line(V(mm.x, mm.y + mm.H * 0.56, 0), V(fm.x, fm.y + 0.3, 0));
+  line(V(fm.x, fm.y + fm.H * 0.9, 0), tip); line(V(fm.x, fm.y + fm.H * 0.56, 0), tip.clone().lerp(V(bowX, bowY, 0), 0.5));
+  line(V(zm.x, zm.y + zm.H * 0.9, 0), V(mm.x, mm.y + mm.H * 0.55, 0)); line(V(zm.x, zm.y + zm.H * 0.56, 0), V(xs(0.02), top(0.02) + 0.3, 0));
+  // stern: gallery windows (lit after dark), gilded rail posts and three lanterns, the ensign on its staff
+  const win = [], winC = [];
+  for (const [wy, n] of [[5.2, 5], [6.95, 4]]) for (let i = 0; i < n; i++) { const z = (i / (n - 1) - 0.5) * beam(0) * 1.1, y = wy * k; const g = RP.at(new THREE.PlaneGeometry(0.75 * k, 0.95 * k), X0 - 0.06, y, z, 0, -Math.PI / 2, 0); win.push(g); }
+  const lanternMat = new THREE.MeshStandardMaterial({ color: '#ffe2a8', emissive: '#ffb44f', emissiveIntensity: 1, roughness: 0.4 }), winMat = new THREE.MeshStandardMaterial({ color: '#2c2a30', emissive: '#ffb75a', emissiveIntensity: 1, roughness: 0.3, side: THREE.DoubleSide });
+  const lanterns = [];
+  for (const z of [-0.42, 0, 0.42]) { const x = X0 + 0.9 * k, y = top(0.01) + (z ? 1.1 : 1.8) * k, zz = z * beam(0); parts.push(RP.rod(V(x, top(0.01) - 0.2, zz), V(x, y - 0.4 * k, zz), 0.07 * k, 0.07 * k, '#c9a14a', 6)); const l = new THREE.Mesh(new THREE.OctahedronGeometry(0.55 * k, 0), lanternMat); l.position.set(x, y, zz); l.scale.y = 1.5; lanterns.push(l); }
+  const staffX = X0 + 0.35 * k, staffY = top(0) + 0.2;
+  parts.push(RP.rod(V(staffX, staffY - 0.5, 0), V(staffX - 0.8 * k, staffY + 5 * k, 0), 0.09 * k, 0.06 * k, '#5d412a', 6));
+  const ens = flagMesh(3.6 * k, 2.4 * k, burgundyFlag()); ens.mesh.position.set(staffX - 0.75 * k, staffY + 3.6 * k, 0); ens.mesh.rotation.y = Math.PI;
+  const pen = flagMesh(2.4 * k, 1.6 * k, burgundyFlag()); pen.mesh.position.set(mm.x, mm.y + mm.H + 0.5 * k, 0); pen.mesh.rotation.y = Math.PI;
+  // assemble: an outer group placed and turned to the footprint, an inner one that rocks
+  const g = new THREE.Group(), inner = new THREE.Group(); g.add(inner);
+  const [wx, wz] = F.toWorld(xc, qc); g.position.set(wx, sea + 0.06, wz); g.rotation.y = Math.atan2(-F.uz, F.ux);
+  const hullMesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, side: THREE.DoubleSide }));
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sails, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(sailUV, 2)); sg.setIndex(sailIdx); sg.computeVertexNormals();
+  const sailMesh = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ map: sailTexture(), side: THREE.DoubleSide, roughness: 0.95 }));
+  const rig = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(lines, 3)), new THREE.LineBasicMaterial({ color: '#2a2018', transparent: true, opacity: 0.85 }));
+  const winMesh = new THREE.Mesh(mergeGeometries(win), winMat); winMesh.userData.pick = false;
+  for (const m of [hullMesh, sailMesh]) { m.castShadow = true; m.receiveShadow = true; }
+  inner.add(hullMesh, sailMesh, rig, winMesh, ...lanterns, ens.mesh, pen.mesh);
+  const flags = [ens, pen], ph = rnd() * 6.28;
+  return { g, cx: wx, cz: wz, kind: 'galleon', step(t, d) {
+    if (d > 2500) return;
+    inner.rotation.x = Math.sin(t * 0.42 + ph) * 0.014; inner.rotation.z = Math.sin(t * 0.29 + ph * 2) * 0.006; inner.position.y = Math.sin(t * 0.61 + ph) * 0.14;
+    winMat.emissiveIntensity = 0.05 + NIGHT.value * 1.5; lanternMat.emissiveIntensity = 0.15 + NIGHT.value * 2.4;
+    if (d > 900) return;
+    const gust = WINDK.value || 1;
+    for (const fl of flags) { const a = fl.mesh.geometry.attributes.position, A = a.array, Bs = fl.base; for (let i = 0; i < A.length; i += 3) { const u = Bs[i] / fl.w; A[i + 2] = fl.k * u * (0.3 + 0.1 * gust) * Math.sin(Bs[i] / fl.k * 1.1 - t * (3 + gust)); } a.needsUpdate = true; fl.mesh.geometry.computeVertexNormals(); }
+  } };
+}
+// A breakwater on the footprint: a stone mole from below the water to a paved deck 1.9 m above it, its sides wet and weedy at the
+// waterline, banks of boulders (riprap) tumbling into the sea along both sides, and a little harbour light on its widest point (the head).
+// Its deck can be walked on (world.walkOn).
+function buildBreakwater(rec) {
+  const sea = world.sea ? world.sea.position.y : 0, topY = sea + 1.9, botY = sea - 4.5, r = rec.rings[0], n = r.length / 2, sgn = ringArea(r) > 0 ? 1 : -1;
+  const rnd = mulberry(rec.seed ^ 0xb7ea), parts = [], pos = [], col = [], C = new THREE.Color();
+  const wallHex = (y) => (y < sea - 0.4 ? '#3c4038' : y < sea + 0.45 ? '#46523d' : y < sea + 0.9 ? '#6d6a5c' : '#8f897a');
+  for (let i = 0; i < n; i++) {   // the sides, in 0.6 m courses so the wet band and the weed line read
+    const ax = r[i * 2], az = r[i * 2 + 1], bx = r[((i + 1) % n) * 2], bz = r[((i + 1) % n) * 2 + 1];
+    for (let y = botY; y < topY - 1e-3; y += 0.6) { const y2 = Math.min(topY, y + 0.6), m = 0.9 + rnd() * 0.18; pos.push(ax, y, az, bx, y, bz, bx, y2, bz, ax, y, az, bx, y2, bz, ax, y2, az); C.set(wallHex((y + y2) / 2)); for (let q = 0; q < 6; q++) col.push(C.r * m, C.g * m, C.b * m); }
+  }
+  const pts = []; for (let i = 0; i < n; i++) pts.push(new THREE.Vector2(r[i * 2], r[i * 2 + 1]));
+  for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(pts, [])) for (const q of [a, b, c]) { pos.push(pts[q].x, topY, pts[q].y); const m = 0.92 + rnd() * 0.14; C.set('#b9b09a'); col.push(C.r * m, C.g * m, C.b * m); }
+  const body = new THREE.BufferGeometry(); body.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); body.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); body.computeVertexNormals(); parts.push(body);
+  // the harbour light: the largest circle that fits inside the outline, if the head is wider than the arm
+  let best = { d: 0, x: 0, z: 0 }; const ringC = [...r, r[0], r[1]], bb = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < n; i++) { bb[0] = Math.min(bb[0], r[i * 2]); bb[1] = Math.min(bb[1], r[i * 2 + 1]); bb[2] = Math.max(bb[2], r[i * 2]); bb[3] = Math.max(bb[3], r[i * 2 + 1]); }
+  for (let x = bb[0]; x <= bb[2]; x += 0.5) for (let z = bb[1]; z <= bb[3]; z += 0.5) if (pointInRings(x, z, rec.rings)) { const d = distToLine(ringC, x, z); if (d > best.d) best = { d, x, z }; }
+  const lightMat = new THREE.MeshStandardMaterial({ color: '#fff0c8', emissive: '#ffd27a', emissiveIntensity: 1, roughness: 0.3 }); let lamp = null;
+  if (best.d > 1.6) {
+    const R = Math.min(best.d * 0.55, 1.4), V = (y) => new THREE.Vector3(best.x, y, best.z);
+    parts.push(RP.at(RP.tint(new THREE.CylinderGeometry(R * 1.25, R * 1.35, 0.5, 16), '#7d786b'), best.x, topY + 0.25, best.z));
+    for (let i = 0; i < 4; i++) parts.push(RP.at(RP.tint(new THREE.CylinderGeometry(R * (1 - i * 0.04 - 0.04), R * (1 - i * 0.04), 1.2, 16), i % 2 ? '#a8231c' : '#f2efe6'), best.x, topY + 0.5 + i * 1.2 + 0.6, best.z));
+    const ly = topY + 0.5 + 4.8;
+    parts.push(RP.at(RP.tint(new THREE.CylinderGeometry(R * 1.15, R * 1.15, 0.18, 16), '#2b2c2e'), best.x, ly + 0.09, best.z), RP.at(RP.tint(new THREE.ConeGeometry(R * 0.85, 0.9, 12), '#2b2c2e'), best.x, ly + 1.65, best.z));
+    lamp = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.6, R * 0.6, 1.1, 12), lightMat); lamp.position.copy(V(ly + 0.75)); lamp.userData.pick = false;
+  }
+  // riprap: boulders in two or three ranks along every side, stepping down into the water (only where it is water)
+  const rocks = [];
+  for (let i = 0; i < n; i++) {
+    const ax = r[i * 2], az = r[i * 2 + 1], bx = r[((i + 1) % n) * 2], bz = r[((i + 1) % n) * 2 + 1], L = Math.hypot(bx - ax, bz - az); if (L < 0.4) continue;
+    const ux = (bx - ax) / L, uz = (bz - az) / L, ox = uz * sgn, oz = -ux * sgn;   // outward
+    for (let t = 0.4; t < L; t += 1.15) for (const [o, s0] of [[1.05, 1.15], [2.3, 1.05], [3.5, 0.9]]) {
+      const x = ax + ux * (t + (rnd() - 0.5) * 0.6) + ox * (o + rnd() * 0.5), z = az + uz * (t + (rnd() - 0.5) * 0.6) + oz * (o + rnd() * 0.5);
+      if (pointInRings(x, z, rec.rings) || H(x, z) > 0.2 || buildingAt(x, z) >= 0) continue;
+      rocks.push({ x, z, y: topY - 1.35 - o * 0.55 + (rnd() - 0.5) * 0.35, s: s0 * (0.7 + rnd() * 0.6) });   // the top rank stays below the deck's edge, so the walk shows
+    }
+  }
+  const rockMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), Math.max(1, rocks.length));
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), T = new THREE.Vector3(), E = new THREE.Euler();
+  rocks.forEach((q, i) => { E.set(rnd() * 6.28, rnd() * 6.28, rnd() * 6.28); Q.setFromEuler(E); S.set(q.s * (0.9 + rnd() * 0.5), q.s * (0.6 + rnd() * 0.35), q.s * (0.9 + rnd() * 0.4)); rockMesh.setMatrixAt(i, M.compose(T.set(q.x, q.y, q.z), Q, S)); rockMesh.setColorAt(i, C.set(rnd() < 0.5 ? '#7b766a' : '#8c8677').multiplyScalar(0.8 + rnd() * 0.35)); });
+  rockMesh.count = rocks.length;
+  const g = new THREE.Group(), mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
+  for (const m of [mesh, rockMesh]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+  if (lamp) g.add(lamp);
+  world.walkOn = (world.walkOn || []).filter((w) => w.id !== rec.id).concat([{ id: rec.id, top: topY, rings: rec.rings, bb }]);
+  return { g, cx: rec.cx, cz: rec.cz, kind: 'breakwater', rocks: rocks.length, light: !!lamp, dispose() { world.walkOn = (world.walkOn || []).filter((w) => w.id !== rec.id); },
+    step() { lightMat.emissiveIntensity = 0.1 + NIGHT.value * 2.6; } };
+}
+function stepReplacements(t) {
+  const D = world.replaceDirty;
+  if (D && D.size && world.sea !== undefined) {
+    if (!world.replaced) world.replaced = new Map();
+    for (const rec of D) {
+      const old = world.replaced.get(rec.id);
+      if (old) { scene.remove(old.g); if (old.dispose) old.dispose(); old.g.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) for (const x of [].concat(m.material)) { if (x.map && x.map !== _sailTex && x.map !== _burgundy) x.map.dispose(); x.dispose(); } }); world.replaced.delete(rec.id); }
+      if (!rec.replace) continue;
+      try { const o = rec.replace === 'galleon' ? buildGalleon(rec) : buildBreakwater(rec); o.g.traverse((m) => { m.userData.bid = rec.id; }); scene.add(o.g); world.replaced.set(rec.id, o); }
+      catch (e) { console.warn('replacement failed', rec.id, e); }
+    }
+    D.clear();
+    world.replaceMeshes = []; for (const o of world.replaced.values()) o.g.traverse((m) => { if (m.isMesh && m.userData.pick !== false) world.replaceMeshes.push(m); });
+  }
+  if (!world.replaced) return;
+  const cam = camera.position;
+  for (const o of world.replaced.values()) { const d = Math.hypot(o.cx - cam.x, o.cz - cam.z); o.g.visible = d < 6000; if (o.g.visible && o.step) o.step(t, d); }
 }
 const dirtyTiles = new Set();
 function markDirty(id) { const r = world.byId.get(id); if (r) dirtyTiles.add(r.tile); }
@@ -5563,6 +5846,7 @@ function groundAt(x, z, feet) {
   const br = bridgeAt(x, z); if (br > g && br <= feet + 1.2) g = br;   // walk up onto a bridge from its approach
   nearbyBuildings(x, z, _near);
   for (const k of _near) { const b = world.buildings[k]; if (!isSunk(k) && b.top <= feet + 0.7 && b.top > g && pointInRings(x, z, b.rings)) g = b.top; }
+  if (world.walkOn) for (const w of world.walkOn) if (w.top <= feet + 0.7 && w.top > g && x > w.bb[0] && x < w.bb[2] && z > w.bb[1] && z < w.bb[3] && pointInRings(x, z, w.rings)) g = w.top;   // a breakwater's deck
   return g;
 }
 function collide(pos, R) {
@@ -5773,10 +6057,10 @@ function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)
 
 // ─────────────────────────── change history ───────────────────────────
 const CATEGORIES = ['Colour', 'Roof', 'Height', 'Façade', 'Paving', 'Vegetation', 'Lighting', 'Water', 'Details', 'Structure', 'Revert', 'Other'];
-const STYLE_CATEGORY = { wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
+const STYLE_CATEGORY = { replace: 'Structure', wall: 'Colour', shutters: 'Colour', roof: 'Roof', roofType: 'Roof', floors: 'Height', groundFloor: 'Façade', windows: 'Façade', facade: 'Façade', use: 'Structure', look: 'Structure',
   paving: 'Paving', tint: 'Paving', grass: 'Vegetation', trees: 'Vegetation', canopy: 'Vegetation', treeType: 'Vegetation', lights: 'Lighting', segments: 'Façade', doors: 'Façade', floorStyles: 'Façade',
   doorSide: 'Façade', awning: 'Façade', awningColor: 'Colour', porch: 'Structure', sign: 'Façade' };
-const FIELD_LABEL = { name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
+const FIELD_LABEL = { replace: 'replaced by', name: 'name', address: 'address', tags: 'tags', history: 'history', details: 'details', attrs: 'attributes', wall: 'façade colour', shutters: 'shutters',
   roof: 'roof colour', roofType: 'roof type', floors: 'floors', groundFloor: 'ground floor', windows: 'windows', paving: 'paving', tint: 'paving colour', grass: 'lawn colour',
   trees: 'tree density', treeSides: 'tree sides', pleachRows: 'pleached rows', curb: 'curb', flagpole: 'flagpole', kiosk: 'kiosk', kioskFlag: 'kiosk flag', kioskLights: 'kiosk light strands', kioskStone: 'kiosk stone', kioskRoof: 'kiosk roof', groves: 'tree groves', fountain: 'fountain', fountainStyle: 'fountain style', fountainAt: 'fountain position', bollards: 'bollards', canopy: 'tree canopy', treeType: 'tree species', lights: 'street lights', facade: 'façade', use: 'use', look: 'beach look', segments: 'wall segments', doors: 'doors', floorStyles: 'floor looks',
   doorSide: 'door side', awning: 'awning', awningColor: 'awning colour', porch: 'porch', sign: 'shop sign' };
@@ -5819,6 +6103,7 @@ function cleanStyleFor(kind, o) {
     if (typeof o.awningColor === 'string' && HEX.test(o.awningColor.trim())) s.awningColor = o.awningColor.trim().toLowerCase();
     if (typeof o.porch === 'boolean') s.porch = o.porch;
     if (typeof o.removed === 'boolean') s.removed = o.removed;
+    if (o.replace === null || o.replace === 'none') s.replace = null; else if (REPLACE_KINDS.includes(o.replace)) s.replace = o.replace;
     if (o.sign === null || (o.sign && o.sign.kind === 'none')) s.sign = null; else { const sg = cleanSign(o.sign); if (sg) s.sign = sg; }
     return s;
   }
@@ -5858,6 +6143,7 @@ const STYLE_DOCS = {
 - awningColor: the awning stripes' colour, "#rrggbb" (they alternate with cream; default the shutter colour)
 - porch: true for a covered porch in front of the main door (stone platform and step, lime columns, terracotta lean-to roof); false removes it
 - removed: true takes the building away altogether (nothing is drawn and the ground beneath is open, e.g. so a plaza's kiosk can stand there); false brings it back
+- replace: draws something else on the building's footprint instead of a building: "galleon" (an early 18th-century Spanish galleon, sized and pointed by the footprint) or "breakwater" (a stone mole with boulders along it and a harbour light on its head); null brings the building back
 - sign: a shop sign over the ground floor, {"kind": "pharmacy" (a green cross on a bracket that glows at night, plus a green sign board) or "shop" (a sign board), "text": the board's lettering, short and in capitals, e.g. "FARMACIA" or "PANADERÍA", "color": the board colour "#rrggbb" (optional)}; null removes it. The lettering is shop signage, not the building's name.`,
   park: `- grass: lawn colour, "#rrggbb"
 - trees: "none", "sparse", "normal", "dense" or "lush" (a jungle of trees and undergrowth that stays green and full even from high above and on Low graphics)
@@ -7554,6 +7840,8 @@ const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(LAND_Y + 0.25)), _
 function pick3D(sx, sy) {   // a building under the cursor, else the park, street, canal… on the ground
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   const hits = raycaster.intersectObjects([...world.tileMeshes.values()], false);
+  const rh = world.replaceMeshes && world.replaceMeshes.length ? raycaster.intersectObjects(world.replaceMeshes, false)[0] : null;   // a galleon, a breakwater…
+  if (rh && (!hits.length || rh.distance < hits[0].distance)) return layers.building ? rh.object.userData.bid : null;
   for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return layers.building ? world.buildings[idx].id : null; }   // a building you can't pick still blocks the click
   if (!raycaster.ray.intersectPlane(_ground, _gp)) return null;
   const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol, true);
@@ -8117,7 +8405,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t);
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t);
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -8437,6 +8725,10 @@ window.amparacan = {
   me() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, mode: player.mode }; },
   plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: o && o.majestic ? { x: +(o.majestic.g.position.x).toFixed(1), z: +(o.majestic.g.position.z).toFixed(1) } : null, yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
   bollardsOf(id) { const f = world.featById.get(id); return f && f.kind === 'street' ? { on: !!featureStyle(f).bollards, spots: streetBollards(f).map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]) } : null; },
+  buildingInfo(id) { const r = world.byId.get(id); if (!r) return null; const sample = []; for (let a = 0; a < 16; a++) for (const d of [10, 25, 50]) sample.push([a, d, +H(r.cx + Math.cos(a / 16 * 6.283) * d, r.cz + Math.sin(a / 16 * 6.283) * d).toFixed(1)]); return { cx: +r.cx.toFixed(1), cz: +r.cz.toFixed(1), base: +r.base.toFixed(2), area: Math.round(r.area), nv: r.nv, ring: [...r.rings[0]].map((v) => +v.toFixed(1)), H: sample }; },
+  replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
+  probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
+  pleachOf(id) { const f = world.featById.get(id); if (!f) return null; const st = featureStyle(f); return st.trees === 'pleached' ? pleachedFor(f, st).map((q) => ({ x: +q.x.toFixed(1), z: +q.z.toFixed(1), a: +q.a.toFixed(2), corner: !!q.corner, side: q.side + (q.side2 || '') })) : []; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
   ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
   facadeOf(id) { const r = world.byId.get(id); return r && r.mainFacade ? { ...r.mainFacade } : null; },
