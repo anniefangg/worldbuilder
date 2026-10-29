@@ -3059,6 +3059,7 @@ function buildPlazaExtras(f) {
 function rebuildPlazaExtras(ids) {
   if (!world.plazaX) { world.plazaX = new THREE.Group(); scene.add(world.plazaX); }
   for (const id of ids || world.features.filter((f) => f.kind === 'plaza').map((f) => f.id)) { const f = world.featById.get(id); if (f) buildPlazaExtras(f); else dropPlazaExtras(id); }
+  if (world.replaced) for (const rec of world.buildings) if (rec.replace === 'statue' && world.replaced.has(rec.id)) (world.replaceDirty || (world.replaceDirty = new Set())).add(rec);   // statues re-place round the new trees
 }
 function stepPlazaExtras(t) {
   if (!PLAZAX.size) return;
@@ -3179,7 +3180,7 @@ function stepDetail() {
 // ─────────────────────────── replaced buildings (building style `replace`) ───────────────────────────
 // The footprint stays the author's; what stands on it is built here instead of a building, one group per building in world.replaced.
 // The building itself counts as removed (not drawn, blocks nothing); its stand-in can be clicked (world.replaceMeshes → userData.bid).
-const REPLACE_KINDS = ['galleon', 'breakwater'];
+const REPLACE_KINDS = ['galleon', 'breakwater', 'statue'];
 const RP = {
   tint(g, hex, jit = 0) {   // non-indexed, position + normal + colour only, so pieces merge into one vertex-coloured mesh
     g = g.index ? g.toNonIndexed() : g;
@@ -3406,6 +3407,65 @@ function buildBreakwater(rec) {
   return { g, cx: rec.cx, cz: rec.cz, kind: 'breakwater', rocks: rocks.length, light: !!lamp, dispose() { world.walkOn = (world.walkOn || []).filter((w) => w.id !== rec.id); },
     step() { lightMat.emissiveIntensity = 0.1 + NIGHT.value * 2.6; } };
 }
+// A statue on the footprint: a bronze figure, green with verdigris, on a limestone pedestal (two steps, a die with a bronze plaque,
+// a moulded cornice), facing the middle of the plaza it stands in. statueSpot moves it inward from the footprint, toward the plaza's
+// centre, until it clears the pleached canopies, streets and buildings. Four poses by seed: orator, navigator, scholar, sword.
+const STATUE = { step: 3.4, die: 1.9, dieH: 2.2, fig: 2.7, clear: 2.3 };
+function statueSpot(rec) {
+  let f = null; for (const q of world.features) if (q.kind === 'plaza' && rec.cx > q.bbox[0] && rec.cx < q.bbox[2] && rec.cz > q.bbox[1] && rec.cz < q.bbox[3] && pointInRings(rec.cx, rec.cz, q.rings)) { f = q; break; }
+  if (!f) return { x: rec.cx, z: rec.cz, a: (rec.seed % 628) / 100, moved: 0, f: null, curb: 0 };
+  const s = featureStyle(f), pl = s.trees === 'pleached' ? pleachedFor(f, s) : [], R = STATUE.clear, P = PLEACH;
+  const under = (x, z) => pl.some((p) => { const dx = x - p.x, dz = z - p.z; return Math.abs(dx * Math.cos(p.a) - dz * Math.sin(p.a)) < (p.sx || 1) * P.len / 2 + R && Math.abs(dx * Math.sin(p.a) + dz * Math.cos(p.a)) < P.depth / 2 + R; });
+  const ok = (x, z) => pointInRings(x, z, f.rings) && !under(x, z) && !roadAt(x, z, R, false) && [[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]].every(([a, b]) => buildingAt(x + a, z + b) < 0);
+  let dx = f.cx - rec.cx, dz = f.cz - rec.cz; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+  let x = rec.cx, z = rec.cz, moved = 0;
+  for (let d = 0; d <= Math.min(30, L); d += 0.5) { const px = rec.cx + dx * d, pz = rec.cz + dz * d; if (ok(px, pz)) { x = px; z = pz; moved = d; break; } }
+  return { x, z, a: Math.atan2(f.cx - x, f.cz - z), moved, f, curb: (s.curb || 0) / 100 };
+}
+function buildStatue(rec) {
+  const S = STATUE, sp = statueSpot(rec), y0 = H(sp.x, sp.z) + LIFT + sp.curb, rnd = mulberry(rec.seed ^ 0x57a7), pose = rec.seed % 4;
+  const stone = [], bronze = [], V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const box = (w, h, d, y, hex, x = 0, z = 0) => stone.push(RP.at(RP.tint(new THREE.BoxGeometry(w, h, d), hex, 0.04), x, y + h / 2, z));
+  // the pedestal
+  box(S.step, 0.28, S.step, 0, '#bdb4a0'); box(S.step - 0.5, 0.28, S.step - 0.5, 0.28, '#c6bda8');
+  box(S.die + 0.35, 0.3, S.die + 0.35, 0.56, '#cfc6b1'); box(S.die + 0.22, 0.12, S.die + 0.22, 0.86, '#d6cdb8');
+  box(S.die, S.dieH, S.die, 0.98, '#d9d0bb');
+  const top = 0.98 + S.dieH; box(S.die + 0.2, 0.14, S.die + 0.2, top, '#d6cdb8'); box(S.die + 0.42, 0.22, S.die + 0.42, top + 0.14, '#cfc6b1'); box(S.die + 0.1, 0.16, S.die + 0.1, top + 0.36, '#c9c0aa');
+  const fy = top + 0.52;   // the figure's feet
+  bronze.push(RP.at(RP.tint(new THREE.BoxGeometry(0.9, 0.6, 0.04), '#3f5a49'), 0, 1.75, S.die / 2 + 0.02));   // the plaque, on the face toward the plaza
+  bronze.push(RP.at(RP.tint(new THREE.BoxGeometry(1.3, 0.1, 1.0), '#43604e'), 0, fy - 0.05, 0));   // the figure's own plinth
+  // the figure, built facing +z: legs, a long coat flaring to the knees, waistcoat, shoulders, neck, head and a tricorne
+  const k = S.fig / 1.82, B = '#48675a', B2 = '#56786a', B3 = '#3a5649';
+  const at = (x, y, z) => V(x * k, fy + y * k, z * k);
+  for (const sx of [-1, 1]) { bronze.push(RP.rod(at(sx * 0.1, 0, sx * 0.05), at(sx * 0.11, 0.85, 0), 0.075 * k, 0.09 * k, B3)); bronze.push(RP.at(RP.tint(new THREE.BoxGeometry(0.12 * k, 0.08 * k, 0.28 * k), B3), sx * 0.1 * k, fy + 0.04 * k, (sx * 0.05 + 0.06) * k)); }
+  const coat = new THREE.LatheGeometry([[0.3, 0.42], [0.27, 0.6], [0.2, 0.95], [0.19, 1.1], [0.22, 1.32], [0.24, 1.42], [0.12, 1.5]].map(([r, h]) => new THREE.Vector2(r * k, h * k)), 14);
+  coat.scale(1, 1, 0.72); bronze.push(RP.at(RP.tint(coat, B, 0.06), 0, fy, 0));
+  bronze.push(RP.rod(at(0, 1.48, 0), at(0, 1.58, 0.01), 0.055 * k, 0.05 * k, B2));
+  const head = new THREE.SphereGeometry(0.105 * k, 14, 10); head.scale(0.92, 1.12, 1); bronze.push(RP.at(RP.tint(head, B2), 0, fy + 1.66 * k, 0.015 * k));
+  const hat = new THREE.CylinderGeometry(0.2 * k, 0.21 * k, 0.05 * k, 3); hat.rotateY(Math.PI / 6 + Math.PI); bronze.push(RP.at(RP.tint(hat, B3), 0, fy + 1.77 * k, 0.01 * k));
+  bronze.push(RP.at(RP.tint(new THREE.CylinderGeometry(0.1 * k, 0.11 * k, 0.09 * k, 10), B3), 0, fy + 1.81 * k, 0));
+  // arms: shoulder → elbow → hand per pose (x to his left is -x in the figure's frame since he faces +z)
+  const sh = (sx) => at(sx * 0.22, 1.4, 0);
+  const arm = (sx, el, hd) => { bronze.push(RP.rod(sh(sx), at(...el), 0.065 * k, 0.055 * k, B)); bronze.push(RP.rod(at(...el), at(...hd), 0.055 * k, 0.045 * k, B)); const h = new THREE.SphereGeometry(0.05 * k, 8, 6); bronze.push(RP.at(RP.tint(h, B2), ...at(...hd).toArray())); };
+  const rest = (sx) => arm(sx, [sx * 0.27, 1.12, 0.02], [sx * 0.28, 0.86, 0.05]);
+  if (pose === 0) { arm(-1, [-0.32, 1.55, 0.18], [-0.38, 1.82, 0.42]); rest(1); }   // the orator: one arm raised toward the plaza
+  else if (pose === 1) {   // the navigator: a globe on a stand by his side, a hand resting on it, the other at his hip
+    arm(1, [0.32, 1.15, 0.08], [0.42, 0.98, 0.2]); arm(-1, [-0.33, 1.18, -0.04], [-0.2, 0.98, 0.1]);
+    bronze.push(RP.rod(at(0.5, 0, 0.25), at(0.5, 0.78, 0.25), 0.03 * k, 0.025 * k, B3)); const gl = new THREE.SphereGeometry(0.17 * k, 14, 10); bronze.push(RP.at(RP.tint(gl, B2), ...at(0.5, 0.9, 0.25).toArray()));
+    const mer = new THREE.TorusGeometry(0.2 * k, 0.012 * k, 6, 24); bronze.push(RP.at(RP.tint(mer, B3), ...at(0.5, 0.9, 0.25).toArray(), 0, 0.4, 0.4));
+  } else if (pose === 2) {   // the scholar: an open book held before him
+    arm(1, [0.26, 1.13, 0.16], [0.12, 1.2, 0.34]); arm(-1, [-0.26, 1.13, 0.16], [-0.12, 1.2, 0.34]);
+    bronze.push(RP.at(RP.tint(new THREE.BoxGeometry(0.34 * k, 0.03 * k, 0.24 * k), B3), 0, fy + 1.24 * k, 0.36 * k, -0.5, 0, 0));
+  } else {   // a hand on a sword, its point grounded before him
+    arm(1, [0.28, 1.13, 0.12], [0.06, 1.0, 0.3]); arm(-1, [-0.3, 1.12, -0.02], [-0.22, 0.95, 0.06]);
+    bronze.push(RP.rod(at(0.04, 0, 0.36), at(0.06, 0.98, 0.31), 0.012 * k, 0.018 * k, B2)); bronze.push(RP.rod(at(-0.06, 0.98, 0.31), at(0.18, 0.98, 0.31), 0.02 * k, 0.02 * k, B3));
+  }
+  const g = new THREE.Group(), mk = (parts, mat) => { const m = new THREE.Mesh(mergeGeometries(parts), mat); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+  mk(stone, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 }));
+  mk(bronze, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.48, metalness: 0.55 }));
+  g.position.set(sp.x, y0, sp.z); g.rotation.y = sp.a;
+  return { g, cx: sp.x, cz: sp.z, kind: 'statue', pose: ['orator', 'navigator', 'scholar', 'sword'][pose], moved: +sp.moved.toFixed(1), at: { x: +sp.x.toFixed(1), z: +sp.z.toFixed(1) } };
+}
 function stepReplacements(t) {
   const D = world.replaceDirty;
   if (D && D.size && world.sea !== undefined) {
@@ -3414,7 +3474,7 @@ function stepReplacements(t) {
       const old = world.replaced.get(rec.id);
       if (old) { scene.remove(old.g); if (old.dispose) old.dispose(); old.g.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) for (const x of [].concat(m.material)) { if (x.map && x.map !== _sailTex && x.map !== _burgundy) x.map.dispose(); x.dispose(); } }); world.replaced.delete(rec.id); }
       if (!rec.replace) continue;
-      try { const o = rec.replace === 'galleon' ? buildGalleon(rec) : buildBreakwater(rec); o.g.traverse((m) => { m.userData.bid = rec.id; }); scene.add(o.g); world.replaced.set(rec.id, o); }
+      try { const o = rec.replace === 'galleon' ? buildGalleon(rec) : rec.replace === 'statue' ? buildStatue(rec) : buildBreakwater(rec); o.g.traverse((m) => { m.userData.bid = rec.id; }); scene.add(o.g); world.replaced.set(rec.id, o); }
       catch (e) { console.warn('replacement failed', rec.id, e); }
     }
     D.clear();
@@ -5182,6 +5242,7 @@ function addStreetFurniture() {
       const r = f.rings[0], sgn = ringArea(r) > 0 ? 1 : -1, ring = [...r, r[0], r[1]], ps = featureStyle(f);
       if (ps.trees === 'pleached') for (const t of pleachedFor(f, ps)) { claim(t.x, t.z); for (const k of [-1, 1]) claim(t.x + Math.sin(t.a) * k * PLEACH.rows, t.z + Math.cos(t.a) * k * PLEACH.rows); }
       const kio = ps.kiosk && kioskLayout(f, ps), pole = kio || (ps.flagpole && flagpoleSpot(f)); if (pole) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(pole.x + a * 1.4, pole.z + b * 1.4);
+      for (const rec of world.buildings) if (rec.replace === 'statue' && rec.cx > f.bbox[0] && rec.cx < f.bbox[2] && rec.cz > f.bbox[1] && rec.cz < f.bbox[3]) { const st = statueSpot(rec); if (st.f === f) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) claim(st.x + a * 1.1, st.z + b * 1.1); }   // statues' pedestals
       if (ps.groves > 0) for (const t of plazaGroves(f, ps, kio)) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) claim(t.x + a * 1.4, t.z + b * 1.4);   // the groves' trunks
       if (kio) { for (let a = -8; a <= 8; a++) for (let b = -8; b <= 8; b++) if (Math.hypot(a, b) * 1.4 < 10.5) claim(kio.x + a * 1.4, kio.z + b * 1.4); for (const m of kio.masts) claim(m.x, m.z); }   // the kiosk, its steps and the light masts
       let kb = 0;
@@ -6143,7 +6204,7 @@ const STYLE_DOCS = {
 - awningColor: the awning stripes' colour, "#rrggbb" (they alternate with cream; default the shutter colour)
 - porch: true for a covered porch in front of the main door (stone platform and step, lime columns, terracotta lean-to roof); false removes it
 - removed: true takes the building away altogether (nothing is drawn and the ground beneath is open, e.g. so a plaza's kiosk can stand there); false brings it back
-- replace: draws something else on the building's footprint instead of a building: "galleon" (an early 18th-century Spanish galleon, sized and pointed by the footprint) or "breakwater" (a stone mole with boulders along it and a harbour light on its head); null brings the building back
+- replace: draws something else on the building's footprint instead of a building: "galleon" (an early 18th-century Spanish galleon, sized and pointed by the footprint) or "breakwater" (a stone mole with boulders along it and a harbour light on its head) or "statue" (a bronze figure on a stone pedestal, facing the middle of the plaza it stands in, moved a little further in if trees are in the way); null brings the building back
 - sign: a shop sign over the ground floor, {"kind": "pharmacy" (a green cross on a bracket that glows at night, plus a green sign board) or "shop" (a sign board), "text": the board's lettering, short and in capitals, e.g. "FARMACIA" or "PANADERÍA", "color": the board colour "#rrggbb" (optional)}; null removes it. The lettering is shop signage, not the building's name.`,
   park: `- grass: lawn colour, "#rrggbb"
 - trees: "none", "sparse", "normal", "dense" or "lush" (a jungle of trees and undergrowth that stays green and full even from high above and on Low graphics)
@@ -8726,7 +8787,7 @@ window.amparacan = {
   plazaExtras(id) { const o = PLAZAX.get(id), f = world.featById.get(id); if (!f) return null; const im = o ? o.g.children.filter((m) => m.isInstancedMesh) : []; const curb = o && o.g.children.find((m) => m.isMesh && !m.isInstancedMesh); return { style: featureStyle(f), trees: im.length ? im[0].count : 0, curbFaces: curb ? curb.geometry.attributes.position.count / 6 : 0, flag: !!(o && o.flag), majestic: o && o.majestic ? { x: +(o.majestic.g.position.x).toFixed(1), z: +(o.majestic.g.position.z).toFixed(1) } : null, yard: o && o.yard ? { boats: o.yard.boats, masts: o.yard.masts, fence: o.yard.fence, cranes: o.yard.cranes, lockers: o.yard.lockers } : null, kiosk: o && o.kiosk ? { bulbs: o.kiosk.bulbs, masts: o.kiosk.masts, flag: !!o.kiosk.flag, stairs: f.kioskL && f.kioskL.stairs, at: f.kioskL && [+f.kioskL.x.toFixed(1), +f.kioskL.z.toFixed(1)], anchors: o.kiosk.anchors } : null, groves: o ? o.groves : 0, bbox: f.bbox.map((v) => Math.round(v)) }; },
   bollardsOf(id) { const f = world.featById.get(id); return f && f.kind === 'street' ? { on: !!featureStyle(f).bollards, spots: streetBollards(f).map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]) } : null; },
   buildingInfo(id) { const r = world.byId.get(id); if (!r) return null; const sample = []; for (let a = 0; a < 16; a++) for (const d of [10, 25, 50]) sample.push([a, d, +H(r.cx + Math.cos(a / 16 * 6.283) * d, r.cz + Math.sin(a / 16 * 6.283) * d).toFixed(1)]); return { cx: +r.cx.toFixed(1), cz: +r.cz.toFixed(1), base: +r.base.toFixed(2), area: Math.round(r.area), nv: r.nv, ring: [...r.rings[0]].map((v) => +v.toFixed(1)), H: sample }; },
-  replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
+  replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, pose: o.pose, moved: o.moved, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
   pleachOf(id) { const f = world.featById.get(id); if (!f) return null; const st = featureStyle(f); return st.trees === 'pleached' ? pleachedFor(f, st).map((q) => ({ x: +q.x.toFixed(1), z: +q.z.toFixed(1), a: +q.a.toFixed(2), corner: !!q.corner, side: q.side + (q.side2 || '') })) : []; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
