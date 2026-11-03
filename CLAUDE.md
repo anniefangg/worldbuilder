@@ -245,6 +245,17 @@ pipeline for seeding it.
     - **Result:** in a sample of 5,864 buildings, the ground varies by 0.2 m (median) across a footprint (was 1.1 m), and 222 are over 2 m (was 1,229). On the hills it's 0.8 m median (was 2.6 m).
     - **Unchanged:** the peak (408.7 m), the caldera and the canal quays (≤ 0.7 m).
     - **Checking:** `topo(x, z).natural` is the height before levelling, and `.dens` the built-up density.
+  - **Streets are level across** (`topoStreets`, after the pads; the author's rule: a street climbs only the long way, and a small kerb separates it from the pavement and buildings):
+    - **Profile:** each street gets a height profile along its centreline (sampled every 4 m, skipping water and sea, smoothed over ±`STREET_SMOOTH` 16 m).
+    - **Cut:** every grid cell within half its width plus `STREET_SIDE` 8 m takes the profile's height at its nearest point, so the carriageway and its pavements are level across.
+    - **Order:** wider streets go first; a narrower street that crosses or ends in one is bent to its height there (eased over `STREET_RAMP` 60 m).
+    - **What it may overwrite:** it cuts into a building's pad only within the carriageway (half-width + 2 m). Street-area paving takes the height of the street it adjoins (spread cell by cell).
+    - **Under towns:** the terrain mesh sits `TOPO.SINK` 0.5 m lower under built-up ground (where paving covers it), so its 16 m triangles never poke through a level street.
+    - **Result:** the ground's height difference kerb to kerb is 0.02 m (median) and 0.18 m (90th percentile), against 0.26 / 0.83 m before (`window.amparacan.streetCheck()`).
+  - **The street surface:**
+    - Street ribbons (`level` in `ribbonOverlay`) are drawn exactly level across: both kerbs, the joint discs and the junction fans are at the centreline's height, `TOPO.CURB` 0.14 m below the pavement. The street-area overlay is lifted −`CURB` too.
+    - **Kerbs** (`buildKerbs`, `KERB`, `stepKerbs`): stone strips (a face to the street, a 0.26 m top, a back face down past the pavement) along both edges of every street (not the Pavement-layer strokes, `sub` 1), round the fillet arcs at junctions, and round the street-area paving.
+    - A kerb is left out where the ground beyond is another street, path or street area (`roadAt`), over water and canals, and over the last few metres of a free end. That is about 173k pieces of 4 m, built once as strips in 500 m chunks, shown within 1.3 km of the camera and below 500 m altitude.
   - **Buildings:** a building stands on its lowest corner (`rec.dig` = how far its uphill side is dug in; with the pads this is small) and gets up to 3 extra floors downhill (`rec.climb`), so its own floor count shows above the uphill ground.
   - **Colours and trees:** terrain colours darken to woodland with height, thin to scrub near the tops and go to rock on the steepest slopes. Countryside trees are denser on the hills.
   - **Checking:** `window.amparacan.topo()` (summary), `topo(x, z)` (band, height) and `topoImage()` (a hillshaded height map over the page).

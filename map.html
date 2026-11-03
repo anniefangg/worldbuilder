@@ -1268,7 +1268,7 @@ function sampler(data, N) {
 // band is ringed only by higher ground (a caldera floor: a lower band drawn inside a higher one) it dips the same way below
 // the rim. Canals and the lowland ponds are kept at sea level (extra low sources for the plain island), so the city's water
 // stays where it is. A final blur takes the creases off the contour lines and the summit ridges.
-const TOPO = { N: 2048, S: 50, R: 170, BLUR: 2, STIFF: 400, OPEN: 4, ROUGH: 0.12, FLAT_N: 512, PAD_OUT: 6 };
+const TOPO = { N: 2048, S: 50, R: 170, BLUR: 2, STIFF: 400, OPEN: 4, ROUGH: 0.12, FLAT_N: 512, PAD_OUT: 6, STREET_SIDE: 8, STREET_SMOOTH: 16, STREET_RAMP: 60, CURB: 0.14, SINK: 0.5 };
 { const q = +new URLSearchParams(location.search).get('band'); if (q >= 20 && q <= 200) TOPO.S = q; }   // ?band=100 tries another band height (metres per band)
 // everything measured in metres of height scales with the band: the summit rounding, the hill relief, how far levelling may move the ground
 TOPO.k = TOPO.S / 50; TOPO.DOME = 0.88 * TOPO.S; TOPO.RELIEF = 0.18 * TOPO.S; TOPO.MAXD = 0.8 * TOPO.S;
@@ -1350,7 +1350,7 @@ function topoFlatten(h, lv, anchor, dens) {
 // Every building stands on a level pad: the cells under its footprint (and PAD_OUT metres round it) take the mean height there, so the
 // whole foundation is level and any step falls between buildings or across the street, as in a hillside town. The ground just
 // outside the pads is eased once (a masked blur) so the open ground meets them without a lip.
-function topoPads(h, lv, anchor, bPolys) {
+function topoPads(h, lv, anchor, bPolys, core) {
   const N = TOPO.N, C = EXT / N, pad = new Float32Array(N * N), cnt = new Uint8Array(N * N), cells = [];
   for (const rings of bPolys) {
     const r = rings[0]; if (r.length < 6) continue;
@@ -1360,7 +1360,7 @@ function topoPads(h, lv, anchor, bPolys) {
     for (let j = J0; j <= J1; j++) for (let i = I0; i <= I1; i++) {
       const k = j * N + i; if (lv[k] < 0 || anchor[k]) continue;
       const x = (i + 0.5 - N / 2) * C, z = (j + 0.5 - N / 2) * C;
-      if (pointInRings(x, z, rings)) { mine.push(k); sum += h[k]; n++; } else if (distToLine(edge, x, z) < o) mine.push(k);
+      if (pointInRings(x, z, rings)) { mine.push(k); sum += h[k]; n++; core[k] = 1; } else if (distToLine(edge, x, z) < o) mine.push(k);
     }
     if (!n) { for (const k of mine) { sum += h[k]; n++; } }   // a footprint smaller than a cell: the cells round it
     if (!n) continue;
@@ -1375,6 +1375,73 @@ function topoPads(h, lv, anchor, bPolys) {
     h[k] = (src[k] * 2 + src[k - 1] + src[k + 1] + src[k - N] + src[k + N]) / 6;
   }
   return cells.length;
+}
+// Streets are level across: each street gets a height profile along its length (the ground sampled along its centreline, with the
+// water and the sea left out, smoothed over ±STREET_SMOOTH metres), and every cell within half its width plus STREET_SIDE (the
+// pavement either side) takes the profile's height at its nearest point, so the street and its pavements are level the short
+// way and climb only the long way. Wider streets go first; a narrower street that crosses or ends in one is bent to its height
+// there (eased over STREET_RAMP metres). Street-area paving takes the height of the street it adjoins. Building footprints
+// (core) are left as they are beyond the carriageway, and the water always; the open ground next to the cut is eased once.
+function topoStreets(h, lv, anchor, core, streets, streetAreas) {
+  const N = TOPO.N, C = EXT / N, val = new Float32Array(N * N), claim = new Float32Array(N * N).fill(Infinity), wid = new Float32Array(N * N);
+  const cell = (x, z) => { const i = Math.floor(x / C + N / 2), j = Math.floor(z / C + N / 2); return i < 0 || j < 0 || i >= N || j >= N ? -1 : j * N + i; };
+  const samp = (x, z) => { const u = x / C + N / 2 - 0.5, v = z / C + N / 2 - 0.5, i = clamp(u | 0, 0, N - 2), j = clamp(v | 0, 0, N - 2), fu = clamp(u - i, 0, 1), fv = clamp(v - j, 0, 1), k = j * N + i; return (h[k] * (1 - fu) + h[k + 1] * fu) * (1 - fv) + (h[k + N] * (1 - fu) + h[k + N + 1] * fu) * fv; };
+  const STEP = 4, list = streets.filter((L) => L.pts.length >= 4).sort((a, b) => b.w - a.w);
+  for (const L of list) {
+    const P = L.pts, hw = L.w / 2, R = hw + TOPO.STREET_SIDE, pts = [], prof = [];
+    for (let i = 0; i < P.length - 2; i += 2) { const n = Math.max(1, Math.ceil(Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]) / STEP)); for (let s = 0; s < n; s++) pts.push(lerp(P[i], P[i + 2], s / n), lerp(P[i + 1], P[i + 3], s / n)); }
+    pts.push(P[P.length - 2], P[P.length - 1]);
+    const n = pts.length / 2, dist = [0];
+    for (let i = 1; i < n; i++) dist.push(dist[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]));
+    // the ground along it, skipping water (a bridge) and the sea
+    for (let i = 0; i < n; i++) { const k = cell(pts[i * 2], pts[i * 2 + 1]); prof.push(k < 0 || lv[k] < 0 || anchor[k] ? NaN : samp(pts[i * 2], pts[i * 2 + 1])); }
+    if (prof.every((v) => Number.isNaN(v))) continue;
+    for (let i = 0; i < n; i++) if (Number.isNaN(prof[i])) { let a = i - 1, b = i + 1; while (a >= 0 && Number.isNaN(prof[a])) a--; while (b < n && Number.isNaN(prof[b])) b++; prof[i] = a < 0 ? prof[b] : b >= n ? prof[a] : lerp(prof[a], prof[b], (dist[i] - dist[a]) / (dist[b] - dist[a])); }
+    const sm = Math.max(1, Math.round(TOPO.STREET_SMOOTH / STEP));
+    for (let pass = 0; pass < 2; pass++) { const src = prof.slice(); for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let d = -sm; d <= sm; d++) { const q = i + d; if (q >= 0 && q < n) { a += src[q]; c++; } } prof[i] = a / c; } }
+    // where it crosses or ends in a street already laid, meet that street's height
+    const fix = [];
+    for (let i = 0; i < n; i++) { const k = cell(pts[i * 2], pts[i * 2 + 1]); if (k >= 0 && claim[k] < wid[k] / 2) fix.push([dist[i], val[k] - prof[i]]); }
+    if (fix.length) for (let i = 0; i < n; i++) {
+      let ws = 0, ds = 0; for (const [d0, dv] of fix) { const w = Math.max(0, 1 - Math.abs(dist[i] - d0) / TOPO.STREET_RAMP); ws += w; ds += w * dv; }
+      if (ws > 0) prof[i] += ds / ws * Math.min(1, ws);
+    }
+    // lay it: every cell within reach takes the height at its nearest point on the centreline
+    for (let i = 0; i < n - 1; i++) {
+      const ax = pts[i * 2], az = pts[i * 2 + 1], dx = pts[i * 2 + 2] - ax, dz = pts[i * 2 + 3] - az, L2 = dx * dx + dz * dz || 1;
+      const I0 = Math.max(0, Math.floor((Math.min(ax, ax + dx) - R) / C + N / 2)), I1 = Math.min(N - 1, Math.floor((Math.max(ax, ax + dx) + R) / C + N / 2));
+      const J0 = Math.max(0, Math.floor((Math.min(az, az + dz) - R) / C + N / 2)), J1 = Math.min(N - 1, Math.floor((Math.max(az, az + dz) + R) / C + N / 2));
+      for (let j = J0; j <= J1; j++) for (let ii = I0; ii <= I1; ii++) {
+        const k = j * N + ii; if (lv[k] < 0 || anchor[k]) continue;
+        const x = (ii + 0.5 - N / 2) * C, z = (j + 0.5 - N / 2) * C, t = clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+        if (core[k] && d > hw + 2) continue;   // a building's own pad, unless it reaches into the carriageway (the street wins there, so its frontage meets the street)
+        if (d < R && d < claim[k]) { claim[k] = d; val[k] = lerp(prof[i], prof[i + 1], t); wid[k] = L.w; }
+      }
+    }
+  }
+  // street-area paving: the height of the street it adjoins, spread outward cell by cell
+  const inSA = new Uint8Array(N * N);
+  for (const rings of streetAreas) {
+    const r = rings[0]; let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+    for (let j = Math.max(0, Math.floor(z0 / C + N / 2)); j <= Math.min(N - 1, Math.floor(z1 / C + N / 2)); j++) for (let i = Math.max(0, Math.floor(x0 / C + N / 2)); i <= Math.min(N - 1, Math.floor(x1 / C + N / 2)); i++) {
+      const k = j * N + i; if (lv[k] < 0 || anchor[k] || core[k] || claim[k] < Infinity) continue;
+      if (pointInRings((i + 0.5 - N / 2) * C, (j + 0.5 - N / 2) * C, rings)) inSA[k] = 1;
+    }
+  }
+  let front = []; for (let k = 0; k < N * N; k++) if (claim[k] < Infinity) front.push(k);
+  for (let step = 0; step < 40 && front.length; step++) {
+    const next = [];
+    for (const k of front) for (const q of [k - 1, k + 1, k - N, k + N]) if (q >= 0 && q < N * N && inSA[q]) { inSA[q] = 0; val[q] = val[k]; claim[q] = 0; next.push(q); }
+    front = next;
+  }
+  let laid = 0; for (let k = 0; k < N * N; k++) if (claim[k] < Infinity) { h[k] = val[k]; laid++; }
+  const src = Float32Array.from(h);
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i; if (claim[k] < Infinity || core[k] || lv[k] < 0 || anchor[k]) continue;
+    if (!(claim[k - 1] < Infinity || claim[k + 1] < Infinity || claim[k - N] < Infinity || claim[k + N] < Infinity)) continue;
+    h[k] = (src[k] * 2 + src[k - 1] + src[k + 1] + src[k - N] + src[k + N]) / 6;
+  }
+  return laid;
 }
 function topoHeights(lv, anchor) {   // metres above the land's base level, N×N
   const N = TOPO.N, S = TOPO.S, C = EXT / N, h = new Float32Array(N * N), lab = new Int32Array(N * N).fill(-1), comp = [];
@@ -1601,9 +1668,10 @@ async function buildWorld() {
   // how built-up the ground is (buildings, paving and streets), for levelling the neighbourhoods
   const densR = blur(raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); for (const p of streetAreas) g.fill(path2d(p), 'evenodd'); for (const L of streets) { g.lineWidth = L.w; g.stroke(line2d(L.pts)); } }), TOPO.N, 3, 2);
   const dens = new Float32Array(densR.length); for (let i = 0; i < dens.length; i++) dens[i] = smooth(0.12, 0.42, densR[i]);
-  const h0 = Float32Array.from(topo.h), t1 = performance.now(), flatMax = topoFlatten(topo.h, topoLv, anchor, dens), pads = topoPads(topo.h, topoLv, anchor, bPolys);
+  const h0 = Float32Array.from(topo.h), t1 = performance.now(), flatMax = topoFlatten(topo.h, topoLv, anchor, dens), core = new Uint8Array(TOPO.N * TOPO.N), pads = topoPads(topo.h, topoLv, anchor, bPolys, core), laid = topoStreets(topo.h, topoLv, anchor, core, streets, streetAreas);
   const sTopo = sampler(topo.h, TOPO.N);
-  world.topo = { lv: topoLv, h: topo.h, h0, dens, comps: topo.comp.length, ms: Math.round(performance.now() - t0), flatMs: Math.round(performance.now() - t1), flatMax: +flatMax.toFixed(1), pads, lvAt };
+  const sDens = sampler(dens, TOPO.N);
+  world.topo = { lv: topoLv, h: topo.h, h0, dens, comps: topo.comp.length, ms: Math.round(performance.now() - t0), flatMs: Math.round(performance.now() - t1), flatMax: +flatMax.toFixed(1), pads, laid, lvAt };
   // a lake up in the hills: its water lies flat just below the lowest point of its shore, and the ground under it dips away
   world.lakeWL = new Map();
   const highLakes = highWater.map((p) => {
@@ -1793,7 +1861,7 @@ async function buildWorld() {
     world.ponds = ponds;
     const sunk = (x, z) => ponds.some((q) => x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && (pointInRings(x, z, q.p) || distToLine(q.edge, x, z) < POND_SINK));
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h = sunk(x, z) ? Math.min(H(x, z), -1.6) : H(x, z);
+      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h0t = sunk(x, z) ? Math.min(H(x, z), -1.6) : H(x, z), h = h0t > 0.6 ? h0t - TOPO.SINK * smooth(0.35, 0.8, sDens(x, z)) : h0t;   // under built-up ground (all paved over) it sits a little lower, so its 16 m triangles never poke through a level street
       pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z; uv[k * 2] = x / 7; uv[k * 2 + 1] = z / 7;
       const n1 = vnoise(x / 260, z / 260), n2 = vnoise(x / 55, z / 55);
       tmp.copy(grassA).lerp(grassB, clamp(n1 * 0.75 + n2 * 0.35 - 0.1, 0, 1));
@@ -1832,7 +1900,8 @@ async function buildWorld() {
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
   buildPondBanks();
-  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083' })), 4), world.tex.setts, 3);
+  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083', lift: -TOPO.CURB })), 4), world.tex.setts, 3);   // a kerb below the pavement, like the streets
+  buildKerbs();
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
   await progress('Raising buildings', 44);
@@ -4571,13 +4640,102 @@ function polyOverlay(items, uvScale) {
   }
   return geo;
 }
+// Kerbs: a stone kerb along both edges of every street and round the street-area paving. Its face drops from just above the
+// pavement to the street, which lies TOPO.CURB below it (ribbonOverlay `level`, the street areas' lift). It is left out where the
+// ground beyond is another street, path or street area (junctions stay open), over the water, and where a street's free end fades
+// into a plaza; the rounded junction corners (the fillet fans) get it along their arcs. Built once, as strips in 500 m chunks,
+// shown near the camera (stepKerbs).
+const KERB = { W: 0.26, CHUNK: 500, FAR: 1300, STEP: 4 };
+function buildKerbs() {
+  for (const m of world.kerbs || []) { scene.remove(m); m.geometry.dispose(); }
+  const chunks = new Map(), stone = linear('#cbc7bd'), c = new THREE.Color();
+  const chunk = (x, z) => { const k = Math.floor(x / KERB.CHUNK) * 4096 + Math.floor(z / KERB.CHUNK); let g = chunks.get(k); if (!g) chunks.set(k, g = { k, p: [], n: [], c: [], i: [] }); return g; };
+  const open = (x, z) => H(x, z) < 0.3 || canalIn(x, z) > -2 || roadAt(x, z, 0.25, true);   // nothing to kerb against: water, or more street
+  // a run of kerb along points (x, z, y = street surface, nx, nz = unit normal toward the street); keep[i] for the piece i → i+1
+  const run = (pts, keep) => {
+    let g = null, prev = -1;
+    const add = (q) => {   // six vertices per station: face foot and top (facing the street), top front and back (facing up), back top and foot (facing the pavement)
+      const [x, z, y, nx, nz] = q, t = y + TOPO.CURB + 0.03, sh = 0.9 + ((Math.floor((x + z) * 0.9) & 3) * 0.04), bx = x - nx * KERB.W, bz = z - nz * KERB.W; c.copy(stone).multiplyScalar(sh);
+      const v = g.p.length / 3;
+      g.p.push(x, y - 0.06, z, x, t, z, x, t, z, bx, t, bz, bx, t, bz, bx, y - 0.3, bz);
+      g.n.push(nx, 0, nz, nx, 0, nz, 0, 1, 0, 0, 1, 0, -nx, 0, -nz, -nx, 0, -nz);
+      for (let m = 0; m < 6; m++) g.c.push(c.r, c.g, c.b);
+      return v;
+    };
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (!keep[i]) { g = null; continue; }
+      const cg = chunk(pts[i][0], pts[i][1]);
+      if (g !== cg) { g = cg; prev = add(pts[i]); }
+      const v = add(pts[i + 1]);
+      g.i.push(prev, v, prev + 1, v, v + 1, prev + 1, prev + 2, v + 2, prev + 3, v + 2, v + 3, prev + 3, prev + 4, v + 4, prev + 5, v + 4, v + 5, prev + 5);
+      prev = v;
+    }
+  };
+  let pieces = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'street' || f.sub === 1) continue;
+    const P = f.pts, hw = f.w / 2, D = [];   // stations every KERB.STEP metres, with the line's own corners
+    for (let i = 0; i < P.length - 2; i += 2) { const n = Math.max(1, Math.ceil(Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]) / KERB.STEP)); for (let s = 0; s < n; s++) D.push(lerp(P[i], P[i + 2], s / n), lerp(P[i + 1], P[i + 3], s / n)); }
+    D.push(P[P.length - 2], P[P.length - 1]);
+    const n = D.length / 2, along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(D[i * 2] - D[i * 2 - 2], D[i * 2 + 1] - D[i * 2 - 1]));
+    const total = along[n - 1], free = freeEnds(f) || [], FL = Math.min(7, total * 0.35) + 1.5;
+    for (const side of [1, -1]) {
+      const pts = [], keep = [];
+      for (let i = 0; i < n; i++) {
+        const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), dx = D[b * 2] - D[a * 2], dz = D[b * 2 + 1] - D[a * 2 + 1], L = Math.hypot(dx, dz) || 1;
+        const nx = -dz / L * side, nz = dx / L * side, cx = D[i * 2], cz = D[i * 2 + 1];   // (nx, nz): from the centreline out to this kerb
+        pts.push([cx + nx * hw, cz + nz * hw, H(cx, cz) + LIFT - TOPO.CURB, -nx, -nz]);
+      }
+      for (let i = 0; i < n - 1; i++) {
+        const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2, ox = mx - (pts[i][3] + pts[i + 1][3]) * 0.45, oz = mz - (pts[i][4] + pts[i + 1][4]) * 0.45, am = (along[i] + along[i + 1]) / 2;
+        const ok = !open(ox, oz) && !(free[0] && am < FL) && !(free[1] && total - am < FL);
+        keep.push(ok); if (ok) pieces++;
+      }
+      run(pts, keep);
+    }
+    for (const fan of f.fans || []) {   // the rounded corners: along the arc, facing the corner point the fan is laid from
+      const y = H(fan[0], fan[1]) + LIFT - TOPO.CURB, pts = [], keep = [];
+      for (let s = 1; s < fan.length / 2; s++) { const x = fan[s * 2], z = fan[s * 2 + 1], dx = fan[0] - x, dz = fan[1] - z, L = Math.hypot(dx, dz) || 1; pts.push([x, z, y, dx / L, dz / L]); }
+      for (let i = 0; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2; keep.push(!open(mx - pts[i][3] * 0.9, mz - pts[i][4] * 0.9)); }
+      run(pts, keep);
+    }
+  }
+  // round the street-area paving, facing in
+  for (const rings of world.layers.streetAreas) {
+    const r = softRing(rings[0]), sgn = ringArea(r) > 0 ? 1 : -1, m = r.length / 2, pts = [], keep = [];
+    for (let i = 0; i <= m; i++) {
+      const k = i % m, a = (k + m - 1) % m, b = (k + 1) % m, dx = r[b * 2] - r[a * 2], dz = r[b * 2 + 1] - r[a * 2 + 1], L = Math.hypot(dx, dz) || 1;
+      const x = r[k * 2], z = r[k * 2 + 1], inx = -dz / L * sgn, inz = dx / L * sgn;
+      pts.push([x, z, H(x + inx * 0.5, z + inz * 0.5) + LIFT - TOPO.CURB, inx, inz]);
+    }
+    for (let i = 0; i < m; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2, ok = !open(mx - pts[i][3] * 0.9, mz - pts[i][4] * 0.9); keep.push(ok); if (ok) pieces++; }
+    run(pts, keep);
+  }
+  const mat = world.kerbMat || (world.kerbMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, map: world.tex.flags.map }));
+  world.kerbs = [];
+  for (const g of chunks.values()) {
+    if (!g.i.length) continue;
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3));
+    const uv = new Float32Array(g.p.length / 3 * 2); for (let v = 0; v < uv.length / 2; v++) { uv[v * 2] = (g.p[v * 3] + g.p[v * 3 + 2]) / 1.2; uv[v * 2 + 1] = g.p[v * 3 + 1] / 1.2; } geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(g.i); geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; mesh.userData.c = geo.boundingSphere.center.clone(); scene.add(mesh); world.kerbs.push(mesh);
+  }
+  world.kerbPieces = pieces;
+}
+let kerbT = 0;
+function stepKerbs(t) {   // near the camera only: a kerb is 14 cm of stone
+  if (!world.kerbs || t - kerbT < 0.5) return; kerbT = t;
+  const cam = camera.position, high = cam.y - Math.max(0, H(cam.x, cam.z)) > 500;
+  for (const m of world.kerbs) m.visible = !high && Math.hypot(m.userData.c.x - cam.x, m.userData.c.z - cam.z) < KERB.FAR;
+}
 const RIBBON_STEP = 8;   // metres between ribbon cross-sections, so streets follow the hills
 function ribbonOverlay(items) {
   const geo = new Geo([['aFade', 1]]), c = new THREE.Color();
   const V = (x, y, z, col, u, w, fade) => { const i = geo.v(x, y, z, 0, 1, 0, col, u, w); geo.extra.aFade.push(fade); return i; };   // aFade: 1 opaque, 0 clear
   const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
-  for (const { pts, w, color, blend, free, fans } of items) {
+  for (const { pts, w, color, blend, free, fans, level } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
+    const down = level ? TOPO.CURB : 0;   // a street lies a kerb's height below its pavements, level across (both kerbs at the centreline's height)
     const P = [], corner = new Set(); // densify so ribbons follow the terrain (corner: indices of the line's own vertices)
     for (let i = 0; i < pts.length - 2; i += 2) {
       const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / RIBBON_STEP));
@@ -4595,7 +4753,7 @@ function ribbonOverlay(items) {
     for (let i = 0; i < P.length - 2; i += 2) {
       const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], len = Math.hypot(bx - ax, bz - az);
       if (len < 0.01) continue;
-      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, G = (x, z) => H(x, z) + LIFT;
+      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ga = H(ax, az) + LIFT - down, gb = H(bx, bz) + LIFT - down, G = level ? (x, z) => (Math.abs(x - ax) + Math.abs(z - az) < Math.abs(x - bx) + Math.abs(z - bz) ? ga : gb) : (x, z) => H(x, z) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
       const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
       const fa = fadeAt(along - len), fb = fadeAt(along);
@@ -4608,14 +4766,14 @@ function ribbonOverlay(items) {
       if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
       if (!corner.has(i / 2)) continue;   // between the line's own vertices the ribbon runs straight, with no gap to fill
       const fd = fadeAt(acc); if (fd < 0.02) continue;
-      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
-      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, H(px, pz) + LIFT, pz, cj, px / 4, pz / 4, fd); }
+      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT - down, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
+      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, level ? h : H(px, pz) + LIFT, pz, cj, px / 4, pz / 4, fd); }
       for (let s = 0; s < NJ; s++) geo.triUp(ctr, first + s, first + (s + 1) % NJ);
     }
     // rounded inside corners where this ribbon meets another (junctionFillets): a fan from the corner point to the arc
     for (const fan of fans || []) {
-      const h0 = H(fan[0], fan[1]) + LIFT, ctr = V(fan[0], h0, fan[1], c, fan[0] / 4, fan[1] / 4, 1), first = geo.count, m = fan.length / 2 - 1;
-      for (let s = 1; s <= m; s++) { const x = fan[s * 2], z = fan[s * 2 + 1]; V(x, H(x, z) + LIFT, z, c, x / 4, z / 4, 1); }
+      const h0 = H(fan[0], fan[1]) + LIFT - down, ctr = V(fan[0], h0, fan[1], c, fan[0] / 4, fan[1] / 4, 1), first = geo.count, m = fan.length / 2 - 1;
+      for (let s = 1; s <= m; s++) { const x = fan[s * 2], z = fan[s * 2 + 1]; V(x, level ? h0 : H(x, z) + LIFT, z, c, x / 4, z / 4, 1); }
       for (let s = 0; s < m - 1; s++) geo.triUp(ctr, first + s, first + s + 1);
     }
   }
@@ -4732,7 +4890,7 @@ function buildGround(kind) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans, level: kind === 'street' });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
@@ -8715,7 +8873,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t); stepReplacements(t);
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t);
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -9040,9 +9198,25 @@ window.amparacan = {
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
   topo(x, z) {   // the terrain: summary, or the band level, height above the base and ground height at a point
     const T = world.topo; if (!T) return null;
-    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, laid: T.laid, kerbs: world.kerbPieces, kerbMeshes: (world.kerbs || []).length, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
     const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
     return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
+  },
+  streetCheck() {   // how level the streets are across: the height difference between the two kerbs (and before levelling), every 8 m
+    const T = world.topo, nat = sampler(T.h0, TOPO.N), across = [], before = [], grade = [];
+    for (const f of world.features) {
+      if (f.kind !== 'street' || f.sub === 1) continue; const P = f.pts, hw = f.w / 2;
+      for (let i = 0; i < P.length - 2; i += 2) {
+        const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz); if (L < 1) continue; const nx = -dz / L * hw, nz = dx / L * hw;
+        for (let d = 4; d < L; d += 8) {
+          const x = P[i] + dx / L * d, z = P[i + 1] + dz / L * d; if (H(x, z) < 0.5 || canalIn(x, z) > -3) continue;
+          across.push(Math.abs(H(x + nx, z + nz) - H(x - nx, z - nz))); before.push(Math.abs(nat(x + nx, z + nz) - nat(x - nx, z - nz)));
+          grade.push(Math.abs(H(x + dx / L * 4, z + dz / L * 4) - H(x - dx / L * 4, z - dz / L * 4)) / 8);
+        }
+      }
+    }
+    const q = (a, f) => { const s = a.slice().sort((x, y) => x - y); return +s[Math.floor((s.length - 1) * f)].toFixed(2); };
+    return { stations: across.length, acrossMed: q(across, 0.5), acrossP90: q(across, 0.9), acrossP99: q(across, 0.99), beforeMed: q(before, 0.5), beforeP90: q(before, 0.9), over05: across.filter((v) => v > 0.5).length, gradeP90: q(grade, 0.9) };
   },
   topoImage(px = 760) {   // a hillshaded height map of the island over the page, for checking (call again to remove)
     const old = document.getElementById('topo-dbg'); if (old) { old.remove(); return 'removed'; }
