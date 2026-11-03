@@ -4726,7 +4726,46 @@ let kerbT = 0;
 function stepKerbs(t) {   // near the camera only: a kerb is 14 cm of stone
   if (!world.kerbs || t - kerbT < 0.5) return; kerbT = t;
   const cam = camera.position, high = cam.y - Math.max(0, H(cam.x, cam.z)) > 500;
-  for (const m of world.kerbs) m.visible = !high && Math.hypot(m.userData.c.x - cam.x, m.userData.c.z - cam.z) < KERB.FAR;
+  for (const m of [...world.kerbs, ...(world.stairs || [])]) m.visible = !high && Math.hypot(m.userData.c.x - cam.x, m.userData.c.z - cam.z) < KERB.FAR;
+}
+// Steps: where a street is too steep to be practical (STAIR.G), the ribbon gives way to a stone staircase across its full width, each
+// rise about STAIR.RISE (a run of 8 m sections; each section is split into equal treads so the flight follows the street's own grade,
+// with a half rise where a flight meets the level street). Treads are level, risers face down the flight; the kerbs run alongside as
+// its cheeks. Built from world.stairSegs (gathered by ribbonOverlay for level streets) in 500 m chunks, shown near the camera.
+const STAIR = { G: 0.17, RISE: 0.16 };
+function buildStairs() {
+  for (const m of world.stairs || []) { scene.remove(m); m.geometry.dispose(); }
+  world.stairs = [];
+  const chunks = new Map(), tread = linear('#c3bcae'), riser = linear('#9c9587'), c = new THREE.Color();
+  const chunk = (x, z) => { const k = Math.floor(x / KERB.CHUNK) * 4096 + Math.floor(z / KERB.CHUNK); let g = chunks.get(k); if (!g) chunks.set(k, g = { p: [], n: [], c: [], uv: [] }); return g; };
+  const quad = (g, A, B, C, D, n, col) => {   // wound to face n (a double-sided material lights a back face from behind)
+    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2], f = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+    for (const q of f >= 0 ? [A, B, C, A, C, D] : [A, C, B, A, D, C]) { g.p.push(q[0], q[1], q[2]); g.n.push(n[0], n[1], n[2]); g.c.push(col.r, col.g, col.b); g.uv.push((q[0] + q[2]) / 1.4, q[1] / 1.4 + (q[0] - q[2]) / 5); }
+  };
+  let last = 0, steps = 0;
+  for (const sg of world.stairSegs || []) {
+    const { ax, az, bx, bz, ha, hb, hw } = sg, L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz * hw, nz = tx * hw, dh = hb - ha;
+    const n = Math.max(2, Math.round(Math.abs(dh) / STAIR.RISE)), g = chunk((ax + bx) / 2, (az + bz) / 2), up = Math.sign(dh) || 1;
+    if (!sg.prev) last = ha;   // a flight starts from the level street
+    for (let k = 0; k < n; k++) {
+      const s0 = k * L / n, s1 = (k + 1) * L / n, y = ha + dh * (k + 0.5) / n, x0 = ax + tx * s0, z0 = az + tz * s0, x1 = ax + tx * s1, z1 = az + tz * s1, sh = 0.94 + ((k * 7 + Math.round(ax)) % 3) * 0.03;
+      // the riser from the tread before, facing down the flight
+      const lo = Math.min(last, y), hi = Math.max(last, y);
+      quad(g, [x0 + nx, lo, z0 + nz], [x0 - nx, lo, z0 - nz], [x0 - nx, hi, z0 - nz], [x0 + nx, hi, z0 + nz], [-tx * up, 0, -tz * up], c.copy(riser).multiplyScalar(sh));
+      quad(g, [x0 + nx, y, z0 + nz], [x0 - nx, y, z0 - nz], [x1 - nx, y, z1 - nz], [x1 + nx, y, z1 + nz], [0, 1, 0], c.copy(tread).multiplyScalar(sh));
+      const foot = Math.min(y, ha + dh * k / n, ha + dh * (k + 1) / n) - 0.45;   // solid sides: each step's end face, down below the pavement
+      for (const sd of [1, -1]) quad(g, [x0 + nx * sd, foot, z0 + nz * sd], [x1 + nx * sd, foot, z1 + nz * sd], [x1 + nx * sd, y, z1 + nz * sd], [x0 + nx * sd, y, z0 + nz * sd], [nx / hw * sd, 0, nz / hw * sd], c.copy(riser).multiplyScalar(0.92));
+      last = y; steps++;
+    }
+    if (!sg.next) { const lo = Math.min(last, hb), hi = Math.max(last, hb); quad(g, [bx + nx, lo, bz + nz], [bx - nx, lo, bz - nz], [bx - nx, hi, bz - nz], [bx + nx, hi, bz + nz], [-tx * up, 0, -tz * up], c.copy(riser)); }   // and back down (or up) to the street
+  }
+  const mat = world.stairMat || (world.stairMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, map: world.tex.flags.map }));
+  for (const g of chunks.values()) {
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
+    geo.computeBoundingSphere();
+    const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; m.castShadow = true; m.userData.c = geo.boundingSphere.center.clone(); scene.add(m); world.stairs.push(m);
+  }
+  world.stairSteps = steps; world.stairFlights = (world.stairSegs || []).filter((s) => !s.prev).length;
 }
 const RIBBON_STEP = 8;   // metres between ribbon cross-sections, so streets follow the hills
 function ribbonOverlay(items) {
@@ -4743,6 +4782,13 @@ function ribbonOverlay(items) {
       for (let s = 0; s < n; s++) P.push(lerp(ax, bx, s / n), lerp(az, bz, s / n));
     }
     corner.add(P.length / 2); P.push(pts[pts.length - 2], pts[pts.length - 1]);
+    // a street too steep to be practical (over STAIR.G between two cross-sections) is a flight of steps there: buildStairs draws it
+    let stair = null;
+    if (level && world.stairSegs) {
+      const ns = P.length / 2 - 1; stair = new Uint8Array(ns);
+      for (let q = 0; q < ns; q++) { const x0 = P[q * 2], z0 = P[q * 2 + 1], x1 = P[q * 2 + 2], z1 = P[q * 2 + 3], L = Math.hypot(x1 - x0, z1 - z0), h0 = H(x0, z0), h1 = H(x1, z1); if (L > 0.5 && h0 > 0.5 && h1 > 0.5 && Math.abs(h1 - h0) / L > STAIR.G) stair[q] = 1; }
+      for (let q = 1; q < ns - 1; q++) if (!stair[q] && stair[q - 1] && stair[q + 1]) stair[q] = 1;   // no stretch of ramp between two flights
+    }
     // UVs run with the street (v) and across it (u), so rows of setts cross the carriageway
     let along = 0, total = 0;
     for (let i = 0; i < P.length - 2; i += 2) total += Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]);
@@ -4755,6 +4801,7 @@ function ribbonOverlay(items) {
       if (len < 0.01) continue;
       const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ga = H(ax, az) + LIFT - down, gb = H(bx, bz) + LIFT - down, G = level ? (x, z) => (Math.abs(x - ax) + Math.abs(z - az) < Math.abs(x - bx) + Math.abs(z - bz) ? ga : gb) : (x, z) => H(x, z) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
+      if (stair && stair[i / 2]) { world.stairSegs.push({ ax, az, bx, bz, ha: ga, hb: gb, hw, prev: i > 0 && !!stair[i / 2 - 1], next: !!stair[i / 2 + 1] }); continue; }
       const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
       const fa = fadeAt(along - len), fb = fadeAt(along);
       const a0 = V(ax + nx, G(ax + nx, az + nz), az + nz, ca, u0, v0, fa), a1 = V(ax - nx, G(ax - nx, az - nz), az - nz, ca, -u0, v0, fa);
@@ -4765,6 +4812,7 @@ function ribbonOverlay(items) {
     if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints, in the colour the ribbon has there (an untinted disc showed as an octagon where the colour blends)
       if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
       if (!corner.has(i / 2)) continue;   // between the line's own vertices the ribbon runs straight, with no gap to fill
+      if (stair && (stair[i / 2 - 1] || stair[i / 2])) continue;   // the steps carry on round the bend
       const fd = fadeAt(acc); if (fd < 0.02) continue;
       const x = P[i], z = P[i + 1], h = H(x, z) + LIFT - down, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
       for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, level ? h : H(px, pz) + LIFT, pz, cj, px / 4, pz / 4, fd); }
@@ -4886,6 +4934,7 @@ function buildGround(kind) {
   if (kind === 'beach') { buildBeaches(list); for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f)); world.ground[kind] = []; return; }
   if (kind === 'plaza') buildChinampas(list.filter((f) => featureStyle(f).use === 'chinampa'));
   if (kind === 'street' || kind === 'path') junctionFillets();
+  if (kind === 'street') world.stairSegs = [];
   for (const f of list) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
@@ -4894,6 +4943,7 @@ function buildGround(kind) {
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
+  if (kind === 'street') buildStairs();
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -9196,9 +9246,9 @@ window.amparacan = {
   buildingInfo(id) { const r = world.byId.get(id); if (!r) return null; const sample = []; for (let a = 0; a < 16; a++) for (const d of [10, 25, 50]) sample.push([a, d, +H(r.cx + Math.cos(a / 16 * 6.283) * d, r.cz + Math.sin(a / 16 * 6.283) * d).toFixed(1)]); return { cx: +r.cx.toFixed(1), cz: +r.cz.toFixed(1), base: +r.base.toFixed(2), area: Math.round(r.area), nv: r.nv, ring: [...r.rings[0]].map((v) => +v.toFixed(1)), H: sample }; },
   replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, pose: o.pose, moved: o.moved, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
-  topo(x, z) {   // the terrain: summary, or the band level, height above the base and ground height at a point
+  topo(x, z, x0, z0) {   // the terrain: summary (topo(null, null, x0, z0): flights of steps near a point), or the band level, height above the base and ground height at a point
     const T = world.topo; if (!T) return null;
-    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, laid: T.laid, kerbs: world.kerbPieces, kerbMeshes: (world.kerbs || []).length, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, laid: T.laid, kerbs: world.kerbPieces, kerbMeshes: (world.kerbs || []).length, stairFlights: world.stairFlights, stairSteps: world.stairSteps, flightsAt: (world.stairSegs || []).filter((q) => !q.prev).map((q) => [Math.round(q.ax), Math.round(q.az), +(q.hb - q.ha).toFixed(1)]).filter((q) => Math.hypot(q[0] - (x0 || 0), q[1] - (z0 || 0)) < (x0 == null ? 1e9 : 300)).slice(0, 12), comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
     const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
     return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
   },

@@ -256,6 +256,12 @@ pipeline for seeding it.
     - Street ribbons (`level` in `ribbonOverlay`) are drawn exactly level across: both kerbs, the joint discs and the junction fans are at the centreline's height, `TOPO.CURB` 0.14 m below the pavement. The street-area overlay is lifted −`CURB` too.
     - **Kerbs** (`buildKerbs`, `KERB`, `stepKerbs`): stone strips (a face to the street, a 0.26 m top, a back face down past the pavement) along both edges of every street (not the Pavement-layer strokes, `sub` 1), round the fillet arcs at junctions, and round the street-area paving.
     - A kerb is left out where the ground beyond is another street, path or street area (`roadAt`), over water and canals, and over the last few metres of a free end. That is about 173k pieces of 4 m, built once as strips in 500 m chunks, shown within 1.3 km of the camera and below 500 m altitude.
+  - **Steps** (`STAIR`, `buildStairs`, `world.stairSegs`; the author's rule: a road too steep to be practical is a staircase):
+    - **Where:** `ribbonOverlay` marks every 8 m section of a level street whose grade is over `STAIR.G` 17% (and a single gentler section between two such). It leaves those sections out of the ribbon and their corner discs too.
+    - **How it's drawn:** `buildStairs`, run from `buildGround('street')`, lays each section as equal level treads (rise about `STAIR.RISE` 0.16 m) right across the street, following its own grade, with risers facing down the flight, a half rise where a flight meets the level street, and solid end faces down below the pavement. The kerbs run alongside as its cheeks.
+    - **Material:** a double-sided material with each face wound to its normal (a back face is lit from behind).
+    - **Mesh:** in the kerbs' 500 m chunks, shown near the camera (`stepKerbs`).
+    - **Count at 50 m bands:** 218 flights, about 10,800 steps. `topo(null, null, x, z).flightsAt` lists the flights near a point.
   - **Buildings:** a building stands on its lowest corner (`rec.dig` = how far its uphill side is dug in; with the pads this is small) and gets up to 3 extra floors downhill (`rec.climb`), so its own floor count shows above the uphill ground.
   - **Colours and trees:** terrain colours darken to woodland with height, thin to scrub near the tops and go to rock on the steepest slopes. Countryside trees are denser on the hills.
   - **Checking:** `window.amparacan.topo()` (summary), `topo(x, z)` (band, height) and `topoImage()` (a hillshaded height map over the page).
