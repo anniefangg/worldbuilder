@@ -1268,7 +1268,7 @@ function sampler(data, N) {
 // band is ringed only by higher ground (a caldera floor: a lower band drawn inside a higher one) it dips the same way below
 // the rim. Canals and the lowland ponds are kept at sea level (extra low sources for the plain island), so the city's water
 // stays where it is. A final blur takes the creases off the contour lines and the summit ridges.
-const TOPO = { N: 2048, S: 50, DOME: 44, R: 170, BLUR: 2, RELIEF: 9 };
+const TOPO = { N: 2048, S: 50, DOME: 44, R: 170, BLUR: 2, RELIEF: 9, STIFF: 400, OPEN: 4, ROUGH: 0.12, MAXD: 40, FLAT_N: 512, PAD_OUT: 6 };
 function edt2(src, W, Hh) {   // exact squared Euclidean distance transform (Felzenszwalb & Huttenlocher): src 0 at sources, 1e20 elsewhere; in px²
   const n = Math.max(W, Hh), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), out = new Float64Array(src);
   const line = (len) => {
@@ -1293,6 +1293,85 @@ function topoLevels(land, elev, elevLv) {   // Int8Array N×N: -1 sea, 0 the pla
   const lv = new Int8Array(N * N);
   for (let i = 0; i < lv.length; i++) { const v = r[i] * 255; lv[i] = v < 5 ? -1 : Math.max(0, Math.round((v - 10) / 20)); }
   return lv;
+}
+// Built-up ground is levelled: a neighbourhood sits on a rough plateau and the hill's climb is taken up by the open ground round it.
+// The change δ to the natural height h is the least-energy field for
+//   Σ town·|∇(h + δ)|²  +  Σ TOPO.OPEN·|∇δ|²  +  Σ hold·δ²
+// town stiffness is high where the ground is built on (density `dens`: buildings, paving, streets), so built-up ground goes level; the
+// change itself spreads smoothly (OPEN), so the open ground round a town eases into it instead of stepping, and keeps its own shape
+// elsewhere; hold is strong in the open and faint in town, and the sea, the canals and the lowland ponds are pinned (δ = 0).
+// Solved coarse to fine (Gauss–Seidel, 64² … 512²; a coarser cell's hold is summed, as the energy integrates over area), then
+// eased (TOPO.MAXD, so a town spanning a big climb terraces rather than cliffs) and a little of the natural lie is kept (TOPO.ROUGH).
+function topoFlatten(h, lv, anchor, dens) {
+  const N = TOPO.N, F = TOPO.FLAT_N, r = N / F, levels = [];
+  let M = F; const H0 = new Float32Array(M * M), A0 = new Float32Array(M * M), W0 = new Float32Array(M * M);
+  for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+    let hs = 0, ds = 0, pin = false;
+    for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) { const k = (j * r + b) * N + i * r + a; hs += h[k]; ds += dens[k]; if (lv[k] < 0 || anchor[k]) pin = true; }
+    const k = j * M + i, d = ds / (r * r); H0[k] = hs / (r * r); A0[k] = TOPO.STIFF * d * d; W0[k] = pin ? 1e5 : 0.004 + (1 - d) * (1 - d);
+  }
+  levels.push({ M, H: H0, A: A0, W: W0 });
+  while (M > 64) {   // coarser levels: heights and stiffness averaged, hold summed
+    const P = levels[levels.length - 1], m = M / 2, H = new Float32Array(m * m), A = new Float32Array(m * m), W = new Float32Array(m * m);
+    for (let j = 0; j < m; j++) for (let i = 0; i < m; i++) {
+      let hs = 0, as = 0, ws = 0; for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const k = (j * 2 + b) * M + i * 2 + a; hs += P.H[k]; as += P.A[k]; ws += P.W[k]; }
+      const k = j * m + i; H[k] = hs / 4; A[k] = as / 4; W[k] = ws;
+    }
+    levels.push({ M: m, H, A, W }); M = m;
+  }
+  const up = (X, Pm, M) => {   // bilinear, coarse → fine
+    const o = new Float32Array(M * M), sc = Pm / M;
+    for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+      const u = clamp((i + 0.5) * sc - 0.5, 0, Pm - 1), v = clamp((j + 0.5) * sc - 0.5, 0, Pm - 1), i0 = Math.min(Pm - 2, u | 0), j0 = Math.min(Pm - 2, v | 0), fu = u - i0, fv = v - j0, k = j0 * Pm + i0;
+      o[j * M + i] = (X[k] * (1 - fu) + X[k + 1] * fu) * (1 - fv) + (X[k + Pm] * (1 - fu) + X[k + Pm + 1] * fu) * fv;
+    }
+    return o;
+  };
+  let X = null;
+  for (let L = levels.length - 1; L >= 0; L--) {
+    const { M, H, A, W } = levels[L], B = TOPO.OPEN;
+    X = X ? up(X, M / 2, M) : new Float32Array(M * M);
+    const iters = L === levels.length - 1 ? 400 : L === 0 ? 60 : 90;
+    for (let it = 0; it < iters; it++) for (let j = 1; j < M - 1; j++) for (let i = 1; i < M - 1; i++) {   // (the edge cells are open sea)
+      const k = j * M + i, hk = H[k], ak = A[k];
+      const e1 = (ak + A[k - 1]) * 0.5, e2 = (ak + A[k + 1]) * 0.5, e3 = (ak + A[k - M]) * 0.5, e4 = (ak + A[k + M]) * 0.5;
+      const num = (e1 + B) * X[k - 1] + (e2 + B) * X[k + 1] + (e3 + B) * X[k - M] + (e4 + B) * X[k + M] - e1 * (hk - H[k - 1]) - e2 * (hk - H[k + 1]) - e3 * (hk - H[k - M]) - e4 * (hk - H[k + M]);
+      X[k] += 1.7 * (num / (W[k] + e1 + e2 + e3 + e4 + 4 * B) - X[k]);
+    }
+  }
+  for (let k = 0; k < X.length; k++) X[k] = TOPO.MAXD * Math.tanh(X[k] / TOPO.MAXD) * (1 - TOPO.ROUGH);
+  const D = up(X, F, N); let maxD = 0;
+  for (let k = 0; k < N * N; k++) { if (lv[k] < 0) continue; const nh = h[k] + D[k]; h[k] = anchor[k] ? Math.min(h[k], Math.max(0, nh)) : Math.max(0, nh); maxD = Math.max(maxD, Math.abs(D[k])); }
+  return maxD;
+}
+// Every building stands on a level pad: the cells under its footprint (and PAD_OUT metres round it) take the mean height there, so the
+// whole foundation is level and any step falls between buildings or across the street, as in a hillside town. The ground just
+// outside the pads is eased once (a masked blur) so the open ground meets them without a lip.
+function topoPads(h, lv, anchor, bPolys) {
+  const N = TOPO.N, C = EXT / N, pad = new Float32Array(N * N), cnt = new Uint8Array(N * N), cells = [];
+  for (const rings of bPolys) {
+    const r = rings[0]; if (r.length < 6) continue;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+    const edge = [...r, r[0], r[1]], o = TOPO.PAD_OUT, I0 = Math.max(0, Math.floor((x0 - o) / C + N / 2)), I1 = Math.min(N - 1, Math.floor((x1 + o) / C + N / 2)), J0 = Math.max(0, Math.floor((z0 - o) / C + N / 2)), J1 = Math.min(N - 1, Math.floor((z1 + o) / C + N / 2));
+    const mine = []; let sum = 0, n = 0;
+    for (let j = J0; j <= J1; j++) for (let i = I0; i <= I1; i++) {
+      const k = j * N + i; if (lv[k] < 0 || anchor[k]) continue;
+      const x = (i + 0.5 - N / 2) * C, z = (j + 0.5 - N / 2) * C;
+      if (pointInRings(x, z, rings)) { mine.push(k); sum += h[k]; n++; } else if (distToLine(edge, x, z) < o) mine.push(k);
+    }
+    if (!n) { for (const k of mine) { sum += h[k]; n++; } }   // a footprint smaller than a cell: the cells round it
+    if (!n) continue;
+    const lvl = sum / n; for (const k of mine) { pad[k] += lvl; cnt[k]++; } cells.push(mine.length);
+  }
+  for (let k = 0; k < N * N; k++) if (cnt[k]) h[k] = pad[k] / cnt[k];
+  // ease the open ground next to the pads
+  const src = Float32Array.from(h);
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i; if (cnt[k] || lv[k] < 0) continue;
+    if (!(cnt[k - 1] || cnt[k + 1] || cnt[k - N] || cnt[k + N])) continue;
+    h[k] = (src[k] * 2 + src[k - 1] + src[k + 1] + src[k - N] + src[k + N]) / 6;
+  }
+  return cells.length;
 }
 function topoHeights(lv, anchor) {   // metres above the land's base level, N×N
   const N = TOPO.N, S = TOPO.S, C = EXT / N, h = new Float32Array(N * N), lab = new Int32Array(N * N).fill(-1), comp = [];
@@ -1516,8 +1595,12 @@ async function buildWorld() {
   const anchorR = raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const c of canals) { g.lineWidth = c.w + 2; g.stroke(line2d(c.pts)); } for (const p of lowWater) g.fill(path2d(p), 'evenodd'); });
   const anchor = new Uint8Array(TOPO.N * TOPO.N); for (let i = 0; i < anchor.length; i++) anchor[i] = anchorR[i] > 0.4 ? 1 : 0;
   const t0 = performance.now(), topo = topoHeights(topoLv, anchor);
+  // how built-up the ground is (buildings, paving and streets), for levelling the neighbourhoods
+  const densR = blur(raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); for (const p of streetAreas) g.fill(path2d(p), 'evenodd'); for (const L of streets) { g.lineWidth = L.w; g.stroke(line2d(L.pts)); } }), TOPO.N, 3, 2);
+  const dens = new Float32Array(densR.length); for (let i = 0; i < dens.length; i++) dens[i] = smooth(0.12, 0.42, densR[i]);
+  const h0 = Float32Array.from(topo.h), t1 = performance.now(), flatMax = topoFlatten(topo.h, topoLv, anchor, dens), pads = topoPads(topo.h, topoLv, anchor, bPolys);
   const sTopo = sampler(topo.h, TOPO.N);
-  world.topo = { lv: topoLv, h: topo.h, comps: topo.comp.length, ms: Math.round(performance.now() - t0), lvAt };
+  world.topo = { lv: topoLv, h: topo.h, h0, dens, comps: topo.comp.length, ms: Math.round(performance.now() - t0), flatMs: Math.round(performance.now() - t1), flatMax: +flatMax.toFixed(1), pads, lvAt };
   // a lake up in the hills: its water lies flat just below the lowest point of its shore, and the ground under it dips away
   world.lakeWL = new Map();
   const highLakes = highWater.map((p) => {
@@ -8953,8 +9036,9 @@ window.amparacan = {
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
   topo(x, z) {   // the terrain: summary, or the band level, height above the base and ground height at a point
     const T = world.topo; if (!T) return null;
-    if (x == null) { let mx = 0, at = 0; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { ms: T.ms, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
-    return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1) };
+    if (x == null) { let mx = 0, at = 0; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
+    return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
   },
   topoImage(px = 760) {   // a hillshaded height map of the island over the page, for checking (call again to remove)
     const old = document.getElementById('topo-dbg'); if (old) { old.remove(); return 'removed'; }

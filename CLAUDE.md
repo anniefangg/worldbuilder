@@ -236,6 +236,15 @@ pipeline for seeding it.
   - **Overlays:** plazas, parks and street areas are split until no edge is over `OVERLAY_EDGE` 10 m (`subdivide`, crack-free longest-edge bisection). Street and path ribbons take a cross-section every `RIBBON_STEP` 8 m, with each kerb on its own ground and joint discs only at the line's own corners.
   - **Clicks:** picking, Walk drop, measuring and double-click use `groundHit` (a ray marched against the terrain) instead of a flat plane.
   - **Map camera:** never goes below 6 m above the ground.
-  - **Buildings:** a building stands on its lowest corner (`rec.dig` = how far its uphill side is dug in) and gets up to 3 extra floors downhill (`rec.climb`), so its own floor count shows above the uphill ground.
+  - **Built-up ground is levelled** (the author's rule: neighbourhoods sit on rough plateaus, and the open ground between them takes the climb). Two steps after the contour heights:
+    - **`topoFlatten`:** the least-energy change δ for Σ town·|∇(h+δ)|² + Σ `TOPO.OPEN`·|∇δ|² + Σ hold·δ².
+      - Town stiffness is `TOPO.STIFF`·density² (density `dens`: buildings, paving, street areas and streets, rasterised and blurred); hold is strong in the open and faint in town.
+      - The sea, the canals and the lowland ponds are pinned.
+      - It is solved coarse to fine by Gauss–Seidel at 64² … `FLAT_N` 512², eased by tanh to at most `MAXD` 40 m, with `ROUGH` 12% of the natural lie kept. So a town spanning a big climb (the hill town round (790, 3250), built over a whole hill from 91 to 174 m) is lowered and eased (to ~140 m) rather than cut into cliffs.
+    - **`topoPads`:** every building's footprint, plus `PAD_OUT` 6 m round it, takes the mean height there, so each foundation is level and steps fall between buildings or across streets. The open cells next to a pad are eased once.
+    - **Result:** in a sample of 5,864 buildings, the ground varies by 0.2 m (median) across a footprint (was 1.1 m), and 222 are over 2 m (was 1,229). On the hills it's 0.8 m median (was 2.6 m).
+    - **Unchanged:** the peak (408.7 m), the caldera and the canal quays (≤ 0.7 m).
+    - **Checking:** `topo(x, z).natural` is the height before levelling, and `.dens` the built-up density.
+  - **Buildings:** a building stands on its lowest corner (`rec.dig` = how far its uphill side is dug in; with the pads this is small) and gets up to 3 extra floors downhill (`rec.climb`), so its own floor count shows above the uphill ground.
   - **Colours and trees:** terrain colours darken to woodland with height, thin to scrub near the tops and go to rock on the steepest slopes. Countryside trees are denser on the hills.
   - **Checking:** `window.amparacan.topo()` (summary), `topo(x, z)` (band, height) and `topoImage()` (a hillshaded height map over the page).
