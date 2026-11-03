@@ -418,7 +418,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <div id="loader">
   <div class="card plaque">
     <h2>Amparacán</h2>
-    <p>Raising 32,000 buildings from the survey map…</p>
+    <p>Raising 34,000 buildings from the survey map…</p>
     <div class="bar"><div id="load-bar"></div></div>
     <div id="load-label">Reading map data</div>
   </div>
@@ -1022,7 +1022,7 @@ function crtInit() {
   // -- flamingos: standing in the shallows of some lakes
   { const k = critterKind('flamingo', { n: 160, build: K.flamingo, rate: 0.5, bob: 0.03, amp: 0.05, alt: 400, shadow: true }); let i = 0;
     for (const f of lakes) { if (((f.seed >>> 4) % 100) >= 40) continue; const r = f.rings[0], n = 6 + ((f.seed >>> 8) % 9), R = mulberry(f.seed);
-      for (let j = 0; j < n && i < k.n; j++) { const e = ((R() * r.length / 2) | 0) * 2, e2 = (e + 2) % r.length, t = R(), x0 = r[e] + (r[e2] - r[e]) * t, z0 = r[e + 1] + (r[e2 + 1] - r[e + 1]) * t, dx = f.cx - x0, dz = f.cz - z0, L = Math.hypot(dx, dz) || 1, d = 3 + R() * 9, x = x0 + dx / L * d, z = z0 + dz / L * d, h = H(x, z); if (h > 0.1) continue; critterPlace(k, i++, x, Math.max(h, -0.5), z, R() * 6.28, 0.9 + R() * 0.2); } }   // standing in the shallows, legs in the water
+      for (let j = 0; j < n && i < k.n; j++) { const e = ((R() * r.length / 2) | 0) * 2, e2 = (e + 2) % r.length, t = R(), x0 = r[e] + (r[e2] - r[e]) * t, z0 = r[e + 1] + (r[e2 + 1] - r[e + 1]) * t, dx = f.cx - x0, dz = f.cz - z0, L = Math.hypot(dx, dz) || 1, d = 3 + R() * 9, x = x0 + dx / L * d, z = z0 + dz / L * d, h = H(x, z), wl = (world.lakeWL && world.lakeWL.get(f.id)) || 0; if (h > wl + 0.1) continue; critterPlace(k, i++, x, Math.max(h, wl - 0.5), z, R() * 6.28, 0.9 + R() * 0.2); } }   // standing in the shallows, legs in the water
     k.mesh.count = i; k.n = i; }
   // -- pelicans: on the beach sand, facing the sea
   { const k = critterKind('pelican', { n: 140, build: K.pelican, rate: 0.6, bob: 0.02, alt: 400, shadow: true }); let i = 0;
@@ -1260,6 +1260,239 @@ function sampler(data, N) {
   };
 }
 
+// ─────────────────────────── topography ───────────────────────────
+// The Elevation layer's bands are 50 m contours, each drawn inside the one below it: the plain island is 0–50 m, band level 1 is
+// 50–100 m, 2 is 100–150 m, … A band's edge is the contour at its lower height. Between two contours the ground climbs
+// smoothly in proportion to the distance from each (h = S·L + S·dLo / (dLo + dHi)), so the slopes are continuous, never
+// terraces. Where a band holds no higher band (a summit or a ridge) it rounds off up to TOPO.DOME above its contour; where a
+// band is ringed only by higher ground (a caldera floor: a lower band drawn inside a higher one) it dips the same way below
+// the rim. Canals and the lowland ponds are kept at sea level (extra low sources for the plain island), so the city's water
+// stays where it is. A final blur takes the creases off the contour lines and the summit ridges.
+const TOPO = { N: 2048, S: 50, R: 170, BLUR: 2, STIFF: 400, OPEN: 4, ROUGH: 0.12, FLAT_N: 512, PAD_OUT: 6, STREET_SIDE: 8, STREET_SMOOTH: 16, STREET_RAMP: 60, CURB: 0.14, SINK: 0.5 };
+{ const q = +new URLSearchParams(location.search).get('band'); if (q >= 20 && q <= 200) TOPO.S = q; }   // ?band=100 tries another band height (metres per band)
+// everything measured in metres of height scales with the band: the summit rounding, the hill relief, how far levelling may move the ground
+TOPO.k = TOPO.S / 50; TOPO.DOME = 0.88 * TOPO.S; TOPO.RELIEF = 0.18 * TOPO.S; TOPO.MAXD = 0.8 * TOPO.S;
+function edt2(src, W, Hh) {   // exact squared Euclidean distance transform (Felzenszwalb & Huttenlocher): src 0 at sources, 1e20 elsewhere; in px²
+  const n = Math.max(W, Hh), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), out = new Float64Array(src);
+  const line = (len) => {
+    let k = 0; v[0] = 0; z[0] = -1e30; z[1] = 1e30;
+    for (let q = 1; q < len; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+      k++; v[k] = q; z[k] = s; z[k + 1] = 1e30;
+    }
+    k = 0; for (let q = 0; q < len; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+  };
+  for (let x = 0; x < W; x++) { for (let y = 0; y < Hh; y++) f[y] = out[y * W + x]; line(Hh); for (let y = 0; y < Hh; y++) out[y * W + x] = d[y]; }
+  for (let y = 0; y < Hh; y++) { for (let x = 0; x < W; x++) f[x] = out[y * W + x]; line(W); for (let x = 0; x < W; x++) out[y * W + x] = d[x]; }
+  return out;
+}
+function topoLevels(land, elev, elevLv) {   // Int8Array N×N: -1 sea, 0 the plain island, 1… the bands (painted big to small, so nested bands land on top)
+  const N = TOPO.N, order = elev.map((p, i) => i).sort((a, b) => Math.abs(ringArea(elev[b][0])) - Math.abs(ringArea(elev[a][0])));
+  const r = raster(N, (g) => {
+    g.fillStyle = 'rgb(10,10,10)'; for (const p of land) g.fill(path2d(p), 'evenodd');
+    for (const i of order) { const v = 10 + elevLv[i] * 20; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(elev[i]), 'evenodd'); }
+  });
+  const lv = new Int8Array(N * N);
+  for (let i = 0; i < lv.length; i++) { const v = r[i] * 255; lv[i] = v < 5 ? -1 : Math.max(0, Math.round((v - 10) / 20)); }
+  return lv;
+}
+// Built-up ground is levelled: a neighbourhood sits on a rough plateau and the hill's climb is taken up by the open ground round it.
+// The change δ to the natural height h is the least-energy field for
+//   Σ town·|∇(h + δ)|²  +  Σ TOPO.OPEN·|∇δ|²  +  Σ hold·δ²
+// town stiffness is high where the ground is built on (density `dens`: buildings, paving, streets), so built-up ground goes level; the
+// change itself spreads smoothly (OPEN), so the open ground round a town eases into it instead of stepping, and keeps its own shape
+// elsewhere; hold is strong in the open and faint in town, and the sea, the canals and the lowland ponds are pinned (δ = 0).
+// Solved coarse to fine (Gauss–Seidel, 64² … 512²; a coarser cell's hold is summed, as the energy integrates over area), then
+// eased (TOPO.MAXD, so a town spanning a big climb terraces rather than cliffs) and a little of the natural lie is kept (TOPO.ROUGH).
+function topoFlatten(h, lv, anchor, dens) {
+  const N = TOPO.N, F = TOPO.FLAT_N, r = N / F, levels = [];
+  let M = F; const H0 = new Float32Array(M * M), A0 = new Float32Array(M * M), W0 = new Float32Array(M * M);
+  for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+    let hs = 0, ds = 0, pin = false;
+    for (let b = 0; b < r; b++) for (let a = 0; a < r; a++) { const k = (j * r + b) * N + i * r + a; hs += h[k]; ds += dens[k]; if (lv[k] < 0 || anchor[k]) pin = true; }
+    const k = j * M + i, d = ds / (r * r); H0[k] = hs / (r * r); A0[k] = TOPO.STIFF * d * d; W0[k] = pin ? 1e5 : 0.004 + (1 - d) * (1 - d);
+  }
+  levels.push({ M, H: H0, A: A0, W: W0 });
+  while (M > 64) {   // coarser levels: heights and stiffness averaged, hold summed
+    const P = levels[levels.length - 1], m = M / 2, H = new Float32Array(m * m), A = new Float32Array(m * m), W = new Float32Array(m * m);
+    for (let j = 0; j < m; j++) for (let i = 0; i < m; i++) {
+      let hs = 0, as = 0, ws = 0; for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const k = (j * 2 + b) * M + i * 2 + a; hs += P.H[k]; as += P.A[k]; ws += P.W[k]; }
+      const k = j * m + i; H[k] = hs / 4; A[k] = as / 4; W[k] = ws;
+    }
+    levels.push({ M: m, H, A, W }); M = m;
+  }
+  const up = (X, Pm, M) => {   // bilinear, coarse → fine
+    const o = new Float32Array(M * M), sc = Pm / M;
+    for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+      const u = clamp((i + 0.5) * sc - 0.5, 0, Pm - 1), v = clamp((j + 0.5) * sc - 0.5, 0, Pm - 1), i0 = Math.min(Pm - 2, u | 0), j0 = Math.min(Pm - 2, v | 0), fu = u - i0, fv = v - j0, k = j0 * Pm + i0;
+      o[j * M + i] = (X[k] * (1 - fu) + X[k + 1] * fu) * (1 - fv) + (X[k + Pm] * (1 - fu) + X[k + Pm + 1] * fu) * fv;
+    }
+    return o;
+  };
+  let X = null;
+  for (let L = levels.length - 1; L >= 0; L--) {
+    const { M, H, A, W } = levels[L], B = TOPO.OPEN;
+    X = X ? up(X, M / 2, M) : new Float32Array(M * M);
+    const iters = L === levels.length - 1 ? 400 : L === 0 ? 60 : 90;
+    for (let it = 0; it < iters; it++) for (let j = 1; j < M - 1; j++) for (let i = 1; i < M - 1; i++) {   // (the edge cells are open sea)
+      const k = j * M + i, hk = H[k], ak = A[k];
+      const e1 = (ak + A[k - 1]) * 0.5, e2 = (ak + A[k + 1]) * 0.5, e3 = (ak + A[k - M]) * 0.5, e4 = (ak + A[k + M]) * 0.5;
+      const num = (e1 + B) * X[k - 1] + (e2 + B) * X[k + 1] + (e3 + B) * X[k - M] + (e4 + B) * X[k + M] - e1 * (hk - H[k - 1]) - e2 * (hk - H[k + 1]) - e3 * (hk - H[k - M]) - e4 * (hk - H[k + M]);
+      X[k] += 1.7 * (num / (W[k] + e1 + e2 + e3 + e4 + 4 * B) - X[k]);
+    }
+  }
+  for (let k = 0; k < X.length; k++) X[k] = TOPO.MAXD * Math.tanh(X[k] / TOPO.MAXD) * (1 - TOPO.ROUGH);
+  const D = up(X, F, N); let maxD = 0;
+  for (let k = 0; k < N * N; k++) { if (lv[k] < 0) continue; const nh = h[k] + D[k]; h[k] = anchor[k] ? Math.min(h[k], Math.max(0, nh)) : Math.max(0, nh); maxD = Math.max(maxD, Math.abs(D[k])); }
+  return maxD;
+}
+// Every building stands on a level pad: the cells under its footprint (and PAD_OUT metres round it) take the mean height there, so the
+// whole foundation is level and any step falls between buildings or across the street, as in a hillside town. The ground just
+// outside the pads is eased once (a masked blur) so the open ground meets them without a lip.
+function topoPads(h, lv, anchor, bPolys, core) {
+  const N = TOPO.N, C = EXT / N, pad = new Float32Array(N * N), cnt = new Uint8Array(N * N), cells = [];
+  for (const rings of bPolys) {
+    const r = rings[0]; if (r.length < 6) continue;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+    const edge = [...r, r[0], r[1]], o = TOPO.PAD_OUT, I0 = Math.max(0, Math.floor((x0 - o) / C + N / 2)), I1 = Math.min(N - 1, Math.floor((x1 + o) / C + N / 2)), J0 = Math.max(0, Math.floor((z0 - o) / C + N / 2)), J1 = Math.min(N - 1, Math.floor((z1 + o) / C + N / 2));
+    const mine = []; let sum = 0, n = 0;
+    for (let j = J0; j <= J1; j++) for (let i = I0; i <= I1; i++) {
+      const k = j * N + i; if (lv[k] < 0 || anchor[k]) continue;
+      const x = (i + 0.5 - N / 2) * C, z = (j + 0.5 - N / 2) * C;
+      if (pointInRings(x, z, rings)) { mine.push(k); sum += h[k]; n++; core[k] = 1; } else if (distToLine(edge, x, z) < o) mine.push(k);
+    }
+    if (!n) { for (const k of mine) { sum += h[k]; n++; } }   // a footprint smaller than a cell: the cells round it
+    if (!n) continue;
+    const lvl = sum / n; for (const k of mine) { pad[k] += lvl; cnt[k]++; } cells.push(mine.length);
+  }
+  for (let k = 0; k < N * N; k++) if (cnt[k]) h[k] = pad[k] / cnt[k];
+  // ease the open ground next to the pads
+  const src = Float32Array.from(h);
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i; if (cnt[k] || lv[k] < 0) continue;
+    if (!(cnt[k - 1] || cnt[k + 1] || cnt[k - N] || cnt[k + N])) continue;
+    h[k] = (src[k] * 2 + src[k - 1] + src[k + 1] + src[k - N] + src[k + N]) / 6;
+  }
+  return cells.length;
+}
+// Streets are level across: each street gets a height profile along its length (the ground sampled along its centreline, with the
+// water and the sea left out, smoothed over ±STREET_SMOOTH metres), and every cell within half its width plus STREET_SIDE (the
+// pavement either side) takes the profile's height at its nearest point, so the street and its pavements are level the short
+// way and climb only the long way. Wider streets go first; a narrower street that crosses or ends in one is bent to its height
+// there (eased over STREET_RAMP metres). Street-area paving takes the height of the street it adjoins. Building footprints
+// (core) are left as they are beyond the carriageway, and the water always; the open ground next to the cut is eased once.
+function topoStreets(h, lv, anchor, core, streets, streetAreas) {
+  const N = TOPO.N, C = EXT / N, val = new Float32Array(N * N), claim = new Float32Array(N * N).fill(Infinity), wid = new Float32Array(N * N);
+  const cell = (x, z) => { const i = Math.floor(x / C + N / 2), j = Math.floor(z / C + N / 2); return i < 0 || j < 0 || i >= N || j >= N ? -1 : j * N + i; };
+  const samp = (x, z) => { const u = x / C + N / 2 - 0.5, v = z / C + N / 2 - 0.5, i = clamp(u | 0, 0, N - 2), j = clamp(v | 0, 0, N - 2), fu = clamp(u - i, 0, 1), fv = clamp(v - j, 0, 1), k = j * N + i; return (h[k] * (1 - fu) + h[k + 1] * fu) * (1 - fv) + (h[k + N] * (1 - fu) + h[k + N + 1] * fu) * fv; };
+  const STEP = 4, list = streets.filter((L) => L.pts.length >= 4).sort((a, b) => b.w - a.w);
+  for (const L of list) {
+    const P = L.pts, hw = L.w / 2, R = hw + TOPO.STREET_SIDE, pts = [], prof = [];
+    for (let i = 0; i < P.length - 2; i += 2) { const n = Math.max(1, Math.ceil(Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]) / STEP)); for (let s = 0; s < n; s++) pts.push(lerp(P[i], P[i + 2], s / n), lerp(P[i + 1], P[i + 3], s / n)); }
+    pts.push(P[P.length - 2], P[P.length - 1]);
+    const n = pts.length / 2, dist = [0];
+    for (let i = 1; i < n; i++) dist.push(dist[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]));
+    // the ground along it, skipping water (a bridge) and the sea
+    for (let i = 0; i < n; i++) { const k = cell(pts[i * 2], pts[i * 2 + 1]); prof.push(k < 0 || lv[k] < 0 || anchor[k] ? NaN : samp(pts[i * 2], pts[i * 2 + 1])); }
+    if (prof.every((v) => Number.isNaN(v))) continue;
+    for (let i = 0; i < n; i++) if (Number.isNaN(prof[i])) { let a = i - 1, b = i + 1; while (a >= 0 && Number.isNaN(prof[a])) a--; while (b < n && Number.isNaN(prof[b])) b++; prof[i] = a < 0 ? prof[b] : b >= n ? prof[a] : lerp(prof[a], prof[b], (dist[i] - dist[a]) / (dist[b] - dist[a])); }
+    const sm = Math.max(1, Math.round(TOPO.STREET_SMOOTH / STEP));
+    for (let pass = 0; pass < 2; pass++) { const src = prof.slice(); for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let d = -sm; d <= sm; d++) { const q = i + d; if (q >= 0 && q < n) { a += src[q]; c++; } } prof[i] = a / c; } }
+    // where it crosses or ends in a street already laid, meet that street's height
+    const fix = [];
+    for (let i = 0; i < n; i++) { const k = cell(pts[i * 2], pts[i * 2 + 1]); if (k >= 0 && claim[k] < wid[k] / 2) fix.push([dist[i], val[k] - prof[i]]); }
+    if (fix.length) for (let i = 0; i < n; i++) {
+      let ws = 0, ds = 0; for (const [d0, dv] of fix) { const w = Math.max(0, 1 - Math.abs(dist[i] - d0) / TOPO.STREET_RAMP); ws += w; ds += w * dv; }
+      if (ws > 0) prof[i] += ds / ws * Math.min(1, ws);
+    }
+    // lay it: every cell within reach takes the height at its nearest point on the centreline
+    for (let i = 0; i < n - 1; i++) {
+      const ax = pts[i * 2], az = pts[i * 2 + 1], dx = pts[i * 2 + 2] - ax, dz = pts[i * 2 + 3] - az, L2 = dx * dx + dz * dz || 1;
+      const I0 = Math.max(0, Math.floor((Math.min(ax, ax + dx) - R) / C + N / 2)), I1 = Math.min(N - 1, Math.floor((Math.max(ax, ax + dx) + R) / C + N / 2));
+      const J0 = Math.max(0, Math.floor((Math.min(az, az + dz) - R) / C + N / 2)), J1 = Math.min(N - 1, Math.floor((Math.max(az, az + dz) + R) / C + N / 2));
+      for (let j = J0; j <= J1; j++) for (let ii = I0; ii <= I1; ii++) {
+        const k = j * N + ii; if (lv[k] < 0 || anchor[k]) continue;
+        const x = (ii + 0.5 - N / 2) * C, z = (j + 0.5 - N / 2) * C, t = clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+        if (core[k] && d > hw + 2) continue;   // a building's own pad, unless it reaches into the carriageway (the street wins there, so its frontage meets the street)
+        if (d < R && d < claim[k]) { claim[k] = d; val[k] = lerp(prof[i], prof[i + 1], t); wid[k] = L.w; }
+      }
+    }
+  }
+  // street-area paving: the height of the street it adjoins, spread outward cell by cell
+  const inSA = new Uint8Array(N * N);
+  for (const rings of streetAreas) {
+    const r = rings[0]; let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+    for (let j = Math.max(0, Math.floor(z0 / C + N / 2)); j <= Math.min(N - 1, Math.floor(z1 / C + N / 2)); j++) for (let i = Math.max(0, Math.floor(x0 / C + N / 2)); i <= Math.min(N - 1, Math.floor(x1 / C + N / 2)); i++) {
+      const k = j * N + i; if (lv[k] < 0 || anchor[k] || core[k] || claim[k] < Infinity) continue;
+      if (pointInRings((i + 0.5 - N / 2) * C, (j + 0.5 - N / 2) * C, rings)) inSA[k] = 1;
+    }
+  }
+  let front = []; for (let k = 0; k < N * N; k++) if (claim[k] < Infinity) front.push(k);
+  for (let step = 0; step < 40 && front.length; step++) {
+    const next = [];
+    for (const k of front) for (const q of [k - 1, k + 1, k - N, k + N]) if (q >= 0 && q < N * N && inSA[q]) { inSA[q] = 0; val[q] = val[k]; claim[q] = 0; next.push(q); }
+    front = next;
+  }
+  let laid = 0; for (let k = 0; k < N * N; k++) if (claim[k] < Infinity) { h[k] = val[k]; laid++; }
+  const src = Float32Array.from(h);
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i; if (claim[k] < Infinity || core[k] || lv[k] < 0 || anchor[k]) continue;
+    if (!(claim[k - 1] < Infinity || claim[k + 1] < Infinity || claim[k - N] < Infinity || claim[k + N] < Infinity)) continue;
+    h[k] = (src[k] * 2 + src[k - 1] + src[k + 1] + src[k - N] + src[k + N]) / 6;
+  }
+  return laid;
+}
+function topoHeights(lv, anchor) {   // metres above the land's base level, N×N
+  const N = TOPO.N, S = TOPO.S, C = EXT / N, h = new Float32Array(N * N), lab = new Int32Array(N * N).fill(-1), comp = [];
+  // connected regions of one level, and whether each touches lower ground, higher ground, or both
+  const stack = new Int32Array(N * N);
+  for (let i0 = 0; i0 < N * N; i0++) {
+    if (lv[i0] < 0 || lab[i0] >= 0) continue;
+    const L = lv[i0], id = comp.length, c = { L, lo: false, hi: false }; comp.push(c);
+    let sp = 0; stack[sp++] = i0; lab[i0] = id;
+    while (sp) {
+      const i = stack[--sp], x = i % N, y = (i / N) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < N - 1 ? i + 1 : -1, y > 0 ? i - N : -1, y < N - 1 ? i + N : -1]) {
+        if (j < 0) continue; const m = lv[j];
+        if (m === L) { if (lab[j] < 0) { lab[j] = id; stack[sp++] = j; } } else if (m < L) c.lo = true; else c.hi = true;
+      }
+    }
+  }
+  const maxL = lv.reduce((a, b) => Math.max(a, b), 0);
+  for (let L = 0; L <= maxL; L++) {
+    let x0 = N, y0 = N, x1 = -1, y1 = -1;
+    for (let i = 0; i < N * N; i++) if (lv[i] === L) { const x = i % N, y = (i / N) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) continue;
+    x0 = Math.max(0, x0 - 3); y0 = Math.max(0, y0 - 3); x1 = Math.min(N - 1, x1 + 3); y1 = Math.min(N - 1, y1 + 3);
+    const W = x1 - x0 + 1, Hh = y1 - y0 + 1, lo = new Float64Array(W * Hh), hi = new Float64Array(W * Hh);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) { const i = (y + y0) * N + x + x0, m = lv[i], k = y * W + x; lo[k] = m < L || (L === 0 && anchor[i]) ? 0 : 1e20; hi[k] = m > L ? 0 : 1e20; }
+    const dLo = edt2(lo, W, Hh), dHi = edt2(hi, W, Hh), dist = (d2) => Math.max(0, Math.sqrt(d2) - 0.5) * C;
+    // a summit or a caldera floor rounds off over a distance that suits its size, so even a small top climbs well into its band
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = (y + y0) * N + x + x0; if (lv[i] !== L) continue;
+      const c = comp[lab[i]], k = y * W + x;
+      if (c.lo !== c.hi) c.far = Math.max(c.far || 0, dist(c.lo ? dLo[k] : dHi[k]));
+    }
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = (y + y0) * N + x + x0; if (lv[i] !== L) continue;
+      const c = comp[lab[i]], k = y * W + x, dl = dist(dLo[k]), dh = dist(dHi[k]), R = clamp((c.far || 0) * 0.5, 20, TOPO.R);
+      h[i] = c.lo && c.hi ? S * L + S * dl / (dl + dh + 1e-6)
+        : c.lo ? S * L + TOPO.DOME * (1 - Math.exp(-dl / R))
+        : c.hi ? S * (L + 1) - TOPO.DOME * (1 - Math.exp(-dh / R))
+        : S * L + S / 2;
+    }
+  }
+  const out = blur(h, N, TOPO.BLUR, 3);
+  for (let i = 0; i < N * N; i++) {
+    if (lv[i] < 0) { out[i] = Math.min(out[i], 0); continue; }
+    // gentle undulation on the hillsides (none on the lowland, where the town is), so the slopes read as ground rather than a smooth cast
+    const x = ((i % N) + 0.5) * C - EXT / 2, z = (((i / N) | 0) + 0.5) * C - EXT / 2, a = TOPO.RELIEF * smooth(30 * TOPO.k, 160 * TOPO.k, out[i]);
+    if (a > 0) out[i] += a * (vnoise(x / 210, z / 210) + 0.5 * vnoise(x / 85 + 7, z / 85 - 3) - 0.75);
+  }
+  return { h: out, comp };
+}
+
 // ─────────────────────────── geometry builders ───────────────────────────
 class Geo {
   constructor(extra = []) { this.p = []; this.n = []; this.c = []; this.uv = []; this.i = []; this.extra = {}; for (const [k] of extra) this.extra[k] = []; this.extraDef = extra; }
@@ -1293,6 +1526,23 @@ function triangulate(rings) {
   const contour = loops[0], holes = loops.slice(1);
   const tris = THREE.ShapeUtils.triangulateShape(contour, holes);
   return { pts: contour.concat(...holes), tris };
+}
+// Split triangles until no edge is longer than maxLen, so a flat-triangulated plaza or park follows the hills. Longest edge first; midpoints
+// are shared through a cache keyed by the edge's two vertices, so neighbours split a shared edge at the same points (no cracks).
+const OVERLAY_EDGE = 10;
+function subdivide({ pts, tris }, maxLen) {
+  pts = pts.slice(); const mids = new Map(), out = [], L2 = maxLen * maxLen;
+  const mid = (a, b) => { const k = a < b ? a * 1048576 + b : b * 1048576 + a; let m = mids.get(k); if (m === undefined) { m = pts.length; pts.push(new THREE.Vector2((pts[a].x + pts[b].x) / 2, (pts[a].y + pts[b].y) / 2)); mids.set(k, m); } return m; };
+  const d2 = (a, b) => (pts[a].x - pts[b].x) ** 2 + (pts[a].y - pts[b].y) ** 2;
+  const stack = tris.map((t) => t.slice());
+  while (stack.length) {
+    const [a, b, c] = stack.pop(), ab = d2(a, b), bc = d2(b, c), ca = d2(c, a), m = Math.max(ab, bc, ca);
+    if (m <= L2) { out.push([a, b, c]); continue; }
+    if (m === ab) { const p = mid(a, b); stack.push([a, p, c], [p, b, c]); }
+    else if (m === bc) { const p = mid(b, c); stack.push([a, b, p], [a, p, c]); }
+    else { const p = mid(c, a); stack.push([a, b, p], [p, b, c]); }
+  }
+  return { pts, tris: out };
 }
 function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) { const j = (i + 2) % n; a += r[i] * r[j + 1] - r[j] * r[i + 1]; } return a / 2; }
 
@@ -1398,21 +1648,52 @@ async function buildWorld() {
   // ---- rasters: coastline mask, depth, hills, beaches, occupancy
   await progress('Shaping the coastline', 10);
   const N = 2048;
-  const coast = (g) => { g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd'); g.fillStyle = '#000'; for (const p of water) g.fill(path2d(p), 'evenodd'); };
+  // the elevation bands first: a lake up in the hills keeps its own water level (world.highLakes), the rest sit at sea level
+  const topoLv = topoLevels(land, elev, elevLv), lvAt = (x, z) => { const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1); return topoLv[j * TOPO.N + i]; };
+  const lakeLevel = (p) => { const r = p[0]; let best = -1; for (let i = 0; i < r.length; i += 2) best = Math.max(best, lvAt(r[i], r[i + 1])); return best; };
+  const lowWater = water.filter((p) => lakeLevel(p) < 1), highWater = water.filter((p) => lakeLevel(p) >= 1);
+  if (highWater.length) {   // a lake drawn over a band (or cut out of it) takes the band's level, so its ground is that band's, not a hollow
+    const r = raster(TOPO.N, (g) => { for (const p of highWater) { const v = 10 + lakeLevel(p) * 20; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(p), 'evenodd'); } });
+    for (let i = 0; i < r.length; i++) { const v = r[i] * 255; if (v > 20) topoLv[i] = Math.max(topoLv[i], Math.round((v - 10) / 20)); }
+  }
+  const coast = (g) => { g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd'); g.fillStyle = '#000'; for (const p of lowWater) g.fill(path2d(p), 'evenodd'); };
   const maskRaw = raster(N, (g) => { coast(g); g.strokeStyle = '#000'; for (const c of canals) { g.lineWidth = c.w + 6; g.stroke(line2d(c.pts)); } });   // with the canals: what the water shader sees
   const maskNoCanal = blur(raster(N, coast), N, 1, 2);                                                                                                  // without them: the land stays at full height right up to the canal walls
   const maskS = blur(maskRaw, N, 1, 2), maskL = blur(maskRaw.slice(), N, 24, 3);
   const deepR = blur(raster(512, (g) => { g.fillStyle = '#fff'; for (const p of deep) g.fill(path2d(p), 'evenodd'); }), 512, 10, 2);
-  const elevR = blur(raster(1024, (g) => {
-    elev.forEach((p, i) => { const v = elevLv[i] * 100; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(p), 'evenodd'); });
-  }), 1024, 9, 3);
+  await progress('Raising the hills', 13);
+  const anchorR = raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const c of canals) { g.lineWidth = c.w + 2; g.stroke(line2d(c.pts)); } for (const p of lowWater) g.fill(path2d(p), 'evenodd'); });
+  const anchor = new Uint8Array(TOPO.N * TOPO.N); for (let i = 0; i < anchor.length; i++) anchor[i] = anchorR[i] > 0.4 ? 1 : 0;
+  const t0 = performance.now(), topo = topoHeights(topoLv, anchor);
+  // how built-up the ground is (buildings, paving and streets), for levelling the neighbourhoods
+  const densR = blur(raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); for (const p of streetAreas) g.fill(path2d(p), 'evenodd'); for (const L of streets) { g.lineWidth = L.w; g.stroke(line2d(L.pts)); } }), TOPO.N, 3, 2);
+  const dens = new Float32Array(densR.length); for (let i = 0; i < dens.length; i++) dens[i] = smooth(0.12, 0.42, densR[i]);
+  const h0 = Float32Array.from(topo.h), t1 = performance.now(), flatMax = topoFlatten(topo.h, topoLv, anchor, dens), core = new Uint8Array(TOPO.N * TOPO.N), pads = topoPads(topo.h, topoLv, anchor, bPolys, core), laid = topoStreets(topo.h, topoLv, anchor, core, streets, streetAreas);
+  const sTopo = sampler(topo.h, TOPO.N);
+  const sDens = sampler(dens, TOPO.N);
+  world.topo = { lv: topoLv, h: topo.h, h0, dens, comps: topo.comp.length, ms: Math.round(performance.now() - t0), flatMs: Math.round(performance.now() - t1), flatMax: +flatMax.toFixed(1), pads, laid, lvAt };
+  // a lake up in the hills: its water lies flat just below the lowest point of its shore, and the ground under it dips away
+  world.lakeWL = new Map();
+  const highLakes = highWater.map((p) => {
+    const r = p[0], bb = [Infinity, Infinity, -Infinity, -Infinity]; let W = Infinity;
+    for (let i = 0; i < r.length; i += 2) { W = Math.min(W, sTopo(r[i], r[i + 1])); bb[0] = Math.min(bb[0], r[i]); bb[1] = Math.min(bb[1], r[i + 1]); bb[2] = Math.max(bb[2], r[i]); bb[3] = Math.max(bb[3], r[i + 1]); }
+    W -= 0.3; world.lakeWL.set(p.id, LAND_Y + W);
+    return { p, W, bb, edge: [...r, r[0], r[1]] };
+  });
+  world.highLakes = highLakes;
   const beachR = blur(raster(N, (g) => { g.strokeStyle = '#fff'; for (const b of beaches) { g.lineWidth = b.w; g.stroke(line2d(b.pts)); } }), N, 2, 1);
   // built-up density: courtyards and back lots between buildings read as paved patios, not lawns
   const urbanR = blur(raster(N, (g) => { g.fillStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); }), N, 3, 2);
   const sUrban = sampler(urbanR, N);
-  const sS = sampler(maskS, N), sSL = sampler(maskNoCanal, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sElev = sampler(elevR, 1024), sBeach = sampler(beachR, N);
+  const sS = sampler(maskS, N), sSL = sampler(maskNoCanal, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sBeach = sampler(beachR, N);
   sMask = sSL;
-  const hillM = (x, z) => sElev(x, z) * (255 / 100) * 9;        // level 1 ≈ 9 m, level 2 ≈ 18 m
+  // hills: the topography (above); a lake in the hills levels the ground beneath its water (highLakeDip)
+  const highLakeDip = (x, z) => {
+    for (const q of highLakes) if (x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && pointInRings(x, z, q.p)) return Math.min(0, q.W - Math.min(4, 0.6 + distToLine(q.edge, x, z) * 0.3) - sTopo(x, z));
+    return 0;
+  };
+  const hillM = (x, z) => sTopo(x, z) + (highLakes.length ? highLakeDip(x, z) : 0);
+  world.hillM = hillM;
   // the seabed shelves up to ~1.5 m at the waterline, so waves feel the bottom and break on the beach
   const seaDepth = (x, z) => 3 * (1 - sS(x, z)) + 17 * Math.pow(Math.max(0, (0.5 - sL(x, z)) * 2), 1.3) + 14 * sDeep(x, z);
   // canals are straight-sided trenches: the land keeps its full height to the wall, the water inside sits at -2.2 m (`canalIn`: metres inside the nearest canal, negative outside)
@@ -1554,6 +1835,12 @@ async function buildWorld() {
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(160000, 160000).rotateX(-Math.PI / 2), mat);
     sea.receiveShadow = false; scene.add(sea); world.sea = sea;
     world.water = mat;
+    for (const q of highLakes) {
+      const { pts, tris } = triangulate(q.p), pos = new Float32Array(pts.length * 3), lg = new THREE.BufferGeometry();
+      pts.forEach((v, i) => { pos[i * 3] = v.x; pos[i * 3 + 1] = LAND_Y + q.W; pos[i * 3 + 2] = v.y; });
+      lg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); lg.setIndex(tris.flatMap((t) => [t[0], t[2], t[1]]));   // (x, y) → (x, z) mirrors the winding: face up
+      const lm = new THREE.Mesh(lg, mat); lm.renderOrder = -1; scene.add(lm);
+    }
   }
 
   // ---- terrain mesh over the island's bounding box
@@ -1564,22 +1851,28 @@ async function buildWorld() {
   {
     const STEP = 16, M = 300, x0 = minX - M, z0 = minZ - M, nx = Math.ceil((maxX - minX + 2 * M) / STEP) + 1, nz = Math.ceil((maxZ - minZ + 2 * M) / STEP) + 1;
     const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
-    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
+    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#2c5a27'), forestB = linear('#3f6f2c'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
     const tmp = new THREE.Color();
     // ponds set in a park or paving: the 16 m ground mesh is too coarse to dip below the water inside a small pond, so only its middle showed
     // as water and the rest as a sandy rim. Every ground vertex within POND_SINK of such a pond (all hidden under the lawn or paving, which
     // is drawn at the true height) drops below the water, so the water fills the pond's whole outline; buildPondBanks adds the bank.
-    const POND_SINK = 24, ponds = water.filter((p) => { const r = p[0]; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= r.length / 2; cz /= r.length / 2; return [...parks, ...pave].some((q) => pointInRings(cx, cz, q)); })
+    const POND_SINK = 24, ponds = lowWater.filter((p) => { const r = p[0]; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= r.length / 2; cz /= r.length / 2; return [...parks, ...pave].some((q) => pointInRings(cx, cz, q)); })
       .map((p) => { const r = p[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < r.length; i += 2) { a = Math.min(a, r[i]); c = Math.max(c, r[i]); b = Math.min(b, r[i + 1]); d = Math.max(d, r[i + 1]); } return { p, edge: [...r, r[0], r[1]], bb: [a - POND_SINK, b - POND_SINK, c + POND_SINK, d + POND_SINK] }; });
     world.ponds = ponds;
     const sunk = (x, z) => ponds.some((q) => x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && (pointInRings(x, z, q.p) || distToLine(q.edge, x, z) < POND_SINK));
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h = sunk(x, z) ? Math.min(H(x, z), -1.6) : H(x, z);
+      const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, h0t = sunk(x, z) ? Math.min(H(x, z), -1.6) : H(x, z), h = h0t > 0.6 ? h0t - TOPO.SINK * smooth(0.35, 0.8, sDens(x, z)) : h0t;   // under built-up ground (all paved over) it sits a little lower, so its 16 m triangles never poke through a level street
       pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z; uv[k * 2] = x / 7; uv[k * 2 + 1] = z / 7;
       const n1 = vnoise(x / 260, z / 260), n2 = vnoise(x / 55, z / 55);
       tmp.copy(grassA).lerp(grassB, clamp(n1 * 0.75 + n2 * 0.35 - 0.1, 0, 1));
       tmp.lerp(forest, smooth(0.55, 0.8, vnoise(x / 700 + 9, z / 700 - 3)) * 0.6);
-      tmp.lerp(hillC, smooth(4, 16, hillM(x, z)) * 0.35);
+      const hm = hillM(x, z), sl = Math.hypot(H(x + 8, z) - H(x - 8, z), H(x, z + 8) - H(x, z - 8)) / 16;
+      const K = TOPO.k;
+      tmp.lerp(hillC, smooth(6 * K, 40 * K, hm) * 0.3);
+      const wood = smooth(30 * K, 170 * K, hm) * (1 - smooth(330 * K, 420 * K, hm) * 0.6);   // the wooded hills read darker: a patchwork of deep and lighter canopy
+      tmp.lerp(vnoise(x / 120 + 3, z / 120 - 5) > 0.45 ? highForest : forestB, wood * 0.78 * (0.8 + 0.3 * n1));
+      tmp.lerp(scrub, smooth(300 * K, 420 * K, hm) * 0.45);                         // thinner, drier cover near the tops
+      tmp.lerp(n2 > 0.5 ? rockA : rockB, smooth(0.42, 0.95, sl) * 0.65);    // bare rock on the steepest slopes
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
       const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sSL(x, z)));
       tmp.lerp(sand, clamp(shore * 1.2, 0, 1));
@@ -1607,7 +1900,8 @@ async function buildWorld() {
   initFeatures();
   for (const kind of ['beach', 'plaza', 'park', 'path', 'street']) buildGround(kind);
   buildPondBanks();
-  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083' })), 4), world.tex.setts, 3);
+  overlayMesh(polyOverlay(streetAreas.map((r) => ({ rings: r.map((q) => softRing(q)), color: '#7d8083', lift: -TOPO.CURB })), 4), world.tex.setts, 3);   // a kerb below the pavement, like the streets
+  buildKerbs();
 
   // ---- buildings: records first, geometry per tile (so an edit rebuilds only its tile)
   await progress('Raising buildings', 44);
@@ -1619,7 +1913,7 @@ async function buildWorld() {
     if (outer.length < 6) continue;
     const rnd = mulberry(parseInt(bIds[bi].slice(1), 16));
     let cx = 0, cz = 0; for (let i = 0; i < outer.length; i += 2) { cx += outer[i]; cz += outer[i + 1]; } cx /= outer.length / 2; cz /= outer.length / 2;
-    let base = Infinity; for (let i = 0; i < outer.length; i += 2) base = Math.min(base, H(outer[i], outer[i + 1]));
+    let base = Infinity, hi = -Infinity; for (let i = 0; i < outer.length; i += 2) { const h = H(outer[i], outer[i + 1]); base = Math.min(base, h); hi = Math.max(hi, h); }
     base = Math.max(base, LAND_Y - 0.4);
     const jitter = rnd() * 0.6, area = Math.abs(ringArea(outer)), nv = outer.length / 2;
     const wall = pickWeighted(style.walls, rnd()), shutters = style.shutters[(rnd() * style.shutters.length) | 0];
@@ -1628,7 +1922,7 @@ async function buildWorld() {
     const roofPick = rnd(), balconies = rnd() < style.balconyShare, flowers = rnd() < 0.22 ? 1 + ((rnd() * 3) | 0) : 0;
     const tile = Math.floor(cx / TILE + TN / 2) * 1000 + Math.floor(cz / TILE + TN / 2);
     const rec = {
-      idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, area, nv, convex, tile, top: base + 10,
+      idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, dig: Math.max(0, hi - base), area, nv, convex, tile, top: base + 10,
       flowers, seed: parseInt(bIds[bi].slice(1), 16),
       auto: { facade: 'standard', wall, shutters, roofType: pitched ? 'hip' : 'flat', floors: bFloors[bi], groundFloor: 'arches', windows: balconies ? 'balconies' : 'shutters', jitter,
         tileRoof: style.tileRoofs[(roofPick * style.tileRoofs.length) | 0], flatRoof: style.flatRoofs[(roofPick * style.flatRoofs.length) | 0] },
@@ -2159,7 +2453,10 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
   if ((rec.replace || null) !== (s.replace || null)) { rec.replace = s.replace || null; (world.replaceDirty || (world.replaceDirty = new Set())).add(rec); }
   if (gone) { rec.top = base; rec.style = s; return; }
   const RR = roundedRings(rec);
-  const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
+  // on a hillside the walls stand on the lowest corner and the uphill side is dug in: up to three extra floors downhill keep the
+  // building's own floor count showing above the uphill ground, as hillside towns are built
+  const gf = 4.0, fh = 3.3, climb = Math.min(3, Math.round(Math.max(0, (rec.dig || 0) - 1.2) / fh)), top = base + gf + (s.floors - 1 + climb) * fh + s.jitter;
+  rec.climb = climb;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
   const neo = s.facade === 'neoclassical';
@@ -4336,25 +4633,162 @@ function polyOverlay(items, uvScale) {
   const geo = new Geo(), c = new THREE.Color();
   for (const { rings, color, lift = 0 } of items) {
     if (rings[0].length < 6) continue;
-    const { pts, tris } = triangulate(rings); c.copy(linear(color));
+    const { pts, tris } = subdivide(triangulate(rings), OVERLAY_EDGE); c.copy(linear(color));
     const base = geo.count;
     for (const v of pts) geo.v(v.x, H(v.x, v.y) + LIFT + lift, v.y, 0, 1, 0, c, v.x / uvScale, v.y / uvScale);
     for (const t of tris) geo.triUp(base + t[0], base + t[1], base + t[2]);
   }
   return geo;
 }
+// Kerbs: a stone kerb along both edges of every street and round the street-area paving. Its face drops from just above the
+// pavement to the street, which lies TOPO.CURB below it (ribbonOverlay `level`, the street areas' lift). It is left out where the
+// ground beyond is another street, path or street area (junctions stay open), over the water, and where a street's free end fades
+// into a plaza; the rounded junction corners (the fillet fans) get it along their arcs. Built once, as strips in 500 m chunks,
+// shown near the camera (stepKerbs).
+const KERB = { W: 0.26, CHUNK: 500, FAR: 1300, STEP: 4 };
+function buildKerbs() {
+  for (const m of world.kerbs || []) { scene.remove(m); m.geometry.dispose(); }
+  const chunks = new Map(), stone = linear('#cbc7bd'), c = new THREE.Color();
+  const chunk = (x, z) => { const k = Math.floor(x / KERB.CHUNK) * 4096 + Math.floor(z / KERB.CHUNK); let g = chunks.get(k); if (!g) chunks.set(k, g = { k, p: [], n: [], c: [], i: [] }); return g; };
+  const open = (x, z) => H(x, z) < 0.3 || canalIn(x, z) > -2 || roadAt(x, z, 0.25, true);   // nothing to kerb against: water, or more street
+  // a run of kerb along points (x, z, y = street surface, nx, nz = unit normal toward the street); keep[i] for the piece i → i+1
+  const run = (pts, keep) => {
+    let g = null, prev = -1;
+    const add = (q) => {   // six vertices per station: face foot and top (facing the street), top front and back (facing up), back top and foot (facing the pavement)
+      const [x, z, y, nx, nz] = q, t = y + TOPO.CURB + 0.03, sh = 0.9 + ((Math.floor((x + z) * 0.9) & 3) * 0.04), bx = x - nx * KERB.W, bz = z - nz * KERB.W; c.copy(stone).multiplyScalar(sh);
+      const v = g.p.length / 3;
+      g.p.push(x, y - 0.06, z, x, t, z, x, t, z, bx, t, bz, bx, t, bz, bx, y - 0.3, bz);
+      g.n.push(nx, 0, nz, nx, 0, nz, 0, 1, 0, 0, 1, 0, -nx, 0, -nz, -nx, 0, -nz);
+      for (let m = 0; m < 6; m++) g.c.push(c.r, c.g, c.b);
+      return v;
+    };
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (!keep[i]) { g = null; continue; }
+      const cg = chunk(pts[i][0], pts[i][1]);
+      if (g !== cg) { g = cg; prev = add(pts[i]); }
+      const v = add(pts[i + 1]);
+      g.i.push(prev, v, prev + 1, v, v + 1, prev + 1, prev + 2, v + 2, prev + 3, v + 2, v + 3, prev + 3, prev + 4, v + 4, prev + 5, v + 4, v + 5, prev + 5);
+      prev = v;
+    }
+  };
+  let pieces = 0;
+  for (const f of world.features) {
+    if (f.kind !== 'street' || f.sub === 1) continue;
+    const P = f.pts, hw = f.w / 2, D = [];   // stations every KERB.STEP metres, with the line's own corners
+    for (let i = 0; i < P.length - 2; i += 2) { const n = Math.max(1, Math.ceil(Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]) / KERB.STEP)); for (let s = 0; s < n; s++) D.push(lerp(P[i], P[i + 2], s / n), lerp(P[i + 1], P[i + 3], s / n)); }
+    D.push(P[P.length - 2], P[P.length - 1]);
+    const n = D.length / 2, along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(D[i * 2] - D[i * 2 - 2], D[i * 2 + 1] - D[i * 2 - 1]));
+    const total = along[n - 1], free = freeEnds(f) || [], FL = Math.min(7, total * 0.35) + 1.5;
+    for (const side of [1, -1]) {
+      const pts = [], keep = [];
+      for (let i = 0; i < n; i++) {
+        const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), dx = D[b * 2] - D[a * 2], dz = D[b * 2 + 1] - D[a * 2 + 1], L = Math.hypot(dx, dz) || 1;
+        const nx = -dz / L * side, nz = dx / L * side, cx = D[i * 2], cz = D[i * 2 + 1];   // (nx, nz): from the centreline out to this kerb
+        pts.push([cx + nx * hw, cz + nz * hw, H(cx, cz) + LIFT - TOPO.CURB, -nx, -nz]);
+      }
+      for (let i = 0; i < n - 1; i++) {
+        const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2, ox = mx - (pts[i][3] + pts[i + 1][3]) * 0.45, oz = mz - (pts[i][4] + pts[i + 1][4]) * 0.45, am = (along[i] + along[i + 1]) / 2;
+        const ok = !open(ox, oz) && !(free[0] && am < FL) && !(free[1] && total - am < FL);
+        keep.push(ok); if (ok) pieces++;
+      }
+      run(pts, keep);
+    }
+    for (const fan of f.fans || []) {   // the rounded corners: along the arc, facing the corner point the fan is laid from
+      const y = H(fan[0], fan[1]) + LIFT - TOPO.CURB, pts = [], keep = [];
+      for (let s = 1; s < fan.length / 2; s++) { const x = fan[s * 2], z = fan[s * 2 + 1], dx = fan[0] - x, dz = fan[1] - z, L = Math.hypot(dx, dz) || 1; pts.push([x, z, y, dx / L, dz / L]); }
+      for (let i = 0; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2; keep.push(!open(mx - pts[i][3] * 0.9, mz - pts[i][4] * 0.9)); }
+      run(pts, keep);
+    }
+  }
+  // round the street-area paving, facing in
+  for (const rings of world.layers.streetAreas) {
+    const r = softRing(rings[0]), sgn = ringArea(r) > 0 ? 1 : -1, m = r.length / 2, pts = [], keep = [];
+    for (let i = 0; i <= m; i++) {
+      const k = i % m, a = (k + m - 1) % m, b = (k + 1) % m, dx = r[b * 2] - r[a * 2], dz = r[b * 2 + 1] - r[a * 2 + 1], L = Math.hypot(dx, dz) || 1;
+      const x = r[k * 2], z = r[k * 2 + 1], inx = -dz / L * sgn, inz = dx / L * sgn;
+      pts.push([x, z, H(x + inx * 0.5, z + inz * 0.5) + LIFT - TOPO.CURB, inx, inz]);
+    }
+    for (let i = 0; i < m; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2, ok = !open(mx - pts[i][3] * 0.9, mz - pts[i][4] * 0.9); keep.push(ok); if (ok) pieces++; }
+    run(pts, keep);
+  }
+  const mat = world.kerbMat || (world.kerbMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, map: world.tex.flags.map }));
+  world.kerbs = [];
+  for (const g of chunks.values()) {
+    if (!g.i.length) continue;
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3));
+    const uv = new Float32Array(g.p.length / 3 * 2); for (let v = 0; v < uv.length / 2; v++) { uv[v * 2] = (g.p[v * 3] + g.p[v * 3 + 2]) / 1.2; uv[v * 2 + 1] = g.p[v * 3 + 1] / 1.2; } geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(g.i); geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; mesh.userData.c = geo.boundingSphere.center.clone(); scene.add(mesh); world.kerbs.push(mesh);
+  }
+  world.kerbPieces = pieces;
+}
+let kerbT = 0;
+function stepKerbs(t) {   // near the camera only: a kerb is 14 cm of stone
+  if (!world.kerbs || t - kerbT < 0.5) return; kerbT = t;
+  const cam = camera.position, high = cam.y - Math.max(0, H(cam.x, cam.z)) > 500;
+  for (const m of [...world.kerbs, ...(world.stairs || [])]) m.visible = !high && Math.hypot(m.userData.c.x - cam.x, m.userData.c.z - cam.z) < KERB.FAR;
+}
+// Steps: where a street is too steep to be practical (STAIR.G), the ribbon gives way to a stone staircase across its full width, each
+// rise about STAIR.RISE (a run of 8 m sections; each section is split into equal treads so the flight follows the street's own grade,
+// with a half rise where a flight meets the level street). Treads are level, risers face down the flight; the kerbs run alongside as
+// its cheeks. Built from world.stairSegs (gathered by ribbonOverlay for level streets) in 500 m chunks, shown near the camera.
+const STAIR = { G: 0.17, RISE: 0.16 };
+function buildStairs() {
+  for (const m of world.stairs || []) { scene.remove(m); m.geometry.dispose(); }
+  world.stairs = [];
+  const chunks = new Map(), tread = linear('#c3bcae'), riser = linear('#9c9587'), c = new THREE.Color();
+  const chunk = (x, z) => { const k = Math.floor(x / KERB.CHUNK) * 4096 + Math.floor(z / KERB.CHUNK); let g = chunks.get(k); if (!g) chunks.set(k, g = { p: [], n: [], c: [], uv: [] }); return g; };
+  const quad = (g, A, B, C, D, n, col) => {   // wound to face n (a double-sided material lights a back face from behind)
+    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2], f = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+    for (const q of f >= 0 ? [A, B, C, A, C, D] : [A, C, B, A, D, C]) { g.p.push(q[0], q[1], q[2]); g.n.push(n[0], n[1], n[2]); g.c.push(col.r, col.g, col.b); g.uv.push((q[0] + q[2]) / 1.4, q[1] / 1.4 + (q[0] - q[2]) / 5); }
+  };
+  let last = 0, steps = 0;
+  for (const sg of world.stairSegs || []) {
+    const { ax, az, bx, bz, ha, hb, hw } = sg, L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz * hw, nz = tx * hw, dh = hb - ha;
+    const n = Math.max(2, Math.round(Math.abs(dh) / STAIR.RISE)), g = chunk((ax + bx) / 2, (az + bz) / 2), up = Math.sign(dh) || 1;
+    if (!sg.prev) last = ha;   // a flight starts from the level street
+    for (let k = 0; k < n; k++) {
+      const s0 = k * L / n, s1 = (k + 1) * L / n, y = ha + dh * (k + 0.5) / n, x0 = ax + tx * s0, z0 = az + tz * s0, x1 = ax + tx * s1, z1 = az + tz * s1, sh = 0.94 + ((k * 7 + Math.round(ax)) % 3) * 0.03;
+      // the riser from the tread before, facing down the flight
+      const lo = Math.min(last, y), hi = Math.max(last, y);
+      quad(g, [x0 + nx, lo, z0 + nz], [x0 - nx, lo, z0 - nz], [x0 - nx, hi, z0 - nz], [x0 + nx, hi, z0 + nz], [-tx * up, 0, -tz * up], c.copy(riser).multiplyScalar(sh));
+      quad(g, [x0 + nx, y, z0 + nz], [x0 - nx, y, z0 - nz], [x1 - nx, y, z1 - nz], [x1 + nx, y, z1 + nz], [0, 1, 0], c.copy(tread).multiplyScalar(sh));
+      const foot = Math.min(y, ha + dh * k / n, ha + dh * (k + 1) / n) - 0.45;   // solid sides: each step's end face, down below the pavement
+      for (const sd of [1, -1]) quad(g, [x0 + nx * sd, foot, z0 + nz * sd], [x1 + nx * sd, foot, z1 + nz * sd], [x1 + nx * sd, y, z1 + nz * sd], [x0 + nx * sd, y, z0 + nz * sd], [nx / hw * sd, 0, nz / hw * sd], c.copy(riser).multiplyScalar(0.92));
+      last = y; steps++;
+    }
+    if (!sg.next) { const lo = Math.min(last, hb), hi = Math.max(last, hb); quad(g, [bx + nx, lo, bz + nz], [bx - nx, lo, bz - nz], [bx - nx, hi, bz - nz], [bx + nx, hi, bz + nz], [-tx * up, 0, -tz * up], c.copy(riser)); }   // and back down (or up) to the street
+  }
+  const mat = world.stairMat || (world.stairMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, map: world.tex.flags.map }));
+  for (const g of chunks.values()) {
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
+    geo.computeBoundingSphere();
+    const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; m.castShadow = true; m.userData.c = geo.boundingSphere.center.clone(); scene.add(m); world.stairs.push(m);
+  }
+  world.stairSteps = steps; world.stairFlights = (world.stairSegs || []).filter((s) => !s.prev).length;
+}
+const RIBBON_STEP = 8;   // metres between ribbon cross-sections, so streets follow the hills
 function ribbonOverlay(items) {
   const geo = new Geo([['aFade', 1]]), c = new THREE.Color();
   const V = (x, y, z, col, u, w, fade) => { const i = geo.v(x, y, z, 0, 1, 0, col, u, w); geo.extra.aFade.push(fade); return i; };   // aFade: 1 opaque, 0 clear
   const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
-  for (const { pts, w, color, blend, free, fans } of items) {
+  for (const { pts, w, color, blend, free, fans, level } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
-    const P = []; // densify so ribbons follow the terrain
+    const down = level ? TOPO.CURB : 0;   // a street lies a kerb's height below its pavements, level across (both kerbs at the centreline's height)
+    const P = [], corner = new Set(); // densify so ribbons follow the terrain (corner: indices of the line's own vertices)
     for (let i = 0; i < pts.length - 2; i += 2) {
-      const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 20));
+      const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / RIBBON_STEP));
+      corner.add(P.length / 2);
       for (let s = 0; s < n; s++) P.push(lerp(ax, bx, s / n), lerp(az, bz, s / n));
     }
-    P.push(pts[pts.length - 2], pts[pts.length - 1]);
+    corner.add(P.length / 2); P.push(pts[pts.length - 2], pts[pts.length - 1]);
+    // a street too steep to be practical (over STAIR.G between two cross-sections) is a flight of steps there: buildStairs draws it
+    let stair = null;
+    if (level && world.stairSegs) {
+      const ns = P.length / 2 - 1; stair = new Uint8Array(ns);
+      for (let q = 0; q < ns; q++) { const x0 = P[q * 2], z0 = P[q * 2 + 1], x1 = P[q * 2 + 2], z1 = P[q * 2 + 3], L = Math.hypot(x1 - x0, z1 - z0), h0 = H(x0, z0), h1 = H(x1, z1); if (L > 0.5 && h0 > 0.5 && h1 > 0.5 && Math.abs(h1 - h0) / L > STAIR.G) stair[q] = 1; }
+      for (let q = 1; q < ns - 1; q++) if (!stair[q] && stair[q - 1] && stair[q + 1]) stair[q] = 1;   // no stretch of ramp between two flights
+    }
     // UVs run with the street (v) and across it (u), so rows of setts cross the carriageway
     let along = 0, total = 0;
     for (let i = 0; i < P.length - 2; i += 2) total += Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]);
@@ -4365,26 +4799,29 @@ function ribbonOverlay(items) {
     for (let i = 0; i < P.length - 2; i += 2) {
       const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], len = Math.hypot(bx - ax, bz - az);
       if (len < 0.01) continue;
-      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ha = H(ax, az) + LIFT, hb = H(bx, bz) + LIFT;
+      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ga = H(ax, az) + LIFT - down, gb = H(bx, bz) + LIFT - down, G = level ? (x, z) => (Math.abs(x - ax) + Math.abs(z - az) < Math.abs(x - bx) + Math.abs(z - bz) ? ga : gb) : (x, z) => H(x, z) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
+      if (stair && stair[i / 2]) { world.stairSegs.push({ ax, az, bx, bz, ha: ga, hb: gb, hw, prev: i > 0 && !!stair[i / 2 - 1], next: !!stair[i / 2 + 1] }); continue; }
       const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
       const fa = fadeAt(along - len), fb = fadeAt(along);
-      const a0 = V(ax + nx, ha, az + nz, ca, u0, v0, fa), a1 = V(ax - nx, ha, az - nz, ca, -u0, v0, fa);
-      const b0 = V(bx + nx, hb, bz + nz, cb, u0, v1, fb), b1 = V(bx - nx, hb, bz - nz, cb, -u0, v1, fb);
+      const a0 = V(ax + nx, G(ax + nx, az + nz), az + nz, ca, u0, v0, fa), a1 = V(ax - nx, G(ax - nx, az - nz), az - nz, ca, -u0, v0, fa);
+      const b0 = V(bx + nx, G(bx + nx, bz + nz), bz + nz, cb, u0, v1, fb), b1 = V(bx - nx, G(bx - nx, bz - nz), bz - nz, cb, -u0, v1, fb);
       geo.triUp(a0, a1, b0); geo.triUp(a1, b1, b0);
     }
     let acc = 0;
     if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints, in the colour the ribbon has there (an untinted disc showed as an octagon where the colour blends)
       if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
+      if (!corner.has(i / 2)) continue;   // between the line's own vertices the ribbon runs straight, with no gap to fill
+      if (stair && (stair[i / 2 - 1] || stair[i / 2])) continue;   // the steps carry on round the bend
       const fd = fadeAt(acc); if (fd < 0.02) continue;
-      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
-      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, h, pz, cj, px / 4, pz / 4, fd); }
+      const x = P[i], z = P[i + 1], h = H(x, z) + LIFT - down, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
+      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, level ? h : H(px, pz) + LIFT, pz, cj, px / 4, pz / 4, fd); }
       for (let s = 0; s < NJ; s++) geo.triUp(ctr, first + s, first + (s + 1) % NJ);
     }
     // rounded inside corners where this ribbon meets another (junctionFillets): a fan from the corner point to the arc
     for (const fan of fans || []) {
-      const h0 = H(fan[0], fan[1]) + LIFT, ctr = V(fan[0], h0, fan[1], c, fan[0] / 4, fan[1] / 4, 1), first = geo.count, m = fan.length / 2 - 1;
-      for (let s = 1; s <= m; s++) { const x = fan[s * 2], z = fan[s * 2 + 1]; V(x, H(x, z) + LIFT, z, c, x / 4, z / 4, 1); }
+      const h0 = H(fan[0], fan[1]) + LIFT - down, ctr = V(fan[0], h0, fan[1], c, fan[0] / 4, fan[1] / 4, 1), first = geo.count, m = fan.length / 2 - 1;
+      for (let s = 1; s <= m; s++) { const x = fan[s * 2], z = fan[s * 2 + 1]; V(x, level ? h0 : H(x, z) + LIFT, z, c, x / 4, z / 4, 1); }
       for (let s = 0; s < m - 1; s++) geo.triUp(ctr, first + s, first + s + 1);
     }
   }
@@ -4497,14 +4934,16 @@ function buildGround(kind) {
   if (kind === 'beach') { buildBeaches(list); for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f)); world.ground[kind] = []; return; }
   if (kind === 'plaza') buildChinampas(list.filter((f) => featureStyle(f).use === 'chinampa'));
   if (kind === 'street' || kind === 'path') junctionFillets();
+  if (kind === 'street') world.stairSegs = [];
   for (const f of list) {
     const s = featureStyle(f); if (s.use === 'chinampa') continue;
     const tex = kind === 'park' ? 'grass' : TEX_OF[s.paving];
     let g = groups.get(tex); if (!g) groups.set(tex, g = []);
-    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans });
+    g.push(KINDS[kind].geom === 'poly' ? { rings: lakeHoles(f, kind === 'plaza' ? softRings(f) : f.rings), color: kind === 'park' ? s.grass : s.tint, lift: kind === 'plaza' ? (s.curb || 0) / 100 : 0 } : { pts: f.pts, w: f.w, color: kind === 'street' ? darken(s.tint, streetDark(f)) : s.tint, blend: pathBlend(f), free: freeEnds(f), fans: f.fans, level: kind === 'street' });
   }
   for (const f of list) f.lastStyle = JSON.stringify(featureStyle(f));
   world.ground[kind] = [...groups].map(([tex, items], i) => overlayMesh(KINDS[kind].geom === 'poly' ? polyOverlay(items, kind === 'park' ? 7 : tex === 'gwaves' ? GW_SCALE : 6) : ribbonOverlay(items), world.tex[tex], ORDER[kind] + (tex === 'slabs' ? 1 : 0), kind === 'park' ? (world.parkDim = world.parkDim || { value: new THREE.Vector3(1, 1, 1) }) : null, KINDS[kind].geom !== 'poly'));
+  if (kind === 'street') buildStairs();
 }
 
 // ---- beaches in the manner of Copacabana: wide golden sand, the wave-patterned calçadão,
@@ -4945,12 +5384,14 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   rebuildParkFences();
   // Countryside: forest clumps and scattered palms near the coast
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
-  for (let z = minZ; z < maxZ && wild < 60000; z += S) for (let x = minX; x < maxX && wild < 60000; x += S) {
+  for (let z = minZ; z < maxZ && wild < 70000; z += S) for (let x = minX; x < maxX && wild < 70000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
     if (m < 0.75 || occAt(px, pz) > 0.2 || roadAt(px, pz, 1.0)) continue;
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
-    const p = coast ? 0.26 : smooth(0.45, 0.75, forest) * 0.85 + 0.03;
+    // the hills are wooded: denser with height, thinning again toward the bare tops
+    const hm = world.hillM ? world.hillM(px, pz) : 0, wood = smooth(35 * TOPO.k, 160 * TOPO.k, hm) * (1 - smooth(330 * TOPO.k, 420 * TOPO.k, hm) * 0.7) * (0.35 + 0.65 * smooth(0.3, 0.7, forest));
+    const p = coast ? 0.26 : Math.max(smooth(0.45, 0.75, forest) * 0.85 + 0.03, wood * 0.7);
     if (rnd() > p) continue;
     bucketAdd(buckets, coast || rnd() < 0.25 ? pickSp(WILD_PALMS, rnd) : pickSp(WILD_TREES, rnd), px, pz, 0.9 + rnd() * 0.35, rnd); wild++;   // countryside: the shorter species too
   }
@@ -7795,7 +8236,7 @@ function measureRaw(sx, sy) {
   if (player.mode === 'plan') { const [x, z] = planWorld(sx, sy); return new THREE.Vector3(x, 0, z); }
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   for (const h of raycaster.intersectObjects([...world.tileMeshes.values()], false)) { if (!isSunk(h.object.geometry.attributes.aBid.getX(h.face.a))) return h.point.clone(); }   // roofs and walls count
-  return raycaster.ray.intersectPlane(_ground, _gp) ? _gp.clone() : null;
+  return groundHit(raycaster.ray, _gp) ? _gp.clone() : null;
 }
 function measureClick(sx, sy) {
   const p = measurePointAt(sx, sy); if (!p) return;
@@ -7898,13 +8339,28 @@ function spawnPoint() {
 const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
 const _sandPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.3), _sp = new THREE.Vector3();
 const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(LAND_Y + 0.25)), _gp = new THREE.Vector3();
+// Where a ray first meets the ground (the terrain, or the sea's surface): marched in steps that shrink with the clearance, then refined.
+function groundHit(ray, out, lift = 0.25) {
+  const o = ray.origin, d = ray.direction, gy = (x, z) => Math.max(H(x, z), 0) + lift;
+  let t = 0, prev = 0;
+  for (let k = 0; k < 4000 && t < 40000; k++) {
+    const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t, c = y - gy(x, z);
+    if (c <= 0) {
+      let a = prev, b = t; for (let m = 0; m < 24; m++) { const mid = (a + b) / 2, mx = o.x + d.x * mid, mz = o.z + d.z * mid; if (o.y + d.y * mid - gy(mx, mz) > 0) a = mid; else b = mid; }
+      return out.set(o.x + d.x * b, o.y + d.y * b, o.z + d.z * b);
+    }
+    if (d.y >= 0 && y > TOPO.S * 10 + 400) return null;   // climbing away above the highest ground
+    prev = t; t += clamp(c * 0.45, 0.4, 80);
+  }
+  return null;
+}
 function pick3D(sx, sy) {   // a building under the cursor, else the park, street, canal… on the ground
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   const hits = raycaster.intersectObjects([...world.tileMeshes.values()], false);
   const rh = world.replaceMeshes && world.replaceMeshes.length ? raycaster.intersectObjects(world.replaceMeshes, false)[0] : null;   // a galleon, a breakwater…
   if (rh && (!hits.length || rh.distance < hits[0].distance)) return layers.building ? rh.object.userData.bid : null;
   for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return layers.building ? world.buildings[idx].id : null; }   // a building you can't pick still blocks the click
-  if (!raycaster.ray.intersectPlane(_ground, _gp)) return null;
+  if (!groundHit(raycaster.ray, _gp)) return null;
   const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol, true);
   if (f >= 0 && world.features[f].kind !== 'beach') return world.features[f].id;
   // sand lies lower than the street plane, so at a low angle the ray meets it a little further on: look there too
@@ -7938,7 +8394,7 @@ function initPegman() {
     if (!over(cx, cy)) return null;
     let x, z, r;
     if (player.mode === 'plan') { [x, z] = planWorld(cx, cy); r = clamp(26 / plan.scale, 6, 400); }
-    else { _ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera); if (!raycaster.ray.intersectPlane(_ground, _gp)) return null; x = _gp.x; z = _gp.z; r = clamp(camera.position.distanceTo(_gp) / 22, 10, 140); }
+    else { _ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera); if (!groundHit(raycaster.ray, _gp)) return null; x = _gp.x; z = _gp.z; r = clamp(camera.position.distanceTo(_gp) / 22, 10, 140); }
     const road = nearestRoad(x, z, r);
     if (road) return { x: road.x, z: road.z, road };
     return H(x, z) > 0.4 ? { x, z, road: null } : null;
@@ -8021,7 +8477,7 @@ function initControls() {
   canvas.addEventListener('dblclick', (e) => {
     if (player.mode !== 'map') return;
     raycaster.setFromCamera(_ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
+    const hit = new THREE.Vector3(); if (groundHit(raycaster.ray, hit, 0)) dropIn(hit.x, hit.z);
   });
   $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
   $('mm-xy').addEventListener('click', (e) => { e.stopPropagation(); toggleCoords(); });
@@ -8437,6 +8893,7 @@ function update(dt, t) {
       if (tween.t >= 1) tween = null;
     }
     controls.update();
+    { const g = Math.max(H(camera.position.x, camera.position.z), 0) + 6; if (camera.position.y < g) { const up = g - camera.position.y; camera.position.y += up; controls.target.y += up * 0.5; } }   // never down inside a hill
     character.position.copy(player.pos);
   }
   stepAnim(dt, t);
@@ -8466,7 +8923,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t); stepReplacements(t);
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t);
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -8789,6 +9246,42 @@ window.amparacan = {
   buildingInfo(id) { const r = world.byId.get(id); if (!r) return null; const sample = []; for (let a = 0; a < 16; a++) for (const d of [10, 25, 50]) sample.push([a, d, +H(r.cx + Math.cos(a / 16 * 6.283) * d, r.cz + Math.sin(a / 16 * 6.283) * d).toFixed(1)]); return { cx: +r.cx.toFixed(1), cz: +r.cz.toFixed(1), base: +r.base.toFixed(2), area: Math.round(r.area), nv: r.nv, ring: [...r.rings[0]].map((v) => +v.toFixed(1)), H: sample }; },
   replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, pose: o.pose, moved: o.moved, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
+  topo(x, z, x0, z0) {   // the terrain: summary (topo(null, null, x0, z0): flights of steps near a point), or the band level, height above the base and ground height at a point
+    const T = world.topo; if (!T) return null;
+    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, laid: T.laid, kerbs: world.kerbPieces, kerbMeshes: (world.kerbs || []).length, stairFlights: world.stairFlights, stairSteps: world.stairSteps, flightsAt: (world.stairSegs || []).filter((q) => !q.prev).map((q) => [Math.round(q.ax), Math.round(q.az), +(q.hb - q.ha).toFixed(1)]).filter((q) => Math.hypot(q[0] - (x0 || 0), q[1] - (z0 || 0)) < (x0 == null ? 1e9 : 300)).slice(0, 12), comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
+    return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
+  },
+  streetCheck() {   // how level the streets are across: the height difference between the two kerbs (and before levelling), every 8 m
+    const T = world.topo, nat = sampler(T.h0, TOPO.N), across = [], before = [], grade = [];
+    for (const f of world.features) {
+      if (f.kind !== 'street' || f.sub === 1) continue; const P = f.pts, hw = f.w / 2;
+      for (let i = 0; i < P.length - 2; i += 2) {
+        const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz); if (L < 1) continue; const nx = -dz / L * hw, nz = dx / L * hw;
+        for (let d = 4; d < L; d += 8) {
+          const x = P[i] + dx / L * d, z = P[i + 1] + dz / L * d; if (H(x, z) < 0.5 || canalIn(x, z) > -3) continue;
+          across.push(Math.abs(H(x + nx, z + nz) - H(x - nx, z - nz))); before.push(Math.abs(nat(x + nx, z + nz) - nat(x - nx, z - nz)));
+          grade.push(Math.abs(H(x + dx / L * 4, z + dz / L * 4) - H(x - dx / L * 4, z - dz / L * 4)) / 8);
+        }
+      }
+    }
+    const q = (a, f) => { const s = a.slice().sort((x, y) => x - y); return +s[Math.floor((s.length - 1) * f)].toFixed(2); };
+    return { stations: across.length, acrossMed: q(across, 0.5), acrossP90: q(across, 0.9), acrossP99: q(across, 0.99), beforeMed: q(before, 0.5), beforeP90: q(before, 0.9), over05: across.filter((v) => v > 0.5).length, gradeP90: q(grade, 0.9) };
+  },
+  topoImage(px = 760) {   // a hillshaded height map of the island over the page, for checking (call again to remove)
+    const old = document.getElementById('topo-dbg'); if (old) { old.remove(); return 'removed'; }
+    const T = world.topo, N = TOPO.N, cv = document.createElement('canvas'); cv.id = 'topo-dbg'; cv.width = cv.height = px;
+    Object.assign(cv.style, { position: 'fixed', left: '0', top: '0', zIndex: 9999, width: px + 'px', height: px + 'px' });
+    const b = world.bounds, g = cv.getContext('2d'), img = g.createImageData(px, px), span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) + 400, ox = b.cx - span / 2, oz = b.cz - span / 2;
+    for (let j = 0; j < px; j++) for (let i = 0; i < px; i++) {
+      const x = ox + (i + 0.5) / px * span, z = oz + (j + 0.5) / px * span, h = H(x, z), k = (j * px + i) * 4, e = span / px;
+      if (h < 0.05) { img.data[k] = 150; img.data[k + 1] = 200; img.data[k + 2] = 220; img.data[k + 3] = 255; continue; }
+      const sx = (H(x + e, z) - H(x - e, z)) / (2 * e), sz = (H(x, z + e) - H(x, z - e)) / (2 * e), sh = clamp(0.72 - (sx * 0.7 + sz * 0.7) * 1.6, 0.15, 1);
+      const t = clamp(h / (TOPO.S * 9.2), 0, 1), band = Math.floor(h / TOPO.S) % 2 ? 0.92 : 1;
+      img.data[k] = (90 + 150 * t) * sh * band; img.data[k + 1] = (150 + 60 * t) * sh * band; img.data[k + 2] = (80 + 60 * t) * sh * band; img.data[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0); document.body.appendChild(cv); return { span: Math.round(span), ox: Math.round(ox), oz: Math.round(oz) };
+  },
   pleachOf(id) { const f = world.featById.get(id); if (!f) return null; const st = featureStyle(f); return st.trees === 'pleached' ? pleachedFor(f, st).map((q) => ({ x: +q.x.toFixed(1), z: +q.z.toFixed(1), a: +q.a.toFixed(2), corner: !!q.corner, side: q.side + (q.side2 || '') })) : []; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
   ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
