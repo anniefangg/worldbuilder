@@ -418,7 +418,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <div id="loader">
   <div class="card plaque">
     <h2>Amparacán</h2>
-    <p>Raising 32,000 buildings from the survey map…</p>
+    <p>Raising 34,000 buildings from the survey map…</p>
     <div class="bar"><div id="load-bar"></div></div>
     <div id="load-label">Reading map data</div>
   </div>
@@ -1697,7 +1697,7 @@ async function buildWorld() {
   {
     const STEP = 16, M = 300, x0 = minX - M, z0 = minZ - M, nx = Math.ceil((maxX - minX + 2 * M) / STEP) + 1, nz = Math.ceil((maxZ - minZ + 2 * M) / STEP) + 1;
     const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
-    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#3d7334'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
+    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#2c5a27'), forestB = linear('#3f6f2c'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
     const tmp = new THREE.Color();
     // ponds set in a park or paving: the 16 m ground mesh is too coarse to dip below the water inside a small pond, so only its middle showed
     // as water and the rest as a sandy rim. Every ground vertex within POND_SINK of such a pond (all hidden under the lawn or paving, which
@@ -1714,7 +1714,8 @@ async function buildWorld() {
       tmp.lerp(forest, smooth(0.55, 0.8, vnoise(x / 700 + 9, z / 700 - 3)) * 0.6);
       const hm = hillM(x, z), sl = Math.hypot(H(x + 8, z) - H(x - 8, z), H(x, z + 8) - H(x, z - 8)) / 16;
       tmp.lerp(hillC, smooth(6, 40, hm) * 0.3);
-      tmp.lerp(highForest, smooth(35, 200, hm) * (1 - smooth(330, 420, hm) * 0.6) * 0.62 * (0.75 + 0.5 * n1));   // the wooded hills read darker
+      const wood = smooth(30, 170, hm) * (1 - smooth(330, 420, hm) * 0.6);   // the wooded hills read darker: a patchwork of deep and lighter canopy
+      tmp.lerp(vnoise(x / 120 + 3, z / 120 - 5) > 0.45 ? highForest : forestB, wood * 0.78 * (0.8 + 0.3 * n1));
       tmp.lerp(scrub, smooth(300, 420, hm) * 0.45);                         // thinner, drier cover near the tops
       tmp.lerp(n2 > 0.5 ? rockA : rockB, smooth(0.42, 0.95, sl) * 0.65);    // bare rock on the steepest slopes
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
