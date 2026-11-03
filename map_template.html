@@ -1843,6 +1843,9 @@ async function buildWorld() {
     }
   }
 
+  // ---- forest: where the open land is wooded (forestMask), before the ground so its floor can darken under the trees
+  await progress('Planting the forest', 24);
+  forestMask(parks, sDens, sSL, sBeach, sTopo);
   // ---- terrain mesh over the island's bounding box
   await progress('Laying the ground', 26);
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
@@ -1851,7 +1854,7 @@ async function buildWorld() {
   {
     const STEP = 16, M = 300, x0 = minX - M, z0 = minZ - M, nx = Math.ceil((maxX - minX + 2 * M) / STEP) + 1, nz = Math.ceil((maxZ - minZ + 2 * M) / STEP) + 1;
     const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
-    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#2c5a27'), forestB = linear('#3f6f2c'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
+    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#2c5a27'), forestB = linear('#3f6f2c'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), forestFloor = linear('#2e4a25'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
     const tmp = new THREE.Color();
     // ponds set in a park or paving: the 16 m ground mesh is too coarse to dip below the water inside a small pond, so only its middle showed
     // as water and the rest as a sandy rim. Every ground vertex within POND_SINK of such a pond (all hidden under the lawn or paving, which
@@ -1872,6 +1875,7 @@ async function buildWorld() {
       const wood = smooth(30 * K, 170 * K, hm) * (1 - smooth(330 * K, 420 * K, hm) * 0.6);   // the wooded hills read darker: a patchwork of deep and lighter canopy
       tmp.lerp(vnoise(x / 120 + 3, z / 120 - 5) > 0.45 ? highForest : forestB, wood * 0.78 * (0.8 + 0.3 * n1));
       tmp.lerp(scrub, smooth(300 * K, 420 * K, hm) * 0.45);                         // thinner, drier cover near the tops
+      tmp.lerp(forestFloor, world.forest.at(x, z) * 0.6);                      // the shaded forest floor
       tmp.lerp(n2 > 0.5 ? rockA : rockB, smooth(0.42, 0.95, sl) * 0.65);    // bare rock on the steepest slopes
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
       const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sSL(x, z)));
@@ -1892,6 +1896,7 @@ async function buildWorld() {
     const terrain = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: groundTexture('grass').map }));
     terrain.receiveShadow = true; scene.add(terrain);
   }
+  buildCanopy();
 
   // ---- ground: plazas, parks, streets and paths, each feature styled on its own
   await progress('Paving streets and plazas', 36);
@@ -1952,6 +1957,7 @@ async function buildWorld() {
   // ---- trees
   await progress('Planting palms and ceibas', 86);
   world.trees = plantTrees({ streets, paths, pave, streetAreas, sS, sBeach });
+  initForest();
   world.streets = streets;
   await progress('Stringing lights across the lanes', 94);
   world.lights = addStreetLights();
@@ -5201,6 +5207,134 @@ function treeMeshes(buckets) {
   }
   return out;
 }
+// ─────────────────────────── forest ───────────────────────────
+// The author's rule: all the land outside the built-up neighbourhoods is heavily forested, up the hills too; only the steepest
+// slopes (cliffs, over FOREST.CLIFF) stay bare. forestMask (1024², 17 m) is that land: not built up (the topography's density),
+// not a park (parks keep their own planting), not beach, sea or a cliff; soft at its edges. The trees are generated cell by cell
+// (FOREST.CELL m, deterministic per cell, a jittered grid every FOREST.SP m) as the camera nears, the park species mix (palms
+// toward the coast and the lowland, the giants and ceibas inland), and drawn in pooled InstancedMeshes per species: full models
+// within CLOSE (casting shadows) and the tier's nearR, the cheap stand-ins (every other tree) to farR. Beyond that, and from high
+// above, a canopy layer (buildCanopy: the ground grid raised 12–22 m where the forest is, leaf-speckled) stands in, cut away
+// round the camera with a dither so the real trees take over.
+const FOREST = { N: 1024, CELL: 96, SP: 7.6, CLIFF: 0.75, CLOSE: 150, MS: 5, NEAR: 0.8, FAR: 0.72, SHELL: 0.6, THIN: 3, CLEAR: 9, cam: { value: new THREE.Vector3() }, near: { value: 0 }, cells: new Map(), want: [], pools: new Map(), dirty: true, lastP: new THREE.Vector3(1e9, 0, 0), trees: 0 };
+function forestMask(parks, sDens, sSL, sBeach, sTopo) {
+  const FN = FOREST.N, C = EXT / FN, parkR = raster(FN, (g) => { g.fillStyle = '#fff'; for (const p of parks) g.fill(path2d(p), 'evenodd'); }), m = new Float32Array(FN * FN);
+  let area = 0;
+  for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) {
+    const x = (i + 0.5) * C - EXT / 2, z = (j + 0.5) * C - EXT / 2, k = j * FN + i;
+    if (sSL(x, z) < 0.8) continue;
+    const sl = Math.hypot(sTopo(x + C / 2, z) - sTopo(x - C / 2, z), sTopo(x, z + C / 2) - sTopo(x, z - C / 2)) / C;
+    m[k] = (1 - smooth(0.04, 0.22, sDens(x, z))) * (1 - smooth(0.2, 0.6, parkR[k])) * (1 - smooth(FOREST.CLIFF - 0.12, FOREST.CLIFF + 0.1, sl)) * (1 - smooth(0.12, 0.45, sBeach(x, z))) * smooth(0.8, 0.92, sSL(x, z));
+  }
+  const mb = blur(m, FN, 1, 1); for (let k = 0; k < mb.length; k++) area += mb[k] * C * C;
+  world.forest = { m: mb, at: sampler(mb, FN), coast: (x, z) => Math.max(sBeach(x, z), 1 - smooth(0.86, 0.97, sSL(x, z))), km2: +(area / 1e6).toFixed(1) };
+}
+function buildCanopy() {   // the far forest: one bumpy, leaf-speckled sheet over the woods, cut away near the camera (FOREST.near)
+  const b = world.bounds, STEP = 16, x0 = b.minX - 100, z0 = b.minZ - 100, nx = Math.ceil((b.maxX - b.minX + 200) / STEP) + 1, nz = Math.ceil((b.maxZ - b.minZ + 200) / STEP) + 1;
+  const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), on = new Uint8Array(nx * nz), cA = linear('#22471f'), cB = linear('#3f7330'), cC = linear('#5b8a3a'), tmp = new THREE.Color();
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, f = smooth(0.06, 0.55, world.forest.at(x, z)), g = H(x, z);
+    const ch = (12 + 7 * vnoise(x / 95, z / 95) + 3 * vnoise(x / 27 + 3, z / 27 - 1)) * f;
+    pos[k * 3] = x; pos[k * 3 + 1] = f > 0 ? g + ch : g - 3; pos[k * 3 + 2] = z; on[k] = f > 0 ? 1 : 0;
+    tmp.copy(cA).lerp(cB, vnoise(x / 60 + 11, z / 60 - 7)).lerp(cC, smooth(0.6, 0.9, vnoise(x / 33 - 2, z / 33 + 5)) * 0.5);
+    col[k * 3] = tmp.r; col[k * 3 + 1] = tmp.g; col[k * 3 + 2] = tmp.b;
+  }
+  const idx = []; for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b2 = a + 1, c = a + nx, d = c + 1; if (on[a] || on[b2] || on[c]) idx.push(a, c, b2); if (on[b2] || on[c] || on[d]) idx.push(b2, c, d); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  mat.customProgramCacheKey = () => 'forest-canopy';
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uCamF = FOREST.cam; sh.uniforms.uNearF = FOREST.near;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vFW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvFW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vFW; uniform vec3 uCamF; uniform float uNearF;\nfloat fh(vec2 q) { return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453); }')
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n{ float k = smoothstep(uNearF, uNearF + 180.0, distance(vFW.xz, uCamF.xz)); if (fh(floor(gl_FragCoord.xy)) > k) discard; }')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{ // crowns: jittered cells about 9 m across, lit on top and dark in the gaps between them, each its own green (a few in flower), fading with distance
+  vec2 q = vFW.xz / 9.0, c = floor(q), f = fract(q); float best = 9.0; vec2 id = c;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 g = vec2(float(i), float(j)), o = vec2(fh(c + g), fh(c + g + 17.3)) * 0.8 + 0.1; float d = length(g + o - f); if (d < best) { best = d; id = c + g; } }
+  float far = 1.0 - smoothstep(1400.0, 4200.0, distance(vFW.xz, uCamF.xz)), crown = 1.0 - smoothstep(0.25, 0.78, best), h = fh(id + 3.1);
+  vec3 tint = h < 0.04 ? vec3(0.62, 0.48, 0.78) : h < 0.06 ? vec3(0.95, 0.8, 0.35) : h < 0.07 ? vec3(0.95, 0.95, 0.9) : vec3(0.85 + 0.3 * fh(id + 9.7), 0.95 + 0.15 * fh(id + 4.2), 0.8 + 0.2 * fh(id + 1.9));
+  diffuseColor.rgb = mix(diffuseColor.rgb * (0.92 + 0.16 * fh(id)), diffuseColor.rgb * tint * (0.55 + 0.6 * crown), 0.85 * far);
+}`);
+  };
+  const m = new THREE.Mesh(geo, mat); m.receiveShadow = false; m.castShadow = false; scene.add(m); world.canopy = m;
+}
+const FOREST_KINDS = [...PARK_PALMS, ...PARK_TREES, 'ceiba'], COAST_PALMS = ['thatch', 'cherryPalm', 'oilPalm', 'macaw'];
+function forestCell(ci, cj) {   // one cell's trees, the same every time: kind, a world matrix and a tint per tree
+  const C = FOREST.CELL, SP = FOREST.SP, x0 = ci * C, z0 = cj * C, rnd = mulberry(((ci + 4096) * 73856093) ^ ((cj + 4096) * 19349663) ^ 0x5f0e57), K = TOPO.k;
+  const kinds = [], mats = [], cols = [], farF = [], rad = [], M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V = new THREE.Vector3(), Sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), tint = new THREE.Color(), white = new THREE.Color(1, 1, 1);
+  let n = 0;
+  for (let z = z0 + SP / 2; z < z0 + C; z += SP) for (let x = x0 + SP / 2; x < x0 + C; x += SP) {
+    const px = x + (rnd() - 0.5) * SP * 0.9, pz = z + (rnd() - 0.5) * SP * 0.9, r = rnd(), r2 = rnd(), r3 = rnd(), sc = 0.82 + rnd() * 0.45, rot = rnd() * 6.283, hue = rnd();
+    const m = world.forest.at(px, pz); if (m < 0.05 || r > Math.pow(m, 0.6) * 0.93) continue;
+    if (occAt(px, pz) > 0.2 || hardAt(px, pz, 1.4)) continue;
+    const h = H(px, pz); if (h < 0.8) continue;
+    const coast = world.forest.coast(px, pz), palmShare = coast > 0.3 ? 0.72 : h < 40 * K ? 0.32 : h > 280 * K ? 0.12 : 0.2;
+    const kind = r2 < palmShare ? pickSp(coast > 0.3 ? COAST_PALMS : PARK_PALMS, rnd) : r3 < 0.06 ? 'ceiba' : pickSp(PARK_TREES, rnd);
+    M4.compose(V.set(px, h - 0.15, pz), Q4.setFromAxisAngle(up, rot), Sc.set(sc, sc * (0.9 + hue * 0.25), sc));
+    for (let e = 0; e < 16; e++) mats.push(M4.elements[e]);
+    tint.setHSL(0.25 + (hue - 0.5) * 0.05, 0.3, 0.5 + hue * 0.1).lerp(white, 0.6); cols.push(tint.r, tint.g, tint.b);
+    const o = SPECIES[kind].o; rad.push(((o.crownR || o.rad || o.L || 3) * sc + 2.5) ** 2);   // how close the camera may come before this tree is left out
+    kinds.push(FOREST_KINDS.indexOf(kind)); farF.push(n % FOREST.THIN === 0 ? 1 : 0); n++;
+  }
+  return { cx: x0 + C / 2, cz: z0 + C / 2, n, kind: Uint8Array.from(kinds), mat: Float32Array.from(mats), col: Float32Array.from(cols), far: Uint8Array.from(farF), rad: Float32Array.from(rad) };
+}
+function initForest() {
+  if (!world.forest) return;
+  for (const k of FOREST_KINDS) { if (!world.treeGeos[k]) world.treeGeos[k] = speciesGeometry(k); if (!world.treeProxy[k]) world.treeProxy[k] = speciesProxy(k); if (!world.treeMats[k]) world.treeMats[k] = speciesMaterial(k); }
+  FOREST.ready = true;
+}
+function forestPool(ki, role, need) {   // a pooled InstancedMesh per species and role (close / near / far), grown as needed
+  const key = ki * 4 + role; let p = FOREST.pools.get(key);
+  if (p && p.cap >= need) return p;
+  const cap = Math.max(256, need * 1.5 | 0), k = FOREST_KINDS[ki];
+  if (p) { scene.remove(p.mesh); p.mesh.dispose(); }
+  const mesh = new THREE.InstancedMesh(role === 2 ? world.treeProxy[k] : world.treeGeos[k], role === 2 ? world.treeMats.far : world.treeMats[k], cap);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+  mesh.frustumCulled = false; mesh.matrixAutoUpdate = false; mesh.renderOrder = 10; mesh.receiveShadow = role !== 2; mesh.castShadow = false; mesh.count = 0;
+  scene.add(mesh); p = { mesh, cap }; FOREST.pools.set(key, p); return p;
+}
+function updateForest(p, alt) {   // every 0.3 s: which cells are wanted, and refill the pools from the cells in range
+  if (!FOREST.ready) return;
+  const t = Q.t, high = alt > t.vegAlt, R = t.farR, C = FOREST.CELL;
+  FOREST.cam.value.copy(p); FOREST.near.value = high ? -1e5 : R * FOREST.SHELL;
+  if (!high) {
+    const I0 = Math.floor((p.x - R) / C), I1 = Math.floor((p.x + R) / C), J0 = Math.floor((p.z - R) / C), J1 = Math.floor((p.z + R) / C), want = [];
+    for (let j = J0; j <= J1; j++) for (let i = I0; i <= I1; i++) { const key = (i + 4096) * 8192 + (j + 4096); if (FOREST.cells.has(key)) continue; const d = Math.hypot((i + 0.5) * C - p.x, (j + 0.5) * C - p.z); if (d < R + C && world.forest.at((i + 0.5) * C, (j + 0.5) * C) + world.forest.at(i * C, j * C) + world.forest.at((i + 1) * C, (j + 1) * C) > 0) want.push([d, i, j, key]); }
+    want.sort((a, b) => a[0] - b[0]); FOREST.want = want;
+  } else FOREST.want = [];
+  for (const [key, c] of FOREST.cells) if (Math.hypot(c.cx - p.x, c.cz - p.z) > R + 700) { FOREST.cells.delete(key); FOREST.trees -= c.n; }
+  const onFoot = player.mode === 'walk' || player.mode === 'fly';
+  if (!FOREST.dirty && FOREST.lastP.distanceTo(p) < (onFoot ? 5 : 12)) return;
+  FOREST.dirty = false; FOREST.lastP.copy(p);
+  const counts = new Map(), lists = [];
+  for (const pool of FOREST.pools.values()) pool.mesh.count = 0;
+  if (high) return;
+  // two passes: count, then copy
+  const near2 = (t.nearR * FOREST.NEAR) ** 2, close2 = FOREST.CLOSE * FOREST.CLOSE, far2 = (R * FOREST.FAR) ** 2, clear2 = onFoot ? 1 : -1;   // on foot, no tree whose crown would reach the camera: it would fill the view
+  for (const c of FOREST.cells.values()) {
+    const dc = Math.hypot(c.cx - p.x, c.cz - p.z); if (dc > R + C) continue;
+    for (let i = 0; i < c.n; i++) {
+      const dx = c.mat[i * 16 + 12] - p.x, dz = c.mat[i * 16 + 14] - p.z, d2 = dx * dx + dz * dz; if (clear2 > 0 && d2 < c.rad[i]) continue;
+      const role = d2 < close2 ? 0 : d2 < near2 ? 1 : d2 < far2 && c.far[i] ? 2 : -1; if (role < 0) continue;
+      const key = c.kind[i] * 4 + role; counts.set(key, (counts.get(key) || 0) + 1); lists.push(c, i, key);
+    }
+  }
+  const pools = new Map(); for (const [key, n] of counts) pools.set(key, forestPool(key >> 2, key & 3, n));
+  for (let q = 0; q < lists.length; q += 3) {
+    const c = lists[q], i = lists[q + 1], pool = pools.get(lists[q + 2]), m = pool.mesh, n = m.count;
+    m.instanceMatrix.array.set(c.mat.subarray(i * 16, i * 16 + 16), n * 16); m.instanceColor.array.set(c.col.subarray(i * 3, i * 3 + 3), n * 3); m.count = n + 1;
+  }
+  for (const [key, pool] of FOREST.pools) { const m = pool.mesh; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; m.castShadow = (key & 3) === 0 && t.treeShadow; }
+}
+function stepForest() {   // every frame: build the wanted cells nearest first, within a few milliseconds
+  if (!FOREST.ready || !FOREST.want.length) return;
+  const t0 = performance.now();
+  while (FOREST.want.length && performance.now() - t0 < FOREST.MS) {
+    const [, i, j, key] = FOREST.want.shift(); if (FOREST.cells.has(key)) continue;
+    const c = forestCell(i, j); FOREST.cells.set(key, c); FOREST.trees += c.n; FOREST.dirty = true;
+  }
+}
 // Vegetation by distance: full models near the camera, cheap stand-ins further out, nothing from high above
 function updateVeg(p, alt) {
   if (!world.veg) return;
@@ -5387,6 +5521,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   for (let z = minZ; z < maxZ && wild < 70000; z += S) for (let x = minX; x < maxX && wild < 70000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
     if (m < 0.75 || occAt(px, pz) > 0.2 || roadAt(px, pz, 1.0)) continue;
+    if (world.forest && world.forest.at(px, pz) > 0.08) continue;   // the forest has it (initForest)
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
     // the hills are wooded: denser with height, thinning again toward the bare tops
@@ -8923,7 +9058,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t);
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t); stepForest();
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -9002,7 +9137,7 @@ function updateCull(dt) {
   for (const o of world.wireObjs || []) o.visible = alt < a * 1.1;
   for (const o of world.lightObjs || []) o.visible = alt < a * 1.4 && (o !== world.bulbs || NIGHT.value > 0.5);
   if (world.flagMesh) world.flagMesh.visible = alt < a * 1.4;
-  updateDetail(); updateVeg(p, alt);
+  updateDetail(); updateVeg(p, alt); updateForest(p, alt);
   // from far away (or on Low, where the trees vanish early) a park is just its lawn: take the lime out of it, as the trees would
   if (world.parkDim) { const k = smooth(Q.t.vegAlt * 0.5, Q.t.vegAlt * 0.95, alt); world.parkDim.value.set(1 - 0.45 * k, 1 - 0.3 * k, 1 - 0.5 * k); if (world.parkCanopy) world.parkCanopy.value = k; }   // lawns deepen to a rich green as the real trees drop out
 }
@@ -9252,6 +9387,8 @@ window.amparacan = {
     const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
     return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
   },
+  forestShow(canopy = true) { if (world.canopy) world.canopy.visible = canopy; return !!world.canopy; },
+  forest() { return { km2: world.forest && world.forest.km2, cells: FOREST.cells.size, trees: FOREST.trees, waiting: FOREST.want.length, drawn: [...FOREST.pools.values()].reduce((a, p) => a + p.mesh.count, 0), pools: FOREST.pools.size, near: FOREST.near.value }; },
   streetCheck() {   // how level the streets are across: the height difference between the two kerbs (and before levelling), every 8 m
     const T = world.topo, nat = sampler(T.h0, TOPO.N), across = [], before = [], grade = [];
     for (const f of world.features) {

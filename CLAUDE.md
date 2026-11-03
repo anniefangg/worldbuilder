@@ -268,3 +268,18 @@ pipeline for seeding it.
   - **Band height:** `TOPO.S` metres per band, default 50. Everything measured in metres of height scales with it through `TOPO.k` = S / 50: the summit rounding `DOME`, the hill relief `RELIEF`, the levelling limit `MAXD`, and the woodland/scrub and countryside-tree heights. `?band=100` in the page URL tries another height (local preview or Vercel; e.g. `/map?band=100`).
     - At 100 m the peak is 817 m and the caldera rim 325–360 m around a 257 m floor.
     - Hill land is 20% over 25° and 10% over 35°, against 5% and under 1% at 50 m.
+- **Forest** (`FOREST`, `forestMask`, `buildCanopy`, `forestCell`, `updateForest`, `stepForest`, `initForest`; the author's rule: all land outside the built-up neighbourhoods is heavily forested, only the steepest cliffs bare):
+  - **Where** (`forestMask`, 1024², 17 m, built before the ground): land that is not built up (`1 − smooth(0.04, 0.22, dens)`), not a park (parks keep their own planting), not beach or sea, and not steeper than `FOREST.CLIFF` (0.75, about 37°). That is 37 km² at 50 m bands. The ground under it darkens to a forest floor (`forestFloor`).
+  - **Trees** are generated per 96 m cell (`forestCell`, deterministic per cell): a jittered grid every `SP` 7.6 m, kept with probability `mask^0.6 × 0.93`, off streets, paths, buildings, paving (`occAt`), canals and lakes (`hardAt`).
+  - **Species:** the park mix (`pickSp`, so the colour shares hold). Palms are 72% near the coast (`COAST_PALMS`), 32% in the lowland, 20% inland and 12% high up; ceibas are 6% of the broadleaf.
+  - **Matrices** (and a per-tree clearance radius from its crown) are precomputed per cell. Cells are built nearest first within `MS` 5 ms a frame and dropped beyond farR + 700 m.
+  - **Drawing** (`updateForest`, every 0.3 s from `updateCull`, refilling when the camera moved 5 m on foot or 12 m in the map): pooled InstancedMeshes per species (`forestPool`), with three roles:
+    - close: within `CLOSE` 150 m, casting shadows
+    - near: full models to `nearR × NEAR` (0.8)
+    - far: the cheap proxies, every `THIN`-th (3rd) tree, to `farR × FAR` (0.72)
+  - On foot, a tree whose crown would reach the camera is left out, so it never fills the view.
+  - **Canopy** (`buildCanopy`): the ground grid raised 12–22 m where the forest is (down to the ground at its edges). It has a leaf shader with jittered 9 m crowns (lit tops, dark gaps, a few in flower), fading to plain with distance, and is dithered away within `farR × SHELL` (0.6) of the camera, so the trees take over. From above `vegAlt` the trees go and the canopy covers everything.
+  - **Countryside trees** (`plantTrees`) now only grow where the forest mask is under 0.08.
+  - **Checking:** `window.amparacan.forest()` (km², cells, trees, drawn) and `forestShow(false)` (hides the canopy).
+  - **Frame rate:** about the same as in town on Medium (31 vs 33 ms in the preview).
+  - **Known issue (older than the forest and the hills):** in the preview, on Medium/High the far part of a high view (camera above about 1.5 km) renders black; Low (no AO path) is fine.
