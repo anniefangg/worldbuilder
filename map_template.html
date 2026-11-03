@@ -1268,7 +1268,10 @@ function sampler(data, N) {
 // band is ringed only by higher ground (a caldera floor: a lower band drawn inside a higher one) it dips the same way below
 // the rim. Canals and the lowland ponds are kept at sea level (extra low sources for the plain island), so the city's water
 // stays where it is. A final blur takes the creases off the contour lines and the summit ridges.
-const TOPO = { N: 2048, S: 50, DOME: 44, R: 170, BLUR: 2, RELIEF: 9, STIFF: 400, OPEN: 4, ROUGH: 0.12, MAXD: 40, FLAT_N: 512, PAD_OUT: 6 };
+const TOPO = { N: 2048, S: 50, R: 170, BLUR: 2, STIFF: 400, OPEN: 4, ROUGH: 0.12, FLAT_N: 512, PAD_OUT: 6 };
+{ const q = +new URLSearchParams(location.search).get('band'); if (q >= 20 && q <= 200) TOPO.S = q; }   // ?band=100 tries another band height (metres per band)
+// everything measured in metres of height scales with the band: the summit rounding, the hill relief, how far levelling may move the ground
+TOPO.k = TOPO.S / 50; TOPO.DOME = 0.88 * TOPO.S; TOPO.RELIEF = 0.18 * TOPO.S; TOPO.MAXD = 0.8 * TOPO.S;
 function edt2(src, W, Hh) {   // exact squared Euclidean distance transform (Felzenszwalb & Huttenlocher): src 0 at sources, 1e20 elsewhere; in px²
   const n = Math.max(W, Hh), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), out = new Float64Array(src);
   const line = (len) => {
@@ -1417,7 +1420,7 @@ function topoHeights(lv, anchor) {   // metres above the land's base level, N×N
   for (let i = 0; i < N * N; i++) {
     if (lv[i] < 0) { out[i] = Math.min(out[i], 0); continue; }
     // gentle undulation on the hillsides (none on the lowland, where the town is), so the slopes read as ground rather than a smooth cast
-    const x = ((i % N) + 0.5) * C - EXT / 2, z = (((i / N) | 0) + 0.5) * C - EXT / 2, a = TOPO.RELIEF * smooth(30, 160, out[i]);
+    const x = ((i % N) + 0.5) * C - EXT / 2, z = (((i / N) | 0) + 0.5) * C - EXT / 2, a = TOPO.RELIEF * smooth(30 * TOPO.k, 160 * TOPO.k, out[i]);
     if (a > 0) out[i] += a * (vnoise(x / 210, z / 210) + 0.5 * vnoise(x / 85 + 7, z / 85 - 3) - 0.75);
   }
   return { h: out, comp };
@@ -1796,10 +1799,11 @@ async function buildWorld() {
       tmp.copy(grassA).lerp(grassB, clamp(n1 * 0.75 + n2 * 0.35 - 0.1, 0, 1));
       tmp.lerp(forest, smooth(0.55, 0.8, vnoise(x / 700 + 9, z / 700 - 3)) * 0.6);
       const hm = hillM(x, z), sl = Math.hypot(H(x + 8, z) - H(x - 8, z), H(x, z + 8) - H(x, z - 8)) / 16;
-      tmp.lerp(hillC, smooth(6, 40, hm) * 0.3);
-      const wood = smooth(30, 170, hm) * (1 - smooth(330, 420, hm) * 0.6);   // the wooded hills read darker: a patchwork of deep and lighter canopy
+      const K = TOPO.k;
+      tmp.lerp(hillC, smooth(6 * K, 40 * K, hm) * 0.3);
+      const wood = smooth(30 * K, 170 * K, hm) * (1 - smooth(330 * K, 420 * K, hm) * 0.6);   // the wooded hills read darker: a patchwork of deep and lighter canopy
       tmp.lerp(vnoise(x / 120 + 3, z / 120 - 5) > 0.45 ? highForest : forestB, wood * 0.78 * (0.8 + 0.3 * n1));
-      tmp.lerp(scrub, smooth(300, 420, hm) * 0.45);                         // thinner, drier cover near the tops
+      tmp.lerp(scrub, smooth(300 * K, 420 * K, hm) * 0.45);                         // thinner, drier cover near the tops
       tmp.lerp(n2 > 0.5 ? rockA : rockB, smooth(0.42, 0.95, sl) * 0.65);    // bare rock on the steepest slopes
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
       const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sSL(x, z)));
@@ -5178,7 +5182,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
     // the hills are wooded: denser with height, thinning again toward the bare tops
-    const hm = world.hillM ? world.hillM(px, pz) : 0, wood = smooth(35, 160, hm) * (1 - smooth(330, 420, hm) * 0.7) * (0.35 + 0.65 * smooth(0.3, 0.7, forest));
+    const hm = world.hillM ? world.hillM(px, pz) : 0, wood = smooth(35 * TOPO.k, 160 * TOPO.k, hm) * (1 - smooth(330 * TOPO.k, 420 * TOPO.k, hm) * 0.7) * (0.35 + 0.65 * smooth(0.3, 0.7, forest));
     const p = coast ? 0.26 : Math.max(smooth(0.45, 0.75, forest) * 0.85 + 0.03, wood * 0.7);
     if (rnd() > p) continue;
     bucketAdd(buckets, coast || rnd() < 0.25 ? pickSp(WILD_PALMS, rnd) : pickSp(WILD_TREES, rnd), px, pz, 0.9 + rnd() * 0.35, rnd); wild++;   // countryside: the shorter species too
@@ -8137,7 +8141,7 @@ function groundHit(ray, out, lift = 0.25) {
       let a = prev, b = t; for (let m = 0; m < 24; m++) { const mid = (a + b) / 2, mx = o.x + d.x * mid, mz = o.z + d.z * mid; if (o.y + d.y * mid - gy(mx, mz) > 0) a = mid; else b = mid; }
       return out.set(o.x + d.x * b, o.y + d.y * b, o.z + d.z * b);
     }
-    if (d.y >= 0 && y > 900) return null;   // climbing away above the highest ground
+    if (d.y >= 0 && y > TOPO.S * 10 + 400) return null;   // climbing away above the highest ground
     prev = t; t += clamp(c * 0.45, 0.4, 80);
   }
   return null;
@@ -9036,7 +9040,7 @@ window.amparacan = {
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
   topo(x, z) {   // the terrain: summary, or the band level, height above the base and ground height at a point
     const T = world.topo; if (!T) return null;
-    if (x == null) { let mx = 0, at = 0; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
     const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
     return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
   },
@@ -9049,7 +9053,7 @@ window.amparacan = {
       const x = ox + (i + 0.5) / px * span, z = oz + (j + 0.5) / px * span, h = H(x, z), k = (j * px + i) * 4, e = span / px;
       if (h < 0.05) { img.data[k] = 150; img.data[k + 1] = 200; img.data[k + 2] = 220; img.data[k + 3] = 255; continue; }
       const sx = (H(x + e, z) - H(x - e, z)) / (2 * e), sz = (H(x, z + e) - H(x, z - e)) / (2 * e), sh = clamp(0.72 - (sx * 0.7 + sz * 0.7) * 1.6, 0.15, 1);
-      const t = clamp(h / 460, 0, 1), band = Math.floor(h / 50) % 2 ? 0.92 : 1;
+      const t = clamp(h / (TOPO.S * 9.2), 0, 1), band = Math.floor(h / TOPO.S) % 2 ? 0.92 : 1;
       img.data[k] = (90 + 150 * t) * sh * band; img.data[k + 1] = (150 + 60 * t) * sh * band; img.data[k + 2] = (80 + 60 * t) * sh * band; img.data[k + 3] = 255;
     }
     g.putImageData(img, 0, 0); document.body.appendChild(cv); return { span: Math.round(span), ox: Math.round(ox), oz: Math.round(oz) };

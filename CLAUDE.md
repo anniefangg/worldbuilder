@@ -248,3 +248,6 @@ pipeline for seeding it.
   - **Buildings:** a building stands on its lowest corner (`rec.dig` = how far its uphill side is dug in; with the pads this is small) and gets up to 3 extra floors downhill (`rec.climb`), so its own floor count shows above the uphill ground.
   - **Colours and trees:** terrain colours darken to woodland with height, thin to scrub near the tops and go to rock on the steepest slopes. Countryside trees are denser on the hills.
   - **Checking:** `window.amparacan.topo()` (summary), `topo(x, z)` (band, height) and `topoImage()` (a hillshaded height map over the page).
+  - **Band height:** `TOPO.S` metres per band, default 50. Everything measured in metres of height scales with it through `TOPO.k` = S / 50: the summit rounding `DOME`, the hill relief `RELIEF`, the levelling limit `MAXD`, and the woodland/scrub and countryside-tree heights. `?band=100` in the page URL tries another height (local preview or Vercel; e.g. `/map?band=100`).
+    - At 100 m the peak is 817 m and the caldera rim 325–360 m around a 257 m floor.
+    - Hill land is 20% over 25° and 10% over 35°, against 5% and under 1% at 50 m.
