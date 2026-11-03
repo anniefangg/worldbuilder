@@ -17,6 +17,11 @@ DATA = os.path.join(ROOT, "data", "map", "map_data.json")
 import shutil
 
 src = os.path.join(ROOT, "data", "map", "reorganise15.ai")
+try:   # --reparse re-reads the file the current map was built from
+    import json
+    src = os.path.join(ROOT, "data", "map", json.load(open(DATA))["meta"]["source"])
+except (OSError, ValueError, KeyError):
+    pass
 if "--source" in sys.argv:
     given = sys.argv[sys.argv.index("--source") + 1]
     src = os.path.join(ROOT, "data", "map", os.path.basename(given))

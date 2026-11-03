@@ -23,7 +23,11 @@ import struct
 import sys
 import zlib
 
-SKIP_LAYERS = {"Scratch - island", "Scratch - buildings", "Labels", "Street names"}
+SKIP_LAYERS = {"Labels", "Street names"}   # and every layer whose name starts with "Scratch" (skipped())
+
+
+def skipped(name):
+    return name in SKIP_LAYERS or name.lower().startswith("scratch")
 
 TOKEN = re.compile(
     rb"\((?:\\.|[^\\)])*\)"          # string
@@ -115,7 +119,7 @@ def parse(path):
             closed_flags.append(False)
         lname = layer()
         rings = [sp for sp in subpaths if len(sp) >= 2]
-        if rings and lname and lname not in SKIP_LAYERS and not in_text:
+        if rings and lname and not skipped(lname) and not in_text:
             scale = math.sqrt(abs(ctm[0] * ctm[3] - ctm[1] * ctm[2]))
             if kind in ("fill", "both"):
                 feats.append({"layer": lname, "kind": "fill", "rings": rings, "color": gs["fill"], "evenodd": evenodd})
@@ -668,6 +672,23 @@ def match_feature_ids(fset, previous):
     return kept, len(used_i), len(fset.ids) - kept - len(used_i), len(free) - len(used_k)
 
 
+def elevation_levels(bands):
+    """Topographic bands, each drawn inside the one below it: level 1 is 50-100 m, 2 is 100-150 m, … (the
+    plain island outside every band is 0-50 m). A band's level is its colour's level, and a colour's level
+    is how deeply that colour's shapes are usually nested. So a caldera (a lower band drawn inside a higher
+    one) keeps its own, lower level instead of counting as one more step up."""
+    polys = [(p, c, abs(area(p[0]))) for p, c in bands if abs(area(p[0])) > 1e-3]
+    depth = {}
+    for i, (p, c, a) in enumerate(polys):
+        depth[i] = 1 + sum(1 for j, (q, _, b) in enumerate(polys) if j != i and b > a and pip(p[0][0], q[0]))
+    votes = {}
+    for i, (p, c, a) in enumerate(polys):
+        votes.setdefault(c, {}).setdefault(depth[i], 0)
+        votes[c][depth[i]] += a
+    level = {c: max(v, key=v.get) for c, v in votes.items()}
+    return [(p, level[c]) for p, c, a in polys]
+
+
 def build(src, out):
     feats = parse(src)
     land, elev, streets_poly = PolySet(), PolySet(), PolySet()
@@ -675,6 +696,7 @@ def build(src, out):
     bld_polys = []
     streets, paths, canals, beaches = LineSet("st"), LineSet("pt"), LineSet("cn"), LineSet("bc")
     deep = PolySet()
+    bands = []          # Elevation fills: (poly, colour), levelled by elevation_levels() once all are read
     for f in feats:
         L, k = f["layer"], f["kind"]
         cls = classify(f["color"])
@@ -690,9 +712,7 @@ def build(src, out):
                 if cls == "water":
                     water.add(p, 0.15)
                 else:
-                    # darker green = higher ground
-                    lvl = 2 if f["color"] == "#b7f1b4" else 1
-                    elev.add(p, 0.3, lvl)
+                    bands.append((p, f["color"]))
         elif L == "Beaches" and k == "stroke":
             for r, c in zip(f["rings"], f["closed"]):
                 beaches.add(r, c, 22)
@@ -734,6 +754,11 @@ def build(src, out):
                 else:
                     # plazas, gardens, ponds and kerbs drawn in the Built layer
                     {"pave": pave, "park": parks, "water": water, "street": streets_poly}.get(cls, pave).add(p, 0.1)
+
+    for p, lvl in elevation_levels(bands):
+        elev.add(p, 0.3, lvl)
+    if bands:
+        print("elevation: %d bands, levels %s (each 50 m; the plain island is 0-50 m)" % (len(elev.counts), sorted(set(elev.extra))))
 
     # Stable ids: a hash of each footprint's position. On re-import, footprints that were
     # moved or redrawn inherit the id of the old footprint they overlap, so edits made in

@@ -1022,7 +1022,7 @@ function crtInit() {
   // -- flamingos: standing in the shallows of some lakes
   { const k = critterKind('flamingo', { n: 160, build: K.flamingo, rate: 0.5, bob: 0.03, amp: 0.05, alt: 400, shadow: true }); let i = 0;
     for (const f of lakes) { if (((f.seed >>> 4) % 100) >= 40) continue; const r = f.rings[0], n = 6 + ((f.seed >>> 8) % 9), R = mulberry(f.seed);
-      for (let j = 0; j < n && i < k.n; j++) { const e = ((R() * r.length / 2) | 0) * 2, e2 = (e + 2) % r.length, t = R(), x0 = r[e] + (r[e2] - r[e]) * t, z0 = r[e + 1] + (r[e2 + 1] - r[e + 1]) * t, dx = f.cx - x0, dz = f.cz - z0, L = Math.hypot(dx, dz) || 1, d = 3 + R() * 9, x = x0 + dx / L * d, z = z0 + dz / L * d, h = H(x, z); if (h > 0.1) continue; critterPlace(k, i++, x, Math.max(h, -0.5), z, R() * 6.28, 0.9 + R() * 0.2); } }   // standing in the shallows, legs in the water
+      for (let j = 0; j < n && i < k.n; j++) { const e = ((R() * r.length / 2) | 0) * 2, e2 = (e + 2) % r.length, t = R(), x0 = r[e] + (r[e2] - r[e]) * t, z0 = r[e + 1] + (r[e2 + 1] - r[e + 1]) * t, dx = f.cx - x0, dz = f.cz - z0, L = Math.hypot(dx, dz) || 1, d = 3 + R() * 9, x = x0 + dx / L * d, z = z0 + dz / L * d, h = H(x, z), wl = (world.lakeWL && world.lakeWL.get(f.id)) || 0; if (h > wl + 0.1) continue; critterPlace(k, i++, x, Math.max(h, wl - 0.5), z, R() * 6.28, 0.9 + R() * 0.2); } }   // standing in the shallows, legs in the water
     k.mesh.count = i; k.n = i; }
   // -- pelicans: on the beach sand, facing the sea
   { const k = critterKind('pelican', { n: 140, build: K.pelican, rate: 0.6, bob: 0.02, alt: 400, shadow: true }); let i = 0;
@@ -1260,6 +1260,90 @@ function sampler(data, N) {
   };
 }
 
+// ─────────────────────────── topography ───────────────────────────
+// The Elevation layer's bands are 50 m contours, each drawn inside the one below it: the plain island is 0–50 m, band level 1 is
+// 50–100 m, 2 is 100–150 m, … A band's edge is the contour at its lower height. Between two contours the ground climbs
+// smoothly in proportion to the distance from each (h = S·L + S·dLo / (dLo + dHi)), so the slopes are continuous, never
+// terraces. Where a band holds no higher band (a summit or a ridge) it rounds off up to TOPO.DOME above its contour; where a
+// band is ringed only by higher ground (a caldera floor: a lower band drawn inside a higher one) it dips the same way below
+// the rim. Canals and the lowland ponds are kept at sea level (extra low sources for the plain island), so the city's water
+// stays where it is. A final blur takes the creases off the contour lines and the summit ridges.
+const TOPO = { N: 2048, S: 50, DOME: 44, R: 170, BLUR: 2, RELIEF: 9 };
+function edt2(src, W, Hh) {   // exact squared Euclidean distance transform (Felzenszwalb & Huttenlocher): src 0 at sources, 1e20 elsewhere; in px²
+  const n = Math.max(W, Hh), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), out = new Float64Array(src);
+  const line = (len) => {
+    let k = 0; v[0] = 0; z[0] = -1e30; z[1] = 1e30;
+    for (let q = 1; q < len; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+      k++; v[k] = q; z[k] = s; z[k + 1] = 1e30;
+    }
+    k = 0; for (let q = 0; q < len; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+  };
+  for (let x = 0; x < W; x++) { for (let y = 0; y < Hh; y++) f[y] = out[y * W + x]; line(Hh); for (let y = 0; y < Hh; y++) out[y * W + x] = d[y]; }
+  for (let y = 0; y < Hh; y++) { for (let x = 0; x < W; x++) f[x] = out[y * W + x]; line(W); for (let x = 0; x < W; x++) out[y * W + x] = d[x]; }
+  return out;
+}
+function topoLevels(land, elev, elevLv) {   // Int8Array N×N: -1 sea, 0 the plain island, 1… the bands (painted big to small, so nested bands land on top)
+  const N = TOPO.N, order = elev.map((p, i) => i).sort((a, b) => Math.abs(ringArea(elev[b][0])) - Math.abs(ringArea(elev[a][0])));
+  const r = raster(N, (g) => {
+    g.fillStyle = 'rgb(10,10,10)'; for (const p of land) g.fill(path2d(p), 'evenodd');
+    for (const i of order) { const v = 10 + elevLv[i] * 20; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(elev[i]), 'evenodd'); }
+  });
+  const lv = new Int8Array(N * N);
+  for (let i = 0; i < lv.length; i++) { const v = r[i] * 255; lv[i] = v < 5 ? -1 : Math.max(0, Math.round((v - 10) / 20)); }
+  return lv;
+}
+function topoHeights(lv, anchor) {   // metres above the land's base level, N×N
+  const N = TOPO.N, S = TOPO.S, C = EXT / N, h = new Float32Array(N * N), lab = new Int32Array(N * N).fill(-1), comp = [];
+  // connected regions of one level, and whether each touches lower ground, higher ground, or both
+  const stack = new Int32Array(N * N);
+  for (let i0 = 0; i0 < N * N; i0++) {
+    if (lv[i0] < 0 || lab[i0] >= 0) continue;
+    const L = lv[i0], id = comp.length, c = { L, lo: false, hi: false }; comp.push(c);
+    let sp = 0; stack[sp++] = i0; lab[i0] = id;
+    while (sp) {
+      const i = stack[--sp], x = i % N, y = (i / N) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < N - 1 ? i + 1 : -1, y > 0 ? i - N : -1, y < N - 1 ? i + N : -1]) {
+        if (j < 0) continue; const m = lv[j];
+        if (m === L) { if (lab[j] < 0) { lab[j] = id; stack[sp++] = j; } } else if (m < L) c.lo = true; else c.hi = true;
+      }
+    }
+  }
+  const maxL = lv.reduce((a, b) => Math.max(a, b), 0);
+  for (let L = 0; L <= maxL; L++) {
+    let x0 = N, y0 = N, x1 = -1, y1 = -1;
+    for (let i = 0; i < N * N; i++) if (lv[i] === L) { const x = i % N, y = (i / N) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) continue;
+    x0 = Math.max(0, x0 - 3); y0 = Math.max(0, y0 - 3); x1 = Math.min(N - 1, x1 + 3); y1 = Math.min(N - 1, y1 + 3);
+    const W = x1 - x0 + 1, Hh = y1 - y0 + 1, lo = new Float64Array(W * Hh), hi = new Float64Array(W * Hh);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) { const i = (y + y0) * N + x + x0, m = lv[i], k = y * W + x; lo[k] = m < L || (L === 0 && anchor[i]) ? 0 : 1e20; hi[k] = m > L ? 0 : 1e20; }
+    const dLo = edt2(lo, W, Hh), dHi = edt2(hi, W, Hh), dist = (d2) => Math.max(0, Math.sqrt(d2) - 0.5) * C;
+    // a summit or a caldera floor rounds off over a distance that suits its size, so even a small top climbs well into its band
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = (y + y0) * N + x + x0; if (lv[i] !== L) continue;
+      const c = comp[lab[i]], k = y * W + x;
+      if (c.lo !== c.hi) c.far = Math.max(c.far || 0, dist(c.lo ? dLo[k] : dHi[k]));
+    }
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = (y + y0) * N + x + x0; if (lv[i] !== L) continue;
+      const c = comp[lab[i]], k = y * W + x, dl = dist(dLo[k]), dh = dist(dHi[k]), R = clamp((c.far || 0) * 0.5, 20, TOPO.R);
+      h[i] = c.lo && c.hi ? S * L + S * dl / (dl + dh + 1e-6)
+        : c.lo ? S * L + TOPO.DOME * (1 - Math.exp(-dl / R))
+        : c.hi ? S * (L + 1) - TOPO.DOME * (1 - Math.exp(-dh / R))
+        : S * L + S / 2;
+    }
+  }
+  const out = blur(h, N, TOPO.BLUR, 3);
+  for (let i = 0; i < N * N; i++) {
+    if (lv[i] < 0) { out[i] = Math.min(out[i], 0); continue; }
+    // gentle undulation on the hillsides (none on the lowland, where the town is), so the slopes read as ground rather than a smooth cast
+    const x = ((i % N) + 0.5) * C - EXT / 2, z = (((i / N) | 0) + 0.5) * C - EXT / 2, a = TOPO.RELIEF * smooth(30, 160, out[i]);
+    if (a > 0) out[i] += a * (vnoise(x / 210, z / 210) + 0.5 * vnoise(x / 85 + 7, z / 85 - 3) - 0.75);
+  }
+  return { h: out, comp };
+}
+
 // ─────────────────────────── geometry builders ───────────────────────────
 class Geo {
   constructor(extra = []) { this.p = []; this.n = []; this.c = []; this.uv = []; this.i = []; this.extra = {}; for (const [k] of extra) this.extra[k] = []; this.extraDef = extra; }
@@ -1293,6 +1377,23 @@ function triangulate(rings) {
   const contour = loops[0], holes = loops.slice(1);
   const tris = THREE.ShapeUtils.triangulateShape(contour, holes);
   return { pts: contour.concat(...holes), tris };
+}
+// Split triangles until no edge is longer than maxLen, so a flat-triangulated plaza or park follows the hills. Longest edge first; midpoints
+// are shared through a cache keyed by the edge's two vertices, so neighbours split a shared edge at the same points (no cracks).
+const OVERLAY_EDGE = 10;
+function subdivide({ pts, tris }, maxLen) {
+  pts = pts.slice(); const mids = new Map(), out = [], L2 = maxLen * maxLen;
+  const mid = (a, b) => { const k = a < b ? a * 1048576 + b : b * 1048576 + a; let m = mids.get(k); if (m === undefined) { m = pts.length; pts.push(new THREE.Vector2((pts[a].x + pts[b].x) / 2, (pts[a].y + pts[b].y) / 2)); mids.set(k, m); } return m; };
+  const d2 = (a, b) => (pts[a].x - pts[b].x) ** 2 + (pts[a].y - pts[b].y) ** 2;
+  const stack = tris.map((t) => t.slice());
+  while (stack.length) {
+    const [a, b, c] = stack.pop(), ab = d2(a, b), bc = d2(b, c), ca = d2(c, a), m = Math.max(ab, bc, ca);
+    if (m <= L2) { out.push([a, b, c]); continue; }
+    if (m === ab) { const p = mid(a, b); stack.push([a, p, c], [p, b, c]); }
+    else if (m === bc) { const p = mid(b, c); stack.push([a, b, p], [a, p, c]); }
+    else { const p = mid(c, a); stack.push([a, b, p], [p, b, c]); }
+  }
+  return { pts, tris: out };
 }
 function ringArea(r) { let a = 0; for (let i = 0, n = r.length; i < n; i += 2) { const j = (i + 2) % n; a += r[i] * r[j + 1] - r[j] * r[i + 1]; } return a / 2; }
 
@@ -1398,21 +1499,47 @@ async function buildWorld() {
   // ---- rasters: coastline mask, depth, hills, beaches, occupancy
   await progress('Shaping the coastline', 10);
   const N = 2048;
-  const coast = (g) => { g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd'); g.fillStyle = '#000'; for (const p of water) g.fill(path2d(p), 'evenodd'); };
+  // the elevation bands first: a lake up in the hills keeps its own water level (world.highLakes), the rest sit at sea level
+  const topoLv = topoLevels(land, elev, elevLv), lvAt = (x, z) => { const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1); return topoLv[j * TOPO.N + i]; };
+  const lakeLevel = (p) => { const r = p[0]; let best = -1; for (let i = 0; i < r.length; i += 2) best = Math.max(best, lvAt(r[i], r[i + 1])); return best; };
+  const lowWater = water.filter((p) => lakeLevel(p) < 1), highWater = water.filter((p) => lakeLevel(p) >= 1);
+  if (highWater.length) {   // a lake drawn over a band (or cut out of it) takes the band's level, so its ground is that band's, not a hollow
+    const r = raster(TOPO.N, (g) => { for (const p of highWater) { const v = 10 + lakeLevel(p) * 20; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(p), 'evenodd'); } });
+    for (let i = 0; i < r.length; i++) { const v = r[i] * 255; if (v > 20) topoLv[i] = Math.max(topoLv[i], Math.round((v - 10) / 20)); }
+  }
+  const coast = (g) => { g.fillStyle = '#fff'; for (const p of land) g.fill(path2d(p), 'evenodd'); g.fillStyle = '#000'; for (const p of lowWater) g.fill(path2d(p), 'evenodd'); };
   const maskRaw = raster(N, (g) => { coast(g); g.strokeStyle = '#000'; for (const c of canals) { g.lineWidth = c.w + 6; g.stroke(line2d(c.pts)); } });   // with the canals: what the water shader sees
   const maskNoCanal = blur(raster(N, coast), N, 1, 2);                                                                                                  // without them: the land stays at full height right up to the canal walls
   const maskS = blur(maskRaw, N, 1, 2), maskL = blur(maskRaw.slice(), N, 24, 3);
   const deepR = blur(raster(512, (g) => { g.fillStyle = '#fff'; for (const p of deep) g.fill(path2d(p), 'evenodd'); }), 512, 10, 2);
-  const elevR = blur(raster(1024, (g) => {
-    elev.forEach((p, i) => { const v = elevLv[i] * 100; g.fillStyle = `rgb(${v},${v},${v})`; g.fill(path2d(p), 'evenodd'); });
-  }), 1024, 9, 3);
+  await progress('Raising the hills', 13);
+  const anchorR = raster(TOPO.N, (g) => { g.fillStyle = '#fff'; g.strokeStyle = '#fff'; for (const c of canals) { g.lineWidth = c.w + 2; g.stroke(line2d(c.pts)); } for (const p of lowWater) g.fill(path2d(p), 'evenodd'); });
+  const anchor = new Uint8Array(TOPO.N * TOPO.N); for (let i = 0; i < anchor.length; i++) anchor[i] = anchorR[i] > 0.4 ? 1 : 0;
+  const t0 = performance.now(), topo = topoHeights(topoLv, anchor);
+  const sTopo = sampler(topo.h, TOPO.N);
+  world.topo = { lv: topoLv, h: topo.h, comps: topo.comp.length, ms: Math.round(performance.now() - t0), lvAt };
+  // a lake up in the hills: its water lies flat just below the lowest point of its shore, and the ground under it dips away
+  world.lakeWL = new Map();
+  const highLakes = highWater.map((p) => {
+    const r = p[0], bb = [Infinity, Infinity, -Infinity, -Infinity]; let W = Infinity;
+    for (let i = 0; i < r.length; i += 2) { W = Math.min(W, sTopo(r[i], r[i + 1])); bb[0] = Math.min(bb[0], r[i]); bb[1] = Math.min(bb[1], r[i + 1]); bb[2] = Math.max(bb[2], r[i]); bb[3] = Math.max(bb[3], r[i + 1]); }
+    W -= 0.3; world.lakeWL.set(p.id, LAND_Y + W);
+    return { p, W, bb, edge: [...r, r[0], r[1]] };
+  });
+  world.highLakes = highLakes;
   const beachR = blur(raster(N, (g) => { g.strokeStyle = '#fff'; for (const b of beaches) { g.lineWidth = b.w; g.stroke(line2d(b.pts)); } }), N, 2, 1);
   // built-up density: courtyards and back lots between buildings read as paved patios, not lawns
   const urbanR = blur(raster(N, (g) => { g.fillStyle = '#fff'; for (const p of bPolys) g.fill(path2d(p), 'evenodd'); for (const p of pave) g.fill(path2d(p), 'evenodd'); }), N, 3, 2);
   const sUrban = sampler(urbanR, N);
-  const sS = sampler(maskS, N), sSL = sampler(maskNoCanal, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sElev = sampler(elevR, 1024), sBeach = sampler(beachR, N);
+  const sS = sampler(maskS, N), sSL = sampler(maskNoCanal, N), sL = sampler(maskL, N), sDeep = sampler(deepR, 512), sBeach = sampler(beachR, N);
   sMask = sSL;
-  const hillM = (x, z) => sElev(x, z) * (255 / 100) * 9;        // level 1 ≈ 9 m, level 2 ≈ 18 m
+  // hills: the topography (above); a lake in the hills levels the ground beneath its water (highLakeDip)
+  const highLakeDip = (x, z) => {
+    for (const q of highLakes) if (x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && pointInRings(x, z, q.p)) return Math.min(0, q.W - Math.min(4, 0.6 + distToLine(q.edge, x, z) * 0.3) - sTopo(x, z));
+    return 0;
+  };
+  const hillM = (x, z) => sTopo(x, z) + (highLakes.length ? highLakeDip(x, z) : 0);
+  world.hillM = hillM;
   // the seabed shelves up to ~1.5 m at the waterline, so waves feel the bottom and break on the beach
   const seaDepth = (x, z) => 3 * (1 - sS(x, z)) + 17 * Math.pow(Math.max(0, (0.5 - sL(x, z)) * 2), 1.3) + 14 * sDeep(x, z);
   // canals are straight-sided trenches: the land keeps its full height to the wall, the water inside sits at -2.2 m (`canalIn`: metres inside the nearest canal, negative outside)
@@ -1554,6 +1681,12 @@ async function buildWorld() {
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(160000, 160000).rotateX(-Math.PI / 2), mat);
     sea.receiveShadow = false; scene.add(sea); world.sea = sea;
     world.water = mat;
+    for (const q of highLakes) {
+      const { pts, tris } = triangulate(q.p), pos = new Float32Array(pts.length * 3), lg = new THREE.BufferGeometry();
+      pts.forEach((v, i) => { pos[i * 3] = v.x; pos[i * 3 + 1] = LAND_Y + q.W; pos[i * 3 + 2] = v.y; });
+      lg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); lg.setIndex(tris.flatMap((t) => [t[0], t[2], t[1]]));   // (x, y) → (x, z) mirrors the winding: face up
+      const lm = new THREE.Mesh(lg, mat); lm.renderOrder = -1; scene.add(lm);
+    }
   }
 
   // ---- terrain mesh over the island's bounding box
@@ -1564,12 +1697,12 @@ async function buildWorld() {
   {
     const STEP = 16, M = 300, x0 = minX - M, z0 = minZ - M, nx = Math.ceil((maxX - minX + 2 * M) / STEP) + 1, nz = Math.ceil((maxZ - minZ + 2 * M) / STEP) + 1;
     const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
-    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
+    const grassA = linear('#93cf62'), grassB = linear('#5f9f43'), forest = linear('#4f8a3b'), sand = linear('#f1dca4'), wet = linear('#cdb98d'), hillC = linear('#a9b866'), highForest = linear('#3d7334'), scrub = linear('#8d9a5a'), rockA = linear('#8b806b'), rockB = linear('#9d927c'), patioA = linear('#dcdcd6'), patioB = linear('#cdd0cc');
     const tmp = new THREE.Color();
     // ponds set in a park or paving: the 16 m ground mesh is too coarse to dip below the water inside a small pond, so only its middle showed
     // as water and the rest as a sandy rim. Every ground vertex within POND_SINK of such a pond (all hidden under the lawn or paving, which
     // is drawn at the true height) drops below the water, so the water fills the pond's whole outline; buildPondBanks adds the bank.
-    const POND_SINK = 24, ponds = water.filter((p) => { const r = p[0]; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= r.length / 2; cz /= r.length / 2; return [...parks, ...pave].some((q) => pointInRings(cx, cz, q)); })
+    const POND_SINK = 24, ponds = lowWater.filter((p) => { const r = p[0]; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= r.length / 2; cz /= r.length / 2; return [...parks, ...pave].some((q) => pointInRings(cx, cz, q)); })
       .map((p) => { const r = p[0]; let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < r.length; i += 2) { a = Math.min(a, r[i]); c = Math.max(c, r[i]); b = Math.min(b, r[i + 1]); d = Math.max(d, r[i + 1]); } return { p, edge: [...r, r[0], r[1]], bb: [a - POND_SINK, b - POND_SINK, c + POND_SINK, d + POND_SINK] }; });
     world.ponds = ponds;
     const sunk = (x, z) => ponds.some((q) => x > q.bb[0] && x < q.bb[2] && z > q.bb[1] && z < q.bb[3] && (pointInRings(x, z, q.p) || distToLine(q.edge, x, z) < POND_SINK));
@@ -1579,7 +1712,11 @@ async function buildWorld() {
       const n1 = vnoise(x / 260, z / 260), n2 = vnoise(x / 55, z / 55);
       tmp.copy(grassA).lerp(grassB, clamp(n1 * 0.75 + n2 * 0.35 - 0.1, 0, 1));
       tmp.lerp(forest, smooth(0.55, 0.8, vnoise(x / 700 + 9, z / 700 - 3)) * 0.6);
-      tmp.lerp(hillC, smooth(4, 16, hillM(x, z)) * 0.35);
+      const hm = hillM(x, z), sl = Math.hypot(H(x + 8, z) - H(x - 8, z), H(x, z + 8) - H(x, z - 8)) / 16;
+      tmp.lerp(hillC, smooth(6, 40, hm) * 0.3);
+      tmp.lerp(highForest, smooth(35, 200, hm) * (1 - smooth(330, 420, hm) * 0.6) * 0.62 * (0.75 + 0.5 * n1));   // the wooded hills read darker
+      tmp.lerp(scrub, smooth(300, 420, hm) * 0.45);                         // thinner, drier cover near the tops
+      tmp.lerp(n2 > 0.5 ? rockA : rockB, smooth(0.42, 0.95, sl) * 0.65);    // bare rock on the steepest slopes
       tmp.lerp(n2 > 0.5 ? patioA : patioB, smooth(0.12, 0.32, sUrban(x, z)));
       const shore = Math.max(sBeach(x, z), 1 - smooth(0.5, 0.75, sSL(x, z)));
       tmp.lerp(sand, clamp(shore * 1.2, 0, 1));
@@ -1619,7 +1756,7 @@ async function buildWorld() {
     if (outer.length < 6) continue;
     const rnd = mulberry(parseInt(bIds[bi].slice(1), 16));
     let cx = 0, cz = 0; for (let i = 0; i < outer.length; i += 2) { cx += outer[i]; cz += outer[i + 1]; } cx /= outer.length / 2; cz /= outer.length / 2;
-    let base = Infinity; for (let i = 0; i < outer.length; i += 2) base = Math.min(base, H(outer[i], outer[i + 1]));
+    let base = Infinity, hi = -Infinity; for (let i = 0; i < outer.length; i += 2) { const h = H(outer[i], outer[i + 1]); base = Math.min(base, h); hi = Math.max(hi, h); }
     base = Math.max(base, LAND_Y - 0.4);
     const jitter = rnd() * 0.6, area = Math.abs(ringArea(outer)), nv = outer.length / 2;
     const wall = pickWeighted(style.walls, rnd()), shutters = style.shutters[(rnd() * style.shutters.length) | 0];
@@ -1628,7 +1765,7 @@ async function buildWorld() {
     const roofPick = rnd(), balconies = rnd() < style.balconyShare, flowers = rnd() < 0.22 ? 1 + ((rnd() * 3) | 0) : 0;
     const tile = Math.floor(cx / TILE + TN / 2) * 1000 + Math.floor(cz / TILE + TN / 2);
     const rec = {
-      idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, area, nv, convex, tile, top: base + 10,
+      idx: world.buildings.length, id: bIds[bi], rings, cx, cz, base, dig: Math.max(0, hi - base), area, nv, convex, tile, top: base + 10,
       flowers, seed: parseInt(bIds[bi].slice(1), 16),
       auto: { facade: 'standard', wall, shutters, roofType: pitched ? 'hip' : 'flat', floors: bFloors[bi], groundFloor: 'arches', windows: balconies ? 'balconies' : 'shutters', jitter,
         tileRoof: style.tileRoofs[(roofPick * style.tileRoofs.length) | 0], flatRoof: style.flatRoofs[(roofPick * style.flatRoofs.length) | 0] },
@@ -2159,7 +2296,10 @@ function emitBuilding(geo, rec, dg = geo) {   // dg: where the fine detail goes 
   if ((rec.replace || null) !== (s.replace || null)) { rec.replace = s.replace || null; (world.replaceDirty || (world.replaceDirty = new Set())).add(rec); }
   if (gone) { rec.top = base; rec.style = s; return; }
   const RR = roundedRings(rec);
-  const gf = 4.0, fh = 3.3, top = base + gf + (s.floors - 1) * fh + s.jitter;
+  // on a hillside the walls stand on the lowest corner and the uphill side is dug in: up to three extra floors downhill keep the
+  // building's own floor count showing above the uphill ground, as hillside towns are built
+  const gf = 4.0, fh = 3.3, climb = Math.min(3, Math.round(Math.max(0, (rec.dig || 0) - 1.2) / fh)), top = base + gf + (s.floors - 1 + climb) * fh + s.jitter;
+  rec.climb = climb;
   rec.top = top; rec.style = s;
   const cWall = _cW.copy(linear(s.wall)), cShut = _cS.copy(linear(s.shutters)), cPar = _cP;
   const neo = s.facade === 'neoclassical';
@@ -4336,25 +4476,27 @@ function polyOverlay(items, uvScale) {
   const geo = new Geo(), c = new THREE.Color();
   for (const { rings, color, lift = 0 } of items) {
     if (rings[0].length < 6) continue;
-    const { pts, tris } = triangulate(rings); c.copy(linear(color));
+    const { pts, tris } = subdivide(triangulate(rings), OVERLAY_EDGE); c.copy(linear(color));
     const base = geo.count;
     for (const v of pts) geo.v(v.x, H(v.x, v.y) + LIFT + lift, v.y, 0, 1, 0, c, v.x / uvScale, v.y / uvScale);
     for (const t of tris) geo.triUp(base + t[0], base + t[1], base + t[2]);
   }
   return geo;
 }
+const RIBBON_STEP = 8;   // metres between ribbon cross-sections, so streets follow the hills
 function ribbonOverlay(items) {
   const geo = new Geo([['aFade', 1]]), c = new THREE.Color();
   const V = (x, y, z, col, u, w, fade) => { const i = geo.v(x, y, z, 0, 1, 0, col, u, w); geo.extra.aFade.push(fade); return i; };   // aFade: 1 opaque, 0 clear
   const cA = new THREE.Color(), cB = new THREE.Color(), cE = new THREE.Color();
   for (const { pts, w, color, blend, free, fans } of items) {
     const hw = w / 2, T = 4; c.copy(linear(color));
-    const P = []; // densify so ribbons follow the terrain
+    const P = [], corner = new Set(); // densify so ribbons follow the terrain (corner: indices of the line's own vertices)
     for (let i = 0; i < pts.length - 2; i += 2) {
-      const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 20));
+      const ax = pts[i], az = pts[i + 1], bx = pts[i + 2], bz = pts[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / RIBBON_STEP));
+      corner.add(P.length / 2);
       for (let s = 0; s < n; s++) P.push(lerp(ax, bx, s / n), lerp(az, bz, s / n));
     }
-    P.push(pts[pts.length - 2], pts[pts.length - 1]);
+    corner.add(P.length / 2); P.push(pts[pts.length - 2], pts[pts.length - 1]);
     // UVs run with the street (v) and across it (u), so rows of setts cross the carriageway
     let along = 0, total = 0;
     for (let i = 0; i < P.length - 2; i += 2) total += Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]);
@@ -4365,20 +4507,21 @@ function ribbonOverlay(items) {
     for (let i = 0; i < P.length - 2; i += 2) {
       const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], len = Math.hypot(bx - ax, bz - az);
       if (len < 0.01) continue;
-      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, ha = H(ax, az) + LIFT, hb = H(bx, bz) + LIFT;
+      const nx = -(bz - az) / len * hw, nz = (bx - ax) / len * hw, G = (x, z) => H(x, z) + LIFT;
       const v0 = along / T, v1 = (along + len) / T, u0 = hw / T; along += len;
       const ca = blend ? cA.copy(tintAt(along - len)) : c, cb = blend ? cB.copy(tintAt(along)) : c;
       const fa = fadeAt(along - len), fb = fadeAt(along);
-      const a0 = V(ax + nx, ha, az + nz, ca, u0, v0, fa), a1 = V(ax - nx, ha, az - nz, ca, -u0, v0, fa);
-      const b0 = V(bx + nx, hb, bz + nz, cb, u0, v1, fb), b1 = V(bx - nx, hb, bz - nz, cb, -u0, v1, fb);
+      const a0 = V(ax + nx, G(ax + nx, az + nz), az + nz, ca, u0, v0, fa), a1 = V(ax - nx, G(ax - nx, az - nz), az - nz, ca, -u0, v0, fa);
+      const b0 = V(bx + nx, G(bx + nx, bz + nz), bz + nz, cb, u0, v1, fb), b1 = V(bx - nx, G(bx - nx, bz - nz), bz - nz, cb, -u0, v1, fb);
       geo.triUp(a0, a1, b0); geo.triUp(a1, b1, b0);
     }
     let acc = 0;
     if (hw > 0.9) for (let i = 0; i < P.length; i += 2) { // round joints, in the colour the ribbon has there (an untinted disc showed as an octagon where the colour blends)
       if (i) acc += Math.hypot(P[i] - P[i - 2], P[i + 1] - P[i - 1]);
+      if (!corner.has(i / 2)) continue;   // between the line's own vertices the ribbon runs straight, with no gap to fill
       const fd = fadeAt(acc); if (fd < 0.02) continue;
       const x = P[i], z = P[i + 1], h = H(x, z) + LIFT, cj = blend ? cA.copy(tintAt(acc)) : c, NJ = 16, ctr = V(x, h, z, cj, x / 4, z / 4, fd), first = geo.count;
-      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, h, pz, cj, px / 4, pz / 4, fd); }
+      for (let s = 0; s < NJ; s++) { const a = s / NJ * Math.PI * 2, px = x + Math.cos(a) * hw, pz = z + Math.sin(a) * hw; V(px, H(px, pz) + LIFT, pz, cj, px / 4, pz / 4, fd); }
       for (let s = 0; s < NJ; s++) geo.triUp(ctr, first + s, first + (s + 1) % NJ);
     }
     // rounded inside corners where this ribbon meets another (junctionFillets): a fan from the corner point to the arc
@@ -4945,12 +5088,14 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   rebuildParkFences();
   // Countryside: forest clumps and scattered palms near the coast
   const { minX, minZ, maxX, maxZ } = world.bounds; let wild = 0; const S = 21;
-  for (let z = minZ; z < maxZ && wild < 60000; z += S) for (let x = minX; x < maxX && wild < 60000; x += S) {
+  for (let z = minZ; z < maxZ && wild < 70000; z += S) for (let x = minX; x < maxX && wild < 70000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
     if (m < 0.75 || occAt(px, pz) > 0.2 || roadAt(px, pz, 1.0)) continue;
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
-    const p = coast ? 0.26 : smooth(0.45, 0.75, forest) * 0.85 + 0.03;
+    // the hills are wooded: denser with height, thinning again toward the bare tops
+    const hm = world.hillM ? world.hillM(px, pz) : 0, wood = smooth(35, 160, hm) * (1 - smooth(330, 420, hm) * 0.7) * (0.35 + 0.65 * smooth(0.3, 0.7, forest));
+    const p = coast ? 0.26 : Math.max(smooth(0.45, 0.75, forest) * 0.85 + 0.03, wood * 0.7);
     if (rnd() > p) continue;
     bucketAdd(buckets, coast || rnd() < 0.25 ? pickSp(WILD_PALMS, rnd) : pickSp(WILD_TREES, rnd), px, pz, 0.9 + rnd() * 0.35, rnd); wild++;   // countryside: the shorter species too
   }
@@ -7795,7 +7940,7 @@ function measureRaw(sx, sy) {
   if (player.mode === 'plan') { const [x, z] = planWorld(sx, sy); return new THREE.Vector3(x, 0, z); }
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   for (const h of raycaster.intersectObjects([...world.tileMeshes.values()], false)) { if (!isSunk(h.object.geometry.attributes.aBid.getX(h.face.a))) return h.point.clone(); }   // roofs and walls count
-  return raycaster.ray.intersectPlane(_ground, _gp) ? _gp.clone() : null;
+  return groundHit(raycaster.ray, _gp) ? _gp.clone() : null;
 }
 function measureClick(sx, sy) {
   const p = measurePointAt(sx, sy); if (!p) return;
@@ -7898,13 +8043,28 @@ function spawnPoint() {
 const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
 const _sandPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.3), _sp = new THREE.Vector3();
 const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(LAND_Y + 0.25)), _gp = new THREE.Vector3();
+// Where a ray first meets the ground (the terrain, or the sea's surface): marched in steps that shrink with the clearance, then refined.
+function groundHit(ray, out, lift = 0.25) {
+  const o = ray.origin, d = ray.direction, gy = (x, z) => Math.max(H(x, z), 0) + lift;
+  let t = 0, prev = 0;
+  for (let k = 0; k < 4000 && t < 40000; k++) {
+    const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t, c = y - gy(x, z);
+    if (c <= 0) {
+      let a = prev, b = t; for (let m = 0; m < 24; m++) { const mid = (a + b) / 2, mx = o.x + d.x * mid, mz = o.z + d.z * mid; if (o.y + d.y * mid - gy(mx, mz) > 0) a = mid; else b = mid; }
+      return out.set(o.x + d.x * b, o.y + d.y * b, o.z + d.z * b);
+    }
+    if (d.y >= 0 && y > 900) return null;   // climbing away above the highest ground
+    prev = t; t += clamp(c * 0.45, 0.4, 80);
+  }
+  return null;
+}
 function pick3D(sx, sy) {   // a building under the cursor, else the park, street, canal… on the ground
   _ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera);
   const hits = raycaster.intersectObjects([...world.tileMeshes.values()], false);
   const rh = world.replaceMeshes && world.replaceMeshes.length ? raycaster.intersectObjects(world.replaceMeshes, false)[0] : null;   // a galleon, a breakwater…
   if (rh && (!hits.length || rh.distance < hits[0].distance)) return layers.building ? rh.object.userData.bid : null;
   for (const h of hits) { const idx = h.object.geometry.attributes.aBid.getX(h.face.a); if (!isSunk(idx)) return layers.building ? world.buildings[idx].id : null; }   // a building you can't pick still blocks the click
-  if (!raycaster.ray.intersectPlane(_ground, _gp)) return null;
+  if (!groundHit(raycaster.ray, _gp)) return null;
   const tol = clamp(camera.position.distanceTo(_gp) / 300, 0.5, 12), f = featureAt(_gp.x, _gp.z, tol, true);
   if (f >= 0 && world.features[f].kind !== 'beach') return world.features[f].id;
   // sand lies lower than the street plane, so at a low angle the ray meets it a little further on: look there too
@@ -7938,7 +8098,7 @@ function initPegman() {
     if (!over(cx, cy)) return null;
     let x, z, r;
     if (player.mode === 'plan') { [x, z] = planWorld(cx, cy); r = clamp(26 / plan.scale, 6, 400); }
-    else { _ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera); if (!raycaster.ray.intersectPlane(_ground, _gp)) return null; x = _gp.x; z = _gp.z; r = clamp(camera.position.distanceTo(_gp) / 22, 10, 140); }
+    else { _ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(_ndc, camera); if (!groundHit(raycaster.ray, _gp)) return null; x = _gp.x; z = _gp.z; r = clamp(camera.position.distanceTo(_gp) / 22, 10, 140); }
     const road = nearestRoad(x, z, r);
     if (road) return { x: road.x, z: road.z, road };
     return H(x, z) > 0.4 ? { x, z, road: null } : null;
@@ -8021,7 +8181,7 @@ function initControls() {
   canvas.addEventListener('dblclick', (e) => {
     if (player.mode !== 'map') return;
     raycaster.setFromCamera(_ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hit = new THREE.Vector3(); if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y), hit)) dropIn(hit.x, hit.z);
+    const hit = new THREE.Vector3(); if (groundHit(raycaster.ray, hit, 0)) dropIn(hit.x, hit.z);
   });
   $('measure-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMeasure(); });
   $('mm-xy').addEventListener('click', (e) => { e.stopPropagation(); toggleCoords(); });
@@ -8437,6 +8597,7 @@ function update(dt, t) {
       if (tween.t >= 1) tween = null;
     }
     controls.update();
+    { const g = Math.max(H(camera.position.x, camera.position.z), 0) + 6; if (camera.position.y < g) { const up = g - camera.position.y; camera.position.y += up; controls.target.y += up * 0.5; } }   // never down inside a hill
     character.position.copy(player.pos);
   }
   stepAnim(dt, t);
@@ -8789,6 +8950,25 @@ window.amparacan = {
   buildingInfo(id) { const r = world.byId.get(id); if (!r) return null; const sample = []; for (let a = 0; a < 16; a++) for (const d of [10, 25, 50]) sample.push([a, d, +H(r.cx + Math.cos(a / 16 * 6.283) * d, r.cz + Math.sin(a / 16 * 6.283) * d).toFixed(1)]); return { cx: +r.cx.toFixed(1), cz: +r.cz.toFixed(1), base: +r.base.toFixed(2), area: Math.round(r.area), nv: r.nv, ring: [...r.rings[0]].map((v) => +v.toFixed(1)), H: sample }; },
   replaced(id) { const o = world.replaced && world.replaced.get(id); return o ? { kind: o.kind, x: +o.cx.toFixed(1), z: +o.cz.toFixed(1), rocks: o.rocks, light: o.light, pose: o.pose, moved: o.moved, meshes: (() => { let n = 0; o.g.traverse((m) => { if (m.isMesh) n++; }); return n; })() } : null; },
   probe(x, z, fid) { const b = buildingAt(x, z), f = fid && world.featById.get(fid); return { building: b >= 0 ? world.buildings[b].id : null, road: roadAt(x, z, 0.3, false), inside: f ? pointInRings(x, z, f.rings) : null, H: +H(x, z).toFixed(2) }; },
+  topo(x, z) {   // the terrain: summary, or the band level, height above the base and ground height at a point
+    const T = world.topo; if (!T) return null;
+    if (x == null) { let mx = 0, at = 0; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { ms: T.ms, comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
+    return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1) };
+  },
+  topoImage(px = 760) {   // a hillshaded height map of the island over the page, for checking (call again to remove)
+    const old = document.getElementById('topo-dbg'); if (old) { old.remove(); return 'removed'; }
+    const T = world.topo, N = TOPO.N, cv = document.createElement('canvas'); cv.id = 'topo-dbg'; cv.width = cv.height = px;
+    Object.assign(cv.style, { position: 'fixed', left: '0', top: '0', zIndex: 9999, width: px + 'px', height: px + 'px' });
+    const b = world.bounds, g = cv.getContext('2d'), img = g.createImageData(px, px), span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) + 400, ox = b.cx - span / 2, oz = b.cz - span / 2;
+    for (let j = 0; j < px; j++) for (let i = 0; i < px; i++) {
+      const x = ox + (i + 0.5) / px * span, z = oz + (j + 0.5) / px * span, h = H(x, z), k = (j * px + i) * 4, e = span / px;
+      if (h < 0.05) { img.data[k] = 150; img.data[k + 1] = 200; img.data[k + 2] = 220; img.data[k + 3] = 255; continue; }
+      const sx = (H(x + e, z) - H(x - e, z)) / (2 * e), sz = (H(x, z + e) - H(x, z - e)) / (2 * e), sh = clamp(0.72 - (sx * 0.7 + sz * 0.7) * 1.6, 0.15, 1);
+      const t = clamp(h / 460, 0, 1), band = Math.floor(h / 50) % 2 ? 0.92 : 1;
+      img.data[k] = (90 + 150 * t) * sh * band; img.data[k + 1] = (150 + 60 * t) * sh * band; img.data[k + 2] = (80 + 60 * t) * sh * band; img.data[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0); document.body.appendChild(cv); return { span: Math.round(span), ox: Math.round(ox), oz: Math.round(oz) };
+  },
   pleachOf(id) { const f = world.featById.get(id); if (!f) return null; const st = featureStyle(f); return st.trees === 'pleached' ? pleachedFor(f, st).map((q) => ({ x: +q.x.toFixed(1), z: +q.z.toFixed(1), a: +q.a.toFixed(2), corner: !!q.corner, side: q.side + (q.side2 || '') })) : []; },
   parkFence(id) { const o = world.parkFences && world.parkFences.get(id); return o ? { bars: o.bars } : null; },
   ringsOf(id) { const f = world.featById.get(id); return f && f.rings ? f.rings.map((r) => ({ n: r.length / 2, area: Math.round(Math.abs(ringArea(r))), cx: Math.round(r.reduce((a, v, i) => i % 2 ? a : a + v, 0) / (r.length / 2)), cz: Math.round(r.reduce((a, v, i) => i % 2 ? a + v : a, 0) / (r.length / 2)) })) : null; },
