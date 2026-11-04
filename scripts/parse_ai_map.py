@@ -1,8 +1,8 @@
 """Parse the Illustrator map (.ai, PDF-compatible) into per-layer vector features.
 
 Usage:
-    python3 scripts/parse_ai_map.py [src.ai] [out.json]   # → data/map/map_data.json
-    python3 scripts/parse_ai_map.py [src.ai] --stats      # per-layer colour/width census
+    python3 scripts/parse_ai_map.py src.ai [out.json]   # → data/map/map_data.json
+    python3 scripts/parse_ai_map.py src.ai --stats      # per-layer colour/width census
 
 No third-party dependencies: the .ai file is a PDF whose single page content
 stream holds every layer as an optional-content (/OC) marked section. We inflate
@@ -21,7 +21,9 @@ import os
 import re
 import struct
 import sys
+import unicodedata
 import zlib
+from collections import Counter
 
 SKIP_LAYERS = {"Labels", "Street names"}   # and every layer whose name starts with "Scratch" (skipped())
 
@@ -672,6 +674,397 @@ def match_feature_ids(fset, previous):
     return kept, len(used_i), len(fset.ids) - kept - len(used_i), len(free) - len(used_k)
 
 
+# ---- street names: the "Street names" layer is live type on a path, so each label's text and the place of every letter
+# can be read back. The labels only say WHICH street has WHICH name: the viewer places its own text (see the labeller in map_template.html).
+GLYPHS = {"space": " ", "hyphen": "-", "period": ".", "comma": ",", "quotesingle": "'", "quoteright": "’", "parenleft": "(", "parenright": ")",
+          "slash": "/", "ampersand": "&", "colon": ":", "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+          "seven": "7", "eight": "8", "nine": "9", "f_i": "fi", "f_l": "fl", "f_f": "ff", "f_f_i": "ffi", "f_f_l": "ffl", "f_t": "ft", "f_b": "fb",
+          "f_h": "fh", "f_j": "fj", "f_k": "fk", "t_t": "tt", "T_h": "Th", "s_t": "st", "ordfeminine": "ª", "ordmasculine": "º"}
+for _base, _marks in (("a", "acute dieresis grave circumflex tilde"), ("e", "acute dieresis grave circumflex"), ("i", "acute dieresis grave circumflex"),
+                      ("o", "acute dieresis grave circumflex tilde"), ("u", "acute dieresis grave circumflex"), ("n", "tilde"), ("c", "cedilla")):
+    for _m in _marks.split():
+        _c = {"acute": "́", "dieresis": "̈", "grave": "̀", "circumflex": "̂", "tilde": "̃", "cedilla": "̧"}[_m]
+        for _b in (_base, _base.upper()):
+            GLYPHS[_b + _m] = unicodedata.normalize("NFC", _b + _c)
+LABEL_JUMP = 1.0   # points (5 m) past a letter's own advance: the next letter belongs to another label
+
+
+def _font_tables(buf):
+    """{font name: (code → text, first char, widths)} from the page's font dictionary and its encodings."""
+    def body(n):
+        i = _obj(buf, n)
+        return buf[i:buf.find(b"endobj", i)] if i >= 0 else b""
+    m = re.search(rb"/Font<<(.*?)>>", buf, re.S)
+    out = {}
+    for name, num in re.findall(rb"/(T1_\d+|C\d_\d+|TT\d+) (\d+) 0 R", m.group(1)) if m else []:
+        o = body(int(num))
+        table = {i: bytes([i]).decode("cp1252", "replace") for i in range(256)}
+        enc = re.search(rb"/Encoding (\d+) 0 R", o)
+        if enc:
+            arr = re.search(rb"/Differences\s*\[(.*?)\]", body(int(enc.group(1))), re.S)
+            code = 0
+            for tok in re.findall(rb"/[^\s/\]]+|\d+", arr.group(1)) if arr else []:
+                if tok[:1] == b"/":
+                    g = tok[1:].decode("latin1")
+                    table[code] = g if len(g) == 1 else GLYPHS.get(g, "�")
+                    code += 1
+                else:
+                    code = int(tok)
+        fc = re.search(rb"/FirstChar (\d+)", o)
+        w = re.search(rb"/Widths\s*\[(.*?)\]", o, re.S)
+        out[name] = (table, int(fc.group(1)) if fc else 0, [float(x) for x in w.group(1).split()] if w else [])
+    return out
+
+
+def _pdf_string(tok):
+    """A PDF string token → its character codes."""
+    if tok[:1] == b"<":
+        h = re.sub(rb"\s", b"", tok[1:-1])
+        return list(bytes.fromhex((h + b"0" * (len(h) % 2)).decode()))
+    s, out, i = tok[1:-1], [], 0
+    while i < len(s):
+        c = s[i]
+        if c == 92 and i + 1 < len(s):
+            i += 1
+            c = s[i]
+            if 48 <= c <= 55:
+                j, v = i, 0
+                while j < len(s) and j < i + 3 and 48 <= s[j] <= 55:
+                    v = v * 8 + s[j] - 48
+                    j += 1
+                out.append(v & 255)
+                i = j
+                continue
+            c = {110: 10, 114: 13, 116: 9, 98: 8, 102: 12}.get(c, c)
+        out.append(c)
+        i += 1
+    return out
+
+
+def street_labels(path, layer_name="Street names"):
+    """Every label on the layer: [(text, [(x, z) world metres of each letter])]. One text block can hold many labels, so a
+    jump between letters starts a new one."""
+    data, names = read_pdf(path)
+    fonts = _font_tables(open(path, "rb").read())
+    I = [1, 0, 0, 1, 0, 0]
+    ctm, cs, tm, lm = I[:], [], I[:], I[:]
+    font, size, tc, tw, tl = None, 1.0, 0.0, 0.0, 0.0
+    layers, operands, block, labels = [], [], None, []
+
+    def show(codes):
+        nonlocal tm
+        table, fc, widths = fonts.get(font, ({}, 0, []))
+        for c in codes:
+            x, y = tm[4], tm[5]
+            adv = (widths[c - fc] if 0 <= c - fc < len(widths) else 500) / 1000 * size
+            block.append((table.get(c, "�"), ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5], adv * math.hypot(tm[0], tm[1])))
+            step = adv + tc + (tw if c == 32 else 0)
+            tm = [tm[0], tm[1], tm[2], tm[3], tm[4] + step * tm[0], tm[5] + step * tm[1]]
+
+    def finish():
+        run = []
+
+        def flush():
+            text = re.sub(r"\s+", " ", "".join(g[0] for g in run)).strip()
+            if text:
+                pts = [(a / Q, b / Q) for a, b in (world((g[1], g[2])) for g in run)]
+                labels.append((text, pts))
+        for g in block:
+            if run and math.dist((g[1], g[2]), (run[-1][1], run[-1][2])) - run[-1][3] > LABEL_JUMP:
+                flush()
+                run = []
+            run.append(g)
+        flush()
+
+    for m in TOKEN.finditer(data):
+        t = m.group(0)
+        c0 = t[:1]
+        if c0 in b"-+.0123456789":
+            operands.append(float(t))
+            continue
+        if c0 in b"/(<[]":
+            operands.append(t)
+            continue
+        op = t.decode("latin1")
+        n = operands
+        if op == "BDC":
+            layers.append(names.get(n[-1][1:].decode()) if len(n) >= 2 and n[-2] == b"/OC" else None)
+        elif op == "BMC":
+            layers.append(None)
+        elif op == "EMC":
+            if layers:
+                layers.pop()
+        elif op == "q":
+            cs.append(ctm[:])
+        elif op == "Q":
+            if cs:
+                ctm = cs.pop()
+        elif op == "cm" and len(n) >= 6:
+            ctm = _mul([float(v) for v in n[-6:]], ctm)
+        elif op == "BT":
+            tm, lm, block = I[:], I[:], []
+        elif op == "ET":
+            if block and next((x for x in reversed(layers) if x), None) == layer_name:
+                finish()
+            block = None
+        elif op == "Tf" and len(n) >= 2 and isinstance(n[-2], bytes):
+            font, size = n[-2][1:], n[-1]
+        elif op == "Tc" and n:
+            tc = n[-1]
+        elif op == "Tw" and n:
+            tw = n[-1]
+        elif op == "TL" and n:
+            tl = n[-1]
+        elif op == "Tm" and len(n) >= 6:
+            tm = [float(v) for v in n[-6:]]
+            lm = tm[:]
+        elif op in ("Td", "TD") and len(n) >= 2:
+            if op == "TD":
+                tl = -n[-1]
+            lm = [lm[0], lm[1], lm[2], lm[3], lm[4] + n[-2] * lm[0] + n[-1] * lm[2], lm[5] + n[-2] * lm[1] + n[-1] * lm[3]]
+            tm = lm[:]
+        elif op == "T*":
+            lm = [lm[0], lm[1], lm[2], lm[3], lm[4] - tl * lm[2], lm[5] - tl * lm[3]]
+            tm = lm[:]
+        elif op == "Tj" and block is not None and n and isinstance(n[-1], bytes):
+            show(_pdf_string(n[-1]))
+        elif op == "TJ" and block is not None:
+            for v in n:
+                if isinstance(v, bytes) and v[:1] in (b"(", b"<"):
+                    show(_pdf_string(v))
+                elif isinstance(v, float):
+                    d = -v / 1000 * size
+                    tm = [tm[0], tm[1], tm[2], tm[3], tm[4] + d * tm[0], tm[5] + d * tm[1]]
+        operands = []
+    return labels
+
+
+class _LineIndex:
+    """The street and path centrelines, with a grid of their segments, for matching labels to them."""
+    CELL = 40.0
+
+    def __init__(self, sets):
+        self.lines, self.grid = [], {}
+        for fset in sets:
+            v = 0
+            for k, n in enumerate(fset.lens):
+                pts = [(fset.xy[(v + j) * 2] / Q, fset.xy[(v + j) * 2 + 1] / Q) for j in range(n)]
+                v += n
+                cum = [0.0]
+                for i in range(n - 1):
+                    cum.append(cum[-1] + math.dist(pts[i], pts[i + 1]))
+                idx = len(self.lines)
+                self.lines.append({"id": fset.ids[k], "pts": pts, "cum": cum, "w": fset.widths[k] / 10, "sub": fset.kinds[k], "len": cum[-1]})
+                for i in range(n - 1):
+                    a, b = pts[i], pts[i + 1]
+                    steps = max(1, int(math.dist(a, b) / self.CELL))
+                    for q in range(steps + 1):
+                        key = (int((a[0] + (b[0] - a[0]) * q / steps) // self.CELL), int((a[1] + (b[1] - a[1]) * q / steps) // self.CELL))
+                        self.grid.setdefault(key, set()).add(idx)
+
+    def near(self, pts, reach):
+        out, r = set(), int(reach // self.CELL) + 1
+        for p in pts:
+            cx, cz = int(p[0] // self.CELL), int(p[1] // self.CELL)
+            for i in range(-r, r + 1):
+                for j in range(-r, r + 1):
+                    out |= self.grid.get((cx + i, cz + j), set())
+        return out
+
+    def nearest(self, line, p):
+        """(distance, arc length, segment direction) of the point of a line nearest p."""
+        pts, cum, best = line["pts"], line["cum"], (1e18, 0.0, 0.0)
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            dx, dz = b[0] - a[0], b[1] - a[1]
+            l2 = dx * dx + dz * dz or 1e-9
+            t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / l2))
+            d = math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dz)
+            if d < best[0]:
+                best = (d, cum[i] + t * math.sqrt(l2), math.atan2(dz, dx))
+        return best
+
+
+def _fit_label(ix, line, pts):
+    """How well a label lies along a line: (mean distance, mean angle off, arc length start, arc length end)."""
+    k = max(1, len(pts) // 6)
+    samples = pts[::k] + [pts[-1]]
+    ds, angs, arcs = [], [], []
+    for i, p in enumerate(samples):
+        d, s, a = ix.nearest(line, p)
+        ds.append(d)
+        arcs.append(s)
+        q0, q1 = samples[max(0, i - 1)], samples[min(len(samples) - 1, i + 1)]
+        if q0 != q1:
+            la = math.atan2(q1[1] - q0[1], q1[0] - q0[0])
+            angs.append(abs(((la - a + math.pi / 2) % math.pi) - math.pi / 2))
+    return sum(ds) / len(ds), sum(angs) / len(angs) if angs else 0.0, min(arcs), max(arcs)
+
+
+def bind_street_names(labels, streets, paths):
+    """Which stretch of which line has which name. Returns ({names, lines: {id: [name, s1, name, s2, name…]}}, report): a line's
+    entry alternates a name's index with the arc length where the next name takes over."""
+    ix = _LineIndex([streets, paths])
+    bound, stray = {}, []
+    for text, pts in labels:
+        mid = (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+        best = None
+        for li in ix.near([pts[0], mid, pts[-1]], 30):
+            line = ix.lines[li]
+            d, a, s0, s1 = _fit_label(ix, line, pts)
+            score = d + a * 25
+            if best is None or score < best[0]:
+                best = (score, d, a, s0, s1, li)
+        if best and best[2] < 0.5 and best[1] <= max(9.0, ix.lines[best[5]]["w"] / 2 + 5):
+            bound.setdefault(best[5], []).append(((best[3] + best[4]) / 2, best[3], best[4], text))
+        else:
+            stray.append({"text": text, "x": round(mid[0]), "z": round(mid[1]), "pts": pts, "off": round(best[1], 1) if best else None})
+    # a label a little further out still names a parallel line nothing else names (the line moved after it was typed)
+    left = []
+    for st in stray:
+        best = None
+        for li in ix.near([st["pts"][0], st["pts"][-1]], 40):
+            if li in bound:
+                continue
+            d, a, s0, s1 = _fit_label(ix, ix.lines[li], st["pts"])
+            if a < 0.25 and d < 40 and (best is None or d < best[0]):
+                best = (d, s0, s1, li)
+        if best:
+            bound.setdefault(best[3], []).append(((best[1] + best[2]) / 2, best[1], best[2], st["text"]))
+        else:
+            left.append({k: st[k] for k in ("text", "x", "z", "off")})
+    # places where a name can change: where another line meets this one, or where it turns a corner
+    ends = {}
+    for li, line in enumerate(ix.lines):
+        for e in (line["pts"][0], line["pts"][-1]):
+            ends.setdefault((int(e[0] // ix.CELL), int(e[1] // ix.CELL)), []).append((li, e))
+
+    def breaks(li):
+        line, out = ix.lines[li], []
+        pts, cum = line["pts"], line["cum"]
+        cells = set()
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            steps = max(1, int(math.dist(a, b) / ix.CELL))
+            for q in range(steps + 1):
+                cells.add((int((a[0] + (b[0] - a[0]) * q / steps) // ix.CELL), int((a[1] + (b[1] - a[1]) * q / steps) // ix.CELL)))
+        for c in cells:
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    for other, e in ends.get((c[0] + i, c[1] + j), ()):
+                        if other != li:
+                            d, s, _ = ix.nearest(line, e)
+                            if d <= line["w"] / 2 + ix.lines[other]["w"] / 2 + 2:
+                                out.append(s)
+        for i in range(1, len(pts) - 1):
+            a0 = math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])
+            a1 = math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])
+            if abs(((a1 - a0 + math.pi) % (2 * math.pi)) - math.pi) > 0.5:
+                out.append(cum[i])
+        return sorted(out)
+    names, index, lines, odd = [], {}, {}, []
+
+    def nid(t):
+        if t not in index:
+            index[t] = len(names)
+            names.append(t)
+        return index[t]
+    for li in sorted(bound):
+        line, ls = ix.lines[li], sorted(bound[li])
+        # A name sandwiched between two of another, lying on a line it does not turn off from, is a side street's label caught by mistake
+        groups = []
+        for s, s0, s1, t in ls:
+            if groups and groups[-1][0] == t:
+                groups[-1][2] = s1
+            else:
+                groups.append([t, s0, s1])
+        if len(groups) >= 3:
+            kept = []
+            for i, g in enumerate(groups):
+                if 0 < i < len(groups) - 1 and groups[i - 1][0] == groups[i + 1][0]:
+                    odd.append({"id": line["id"], "name": g[0], "on": groups[i - 1][0]})
+                    continue
+                kept.append(g)
+            merged = []
+            for g in kept:
+                if merged and merged[-1][0] == g[0]:
+                    merged[-1][2] = g[2]
+                else:
+                    merged.append(g)
+            groups = merged
+        entry = [nid(groups[0][0])]
+        if len(groups) > 1:
+            bs = breaks(li)
+            for g0, g1 in zip(groups, groups[1:]):
+                a, b = g0[2], max(g0[2], g1[1])
+                mid = (a + b) / 2
+                inside = [x for x in bs if a - 1 <= x <= b + 1]
+                cut = min(inside, key=lambda x: abs(x - mid)) if inside else mid
+                entry += [round(cut, 1), nid(g1[0])]
+        lines[line["id"]] = entry
+    named = set(lines)
+    unnamed = [x for x in ix.lines if x["id"] not in named and x["id"].startswith("st")]
+    report = {"labels": len(labels), "stray": left, "odd": odd, "several": sum(1 for v in lines.values() if len(v) > 1),
+              "unnamed_lines": sorted(({"id": x["id"], "len": round(x["len"]), "x": round(sum(p[0] for p in x["pts"]) / len(x["pts"])), "z": round(sum(p[1] for p in x["pts"]) / len(x["pts"]))} for x in unnamed), key=lambda r: -r["len"]),
+              "street_km": round(sum(x["len"] for x in ix.lines if x["id"].startswith("st")) / 1000), "named_km": round(sum(x["len"] for x in ix.lines if x["id"].startswith("st") and x["id"] in named) / 1000)}
+    report["counts"] = Counter(t for t, _ in labels)
+    return {"names": names, "lines": lines}, report
+
+
+def street_names_report(rep, out_dir):
+    """data/map/street_names_report.md, for the author: typing to check, labels on no street, streets with no label."""
+    import difflib
+    c = rep["counts"]
+    plain = lambda s: "".join(ch for ch in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(ch) != "Mn")
+    TYPES = ("Calle", "Camino", "Callejón", "Avenida", "Paseo", "Andador", "Puente", "Plaza", "Calzada", "Bulevar", "Pasaje", "Esquina", "Isla", "Gran", "Media")
+    spacing = sorted(t for t in c if re.search(r"[a-zà-ÿ][A-ZÀ-Þ]", t))
+    notype = sorted(t for t in c if t.split(" ")[0] not in TYPES and t not in spacing)
+    seen, accents, letters, swaps, similar = set(), [], [], [], []
+    words = sorted(c, key=lambda t: (-c[t], t))
+    for t in words:
+        for u in difflib.get_close_matches(t, [w for w in words if w != t], n=4, cutoff=0.86):
+            key = tuple(sorted((t, u)))
+            if key in seen or (t.split("(")[0].strip() == u.split("(")[0].strip()):
+                continue
+            seen.add(key)
+            a, b = key
+            pair = "%s (%d) / %s (%d)" % (a, c[a], b, c[b])
+            pa, pb = plain(a), plain(b)
+            if pa == pb:
+                accents.append(pair)
+            elif pa.replace(" de ", " ").replace(" del ", " ") == pb.replace(" de ", " ").replace(" del ", " "):
+                letters.append(pair)
+            elif len(a) == len(b) and sum(x != y for x, y in zip(pa, pb)) == 2 and sorted(pa) == sorted(pb):
+                swaps.append(pair)
+            elif abs(len(a) - len(b)) == 1 and min(c[a], c[b]) <= 1 and max(c[a], c[b]) >= 2 and difflib.SequenceMatcher(None, pa, pb).ratio() > 0.9:
+                letters.append(pair)
+            else:
+                similar.append(pair)
+    L = ["# Street names: things to check in the Illustrator file", "",
+         "Written by `scripts/parse_ai_map.py` at each import. The map shows names exactly as typed, so a fix in Illustrator is picked up by the next re-import.", "",
+         "%d labels, %d different names. %d of %d km of street carry a name." % (rep["labels"], len(c), rep["named_km"], rep["street_km"]), ""]
+
+    def section(title, intro, rows):
+        L.extend(["## %s (%d)" % (title, len(rows)), "", intro, ""])
+        L.extend("- " + r for r in rows)
+        L.append("")
+    section("Missing spaces", "Two words run together.", spacing)
+    section("Names without a street type", "These don't begin with Calle, Camino, Avenida and so on.", notype)
+    section("Same name, different accents", "The number is how many labels use that spelling.", accents)
+    section("Letters swapped", "Probably one street spelt two ways.", swaps)
+    section("A letter or a \"de\" different", "Possibly one street spelt two ways: the rarer spelling is often the slip.", letters)
+    section("Similar names", "Most of these will be different streets, listed only in case.", similar)
+    section("Labels on no street", "These sit too far from any street or path line to say which one they name, so they are not used.",
+            ["%s at (%d, %d)%s" % (s["text"], s["x"], s["z"], ", %s m from the nearest line" % s["off"] if s["off"] is not None else ", nothing nearby") for s in rep["stray"]])
+    section("Labels ignored as a side street's", "A name in the middle of a line that has another name on both sides of it. It is treated as a stray label and left off that line.",
+            ["%s, on %s (`%s`)" % (o["name"], o["on"], o["id"]) for o in rep["odd"]])
+    section("Longest streets with no label", "Streets with no name, longest first. Only the 40 longest are listed.",
+            ["`%s`, %d m, around (%d, %d)" % (u["id"], u["len"], u["x"], u["z"]) for u in rep["unnamed_lines"][:40]])
+    path = os.path.join(out_dir, "street_names_report.md")
+    open(path, "w").write("\n".join(L))
+    return {"file": path, "spacing": len(spacing), "notype": len(notype), "accents": len(accents), "swaps": len(swaps), "letters": len(letters), "similar": len(similar)}
+
+
 def elevation_levels(bands):
     """Topographic bands, each drawn inside the one below it: level 1 is 50-100 m, 2 is 100-150 m, … (the
     plain island outside every band is 0-50 m). A band's level is its colour's level, and a colour's level
@@ -802,6 +1195,11 @@ def build(src, out):
             ids.append(bid)
             floors.append(fl)
 
+    street_names, name_report = bind_street_names(street_labels(src), streets, paths)
+    nr = street_names_report(name_report, os.path.dirname(os.path.abspath(out)))
+    print("street names: %d labels, %d names, on %d of %d km of street; %d lines change name, %d labels on no street, %d side-street labels ignored; report %s"
+          % (name_report["labels"], len(street_names["names"]), name_report["named_km"], name_report["street_km"], name_report["several"],
+             len(name_report["stray"]), len(name_report["odd"]), nr["file"]))
     data = {
         "meta": {"source": src.split("/")[-1], "mPerPt": M_PER_PT, "artboardPt": ART, "quant": 1 / Q,
                  "extentM": ART * M_PER_PT},
@@ -810,6 +1208,7 @@ def build(src, out):
         "streetAreas": streets_poly.enc(), "streets": streets.enc(), "paths": paths.enc(),
         "canals": canals.enc(), "beaches": beaches.enc(),
         "buildings": dict(bld.enc(), ids=",".join(ids), floors=b64("B", floors)),
+        "streetNames": street_names,
     }
     s = json.dumps(data, separators=(",", ":"))
     open(out, "w").write(s)
@@ -821,7 +1220,10 @@ def build(src, out):
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    src = args[0] if args else "data/map/reorganise15.ai"
+    unknown = [a for a in sys.argv[1:] if a.startswith("--") and a != "--stats"]
+    if unknown or not args:
+        sys.exit("usage: parse_ai_map.py SRC.ai [OUT.json] | SRC.ai --stats" + (" (unknown: %s)" % " ".join(unknown) if unknown else ""))
+    src = args[0]
     if "--stats" in sys.argv:
         stats(parse(src))
     else:
