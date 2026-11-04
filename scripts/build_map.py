@@ -14,11 +14,12 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data", "map", "map_data.json")
 
+import json
 import shutil
+import unicodedata
 
 src = os.path.join(ROOT, "data", "map", "reorganise15.ai")
 try:   # --reparse re-reads the file the current map was built from
-    import json
     src = os.path.join(ROOT, "data", "map", json.load(open(DATA))["meta"]["source"])
 except (OSError, ValueError, KeyError):
     pass
@@ -31,7 +32,27 @@ if "--source" in sys.argv or "--reparse" in sys.argv or not os.path.exists(DATA)
     subprocess.check_call([sys.executable, os.path.join(ROOT, "scripts", "parse_ai_map.py"), src, DATA], cwd=ROOT)
 
 tpl = open(os.path.join(ROOT, "map_template.html")).read()
-data = open(DATA).read().replace("<", "\\u003c")
+map_data = json.load(open(DATA))
+
+
+def _plain(s):
+    return "".join(c for c in unicodedata.normalize("NFD", " ".join(s.split()).lower()) if unicodedata.category(c) != "Mn")
+
+
+# what the Streets sheet and the wiki say about each name on the map: neighbourhood, meaning, category, note, wiki slug
+street_info = {}
+try:
+    sheet = {_plain(s["type_full"] + " " + s["name"]): s for s in json.load(open(os.path.join(ROOT, "data", "streets.json")))}
+    slugs = {e["name"]: e["slug"] for e in json.load(open(os.path.join(ROOT, "data", "wiki_data.json")))["entities"] if e.get("type") == "street"}
+    for nm in map_data.get("streetNames", {}).get("names", []):
+        s = sheet.get(_plain(nm))
+        if s:
+            street_info[nm] = {k: v for k, v in (("n", s.get("neighbourhoods")), ("m", s.get("meaning")), ("c", s.get("category")), ("x", s.get("note")), ("w", slugs.get(s["name"]))) if v}
+except (OSError, ValueError, KeyError) as e:
+    print("no street facts:", e)
+map_data["streetInfo"] = street_info
+print("street facts for %d of %d names" % (len(street_info), len(map_data.get("streetNames", {}).get("names", []))))
+data = json.dumps(map_data, separators=(",", ":"), ensure_ascii=False).replace("<", "\\u003c")
 import base64
 char = base64.b64encode(open(os.path.join(ROOT, "data", "character", "barbossa.glb"), "rb").read()).decode() if os.path.exists(os.path.join(ROOT, "data", "character", "barbossa.glb")) else ""
 html = tpl.replace("__MAP_DATA__", data).replace("__CHAR_GLB__", char)

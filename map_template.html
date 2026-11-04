@@ -200,6 +200,11 @@ body.tray-open #info { display: none; }
 #minimap .mm-scale { position: absolute; right: 8px; top: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 2px 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar { position: absolute; right: 8px; bottom: 9px; font: 500 10px/1 var(--font-mono); color: var(--ink); background: rgba(251,248,240,.85); border-radius: 4px; padding: 3px 5px 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #minimap .mm-bar i { display: block; height: 5px; border: 1.6px solid var(--ink); border-top: 0; margin-bottom: 3px; }
+#names { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#names[hidden] { display: none; }
+#street-box { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px; border-radius: 9px; font: 600 12px/1.25 var(--font-ui); color: var(--ink); }
+#street-box[hidden] { display: none; }
+#street-box svg { flex: none; }
 #readouts { position: fixed; z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }   /* under the minimap */
 #readouts[hidden], #readouts .ro[hidden] { display: none; }
 #readouts .ro { display: inline-flex; align-items: center; gap: 7px; padding: 3px; border-radius: 9px; font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -327,6 +332,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 
 <canvas id="scene" tabindex="0" aria-label="3D map of Amparacán"></canvas>
 <canvas id="plan" tabindex="0" aria-label="2D plan of Amparacán" hidden></canvas>
+<canvas id="names" aria-hidden="true"></canvas>
 <button id="edit-pill" type="button" hidden>Edit</button>
 
 <div id="brand" class="plaque" hidden>
@@ -343,6 +349,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
   <button id="mode-fly" type="button" aria-pressed="false">Fly <kbd>F</kbd></button>
   <button id="mode-map" type="button" aria-pressed="true">Map <kbd>M</kbd></button>
   <button id="mode-plan" type="button" aria-pressed="false">2D <kbd>P</kbd></button>
+  <button id="names-btn" class="tog" type="button" aria-pressed="true" title="Street names (N)" aria-label="Street names"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V3"/><path d="M5 5h12l3 2.5L17 10H5z"/><path d="M19 12H8l-3 2.5L8 17h11z"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="snd" class="tog" type="button" aria-pressed="false" title="Sound: breeze, birds, water, waves and weather. Ctrl-click for the sound mix." aria-label="Sound"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="mus" class="tog" type="button" aria-pressed="false" title="Music: dreamlike ambient" aria-label="Music"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/><path class="slash" d="M3.5 3.5l17 17"/></svg></button>
   <button id="tod" class="drop" type="button" title="Time of day (T)" aria-haspopup="menu" aria-expanded="false">Dusk</button>
@@ -352,7 +359,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <button id="edits-btn" class="plaque" type="button" aria-expanded="false" hidden>Edits <span class="count" id="edits-count">0</span></button>
 <div id="search" class="plaque" role="search">
   <div class="sbox">
-    <div class="wrap"><input id="q" type="search" placeholder="Search names, addresses, categories" autocomplete="off" spellcheck="false" aria-label="Search the map" role="combobox" aria-expanded="false" aria-controls="s-list" aria-autocomplete="list"><button id="s-clear" type="button" aria-label="Clear search" hidden>×</button></div>
+    <div class="wrap"><input id="q" type="search" placeholder="Search streets, names, categories" autocomplete="off" spellcheck="false" aria-label="Search the map" role="combobox" aria-expanded="false" aria-controls="s-list" aria-autocomplete="list"><button id="s-clear" type="button" aria-label="Clear search" hidden>×</button></div>
     <button id="s-cats" type="button" aria-expanded="false" aria-controls="s-cat-panel" title="Light up every building in a category">Categories</button>
   </div>
   <div id="s-cat-panel" hidden></div>
@@ -368,7 +375,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
 <section id="tray" class="plaque" aria-label="Edits and batch" hidden></section>
 <aside id="info" class="plaque" aria-live="polite" data-pinned="false" hidden></aside>
 <div id="minimap" class="plaque" hidden><canvas id="mm" aria-label="Minimap: drag to move the map, scroll to zoom, click to teleport there" title="Drag to look around. Scroll to zoom. Click to teleport."></canvas><span class="mm-n">N</span><span class="mm-bar" id="mm-bar"><i></i><b></b></span><div class="mm-btns"><button type="button" id="mm-in" aria-label="Zoom the minimap in" title="Zoom in">+</button><button type="button" id="mm-out" aria-label="Zoom the minimap out" title="Zoom out">−</button><button type="button" id="mm-home" aria-label="Centre the minimap on you" title="Back to you" hidden>⌖</button><button type="button" id="mm-big" aria-label="Enlarge the minimap" title="Bigger map">⤢</button></div></div>
-<div id="readouts" hidden><div id="coord-box" class="ro plaque"><button type="button" id="mm-xy" class="ro-tog" aria-pressed="false" aria-label="Coordinates" title="Coordinates (G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9.4C3.2 7.2 2 5.6 2 4.1a3 3 0 0 1 6 0c0 1.5-1.2 3.1-3 5.3z" fill="currentColor"/><circle cx="5" cy="4.1" r="1.1" fill="var(--plaster, #fbf8f0)"/></svg>x, z</button><button type="button" id="coord-val" class="ro-val" hidden title="Your position in map metres. Click to copy."></button></div><div id="alt-box" class="ro plaque" hidden><button type="button" id="mm-alt" class="ro-tog" aria-pressed="true" aria-label="Altitude" title="Altitude (Shift G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8.6V1.6M2 4.4 5 1.4l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Alt.</button><b id="alt-val" class="ro-val"></b></div></div>
+<div id="readouts" hidden><div id="street-box" class="plaque" title="The street you are on" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V3"/><path d="M5 5h12l3 2.5L17 10H5z"/></svg><span id="street-val"></span></div><div id="coord-box" class="ro plaque"><button type="button" id="mm-xy" class="ro-tog" aria-pressed="false" aria-label="Coordinates" title="Coordinates (G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9.4C3.2 7.2 2 5.6 2 4.1a3 3 0 0 1 6 0c0 1.5-1.2 3.1-3 5.3z" fill="currentColor"/><circle cx="5" cy="4.1" r="1.1" fill="var(--plaster, #fbf8f0)"/></svg>x, z</button><button type="button" id="coord-val" class="ro-val" hidden title="Your position in map metres. Click to copy."></button></div><div id="alt-box" class="ro plaque" hidden><button type="button" id="mm-alt" class="ro-tog" aria-pressed="true" aria-label="Altitude" title="Altitude (Shift G)"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8.6V1.6M2 4.4 5 1.4l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Alt.</button><b id="alt-val" class="ro-val"></b></div></div>
 <div id="toast" class="plaque" role="status" hidden></div>
 
 
@@ -394,6 +401,7 @@ body.measuring #scene, body.measuring #plan { cursor: crosshair; }
     <dt>M · P</dt><dd>3D map view · 2D plan (double-click to drop in)</dd>
     <dt>Walk</dt><dd>Drag the Walk button onto a street to start walking there</dd>
     <dt>X</dt><dd>Measure: click two points to get the distance in metres</dd>
+    <dt>N</dt><dd>Show or hide street names</dd>
     <dt>/</dt><dd>Search names, addresses and categories (or ⌘/Ctrl K)</dd>
     <dt>Click</dt><dd>Select a building to see or edit it</dd>
     <dt>+ · −</dt><dd>Add or remove a floor on the selected building</dd>
@@ -1670,6 +1678,7 @@ async function buildWorld() {
   const dens = new Float32Array(densR.length); for (let i = 0; i < dens.length; i++) dens[i] = smooth(0.12, 0.42, densR[i]);
   const h0 = Float32Array.from(topo.h), t1 = performance.now(), flatMax = topoFlatten(topo.h, topoLv, anchor, dens), core = new Uint8Array(TOPO.N * TOPO.N), pads = topoPads(topo.h, topoLv, anchor, bPolys, core), laid = topoStreets(topo.h, topoLv, anchor, core, streets, streetAreas);
   const sTopo = sampler(topo.h, TOPO.N);
+  world.sTopo = sTopo; world.topoMax = 0; for (let i = 0; i < topo.h.length; i += 7) if (topo.h[i] > world.topoMax) world.topoMax = topo.h[i];
   const sDens = sampler(dens, TOPO.N);
   world.topo = { lv: topoLv, h: topo.h, h0, dens, comps: topo.comp.length, ms: Math.round(performance.now() - t0), flatMs: Math.round(performance.now() - t1), flatMax: +flatMax.toFixed(1), pads, laid, lvAt };
   // a lake up in the hills: its water lies flat just below the lowest point of its shore, and the ground under it dips away
@@ -6724,7 +6733,7 @@ function targetOf(id) {
   return null;
 }
 const labelOf = (kind) => (KINDS[kind] || { label: 'Feature' }).label;
-function nameOf(id) { const t = targetOf(id), d = store[colFor(id)].get(id); return (d && d.name) || (t ? `Unnamed ${labelOf(t.kind).toLowerCase()}` : `Missing ${id}`); }
+function nameOf(id) { const t = targetOf(id), d = store[colFor(id)].get(id); return (d && d.name) || fileNamesOf(id).join(' · ') || (t ? `Unnamed ${labelOf(t.kind).toLowerCase()}` : `Missing ${id}`); }
 function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)) : featureStyle(t.f); }
 
 // ─────────────────────────── change history ───────────────────────────
@@ -7357,11 +7366,12 @@ function renderGroupInfo() {
   const box = $('info'), ids = [...multi], bIds = ids.filter(isBuildingId), gid = currentGroup(), grp = gid && store.groups.get(gid);
   box.dataset.pinned = 'true'; box.hidden = false;
   const kinds = {}; for (const id of ids) { const k = targetOf(id).kind; kinds[k] = (kinds[k] || 0) + 1; }
-  const title = Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
+  const streetName = grp ? null : streetOfSelection(ids);
+  const title = streetName || Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
   const fl = bIds.map((id) => styleFor(targetOf(id)).floors), fmin = Math.min(...fl), fmax = Math.max(...fl);
   const floorsTxt = bIds.length ? `${fmin === fmax ? fmin : fmin + '–' + fmax} floors` : '';
-  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || 'Unnamed group' : title),
-      el('div', { class: 'facts' }, grp ? [title, floorsTxt].filter(Boolean).join(' · ') : floorsTxt || null)),
+  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : streetName ? 'Street' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || 'Unnamed group' : title),
+      el('div', { class: 'facts' }, streetName ? `${ids.length} lines · ${Math.round(ids.reduce((a, i) => a + world.featById.get(i).size, 0)).toLocaleString()} m` : grp ? [title, floorsTxt].filter(Boolean).join(' · ') : floorsTxt || null)),
     el('button', { class: 'close', type: 'button', 'aria-label': 'Clear selection', onclick: () => clearMulti() }, '×'))];
   if (grp && store.canEdit) {
     const nm = el('input', { type: 'text', id: 'g-name', value: grp.name || '', placeholder: 'Name this group', autocomplete: 'off' });
@@ -7369,7 +7379,8 @@ function renderGroupInfo() {
     nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); });
     kids.push(el('div', { class: 'field' }, el('label', { for: 'g-name' }, 'Group name'), nm));
   }
-  kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
+  if (streetName) { const rows = streetFacts(streetName); if (rows.length) kids.push(el('dl', {}, rows.map(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]))); }
+  if (!streetName) kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
   if (store.canEdit) {
     if (bIds.length) {
       const setIn = el('input', { type: 'number', id: 'g-floors', min: 1, max: 40, value: fmax, 'aria-label': 'Set every building to this many floors', style: 'width:64px' });
@@ -7477,7 +7488,7 @@ function renderInfo() {
     e.preventDefault(); getSelection().removeAllRanges(); startEditing(); renderInfo();
     const f = $(fid); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
   } } : {};
-  const title = el('h3', editAt('f-name'), doc.name || `Unnamed ${label.toLowerCase()}`);
+  const named = fileNamesOf(id), title = el('h3', editAt('f-name'), doc.name || named.join(' · ') || `Unnamed ${label.toLowerCase()}`);
   const head = el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, `${label} · ${id}`), title, el('div', { class: 'facts' }, facts(t))),
     pinned ? el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => select(null) }, '×') : null);
   const kids = [head];
@@ -7490,6 +7501,7 @@ function renderInfo() {
     kids.push(editForm(t, title));
   } else {
     const rows = [];
+    if (!doc.name && named.length === 1) rows.push(...streetFacts(named[0]));
     if (doc.address) rows.push(['Address', doc.address]);
     if (doc.tags.length) rows.push(['Tags', el('div', { ...editAt('f-tags'), class: 'chips' + (editable ? ' dbl-edit' : '') }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
     if (doc.history) rows.push(['History', doc.history]);
@@ -7504,6 +7516,7 @@ function renderInfo() {
         el('button', { class: 'btn small', type: 'button', 'aria-label': 'Add a floor', disabled: fl >= 40, onclick: () => changeFloors(id, 1) }, '+'),
         el('span', { class: 'hint' }, 'or + / − keys')));
     }
+    for (const nm of named) { const lines = NAMES.byName.get(nm); if (lines && lines.size > 1) kids.push(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', onclick: () => selectStreet(nm, false) }, `Select all of ${nm} (${lines.size} lines)`))); }
     if (store.canEdit && t.kind === 'street') {
       const cv = featureStyle(t.f).canopy, word = el('span', { class: 'hint', style: 'margin:0' }, canopyWord(cv)), pct = el('span', { class: 'floors' }, cv + '%');
       const range = el('input', { type: 'range', min: '0', max: '100', step: '5', value: String(cv), 'aria-label': 'Tree canopy', class: 'canopy' });
@@ -7591,8 +7604,8 @@ function editForm(t, title) {
     d.attrs = {}; for (const row of kvBox.querySelectorAll('.kv')) { const [ki, vi] = row.querySelectorAll('input'); const k = ki.value.trim(); if (k) d.attrs[k] = vi.value; }
     d.updatedAt = new Date().toISOString();
     saveDoc(colFor(id), id, d); $('f-status').textContent = store.kind === 'db' ? 'Saving…' : 'Saved in this browser';
-    title.textContent = d.name || `Unnamed ${labelOf(t.kind).toLowerCase()}`;
-    clearTimeout(form._t); form._t = setTimeout(() => { const st = $('f-status'); if (st) st.textContent = 'Saved'; if (ui.trayOpen) renderTray(); plan.invalidate(true); }, 900);
+    title.textContent = d.name || fileNamesOf(id).join(' · ') || `Unnamed ${labelOf(t.kind).toLowerCase()}`;
+    clearTimeout(form._t); form._t = setTimeout(() => { const st = $('f-status'); if (st) st.textContent = 'Saved'; if (ui.trayOpen) renderTray(); checkHandNames(); plan.invalidate(true); }, 900);
   };
   const addKV = (k = '', v = '') => {
     const row = el('div', { class: 'kv' }, el('input', { type: 'text', placeholder: 'Attribute', value: k, 'aria-label': 'Attribute name', maxlength: 40 }),
@@ -7601,10 +7614,10 @@ function editForm(t, title) {
     kvBox.append(row);
   };
   for (const [k, v] of Object.entries(doc.attrs || {})) addKV(k, String(v));
-  form.append(field('f-name', 'Name', doc.name), t.kind === 'building' ? field('f-address', 'Street address', doc.address) : null,
+  form.append((() => { const nf = field('f-name', 'Name', doc.name), inp = nf.querySelector('input'), fileName = fileNamesOf(t.id).join(' · '); if (fileName) inp.placeholder = fileName; return nf; })(), t.kind === 'building' ? field('f-address', 'Street address', doc.address) : null,
     field('f-tags', 'Tags (comma separated)', doc.tags.join(', ')), field('f-history', 'History', doc.history, true), field('f-details', 'Details', doc.details, true),
     el('div', { class: 'field' }, el('label', {}, 'More attributes'), kvBox, el('button', { class: 'btn link', type: 'button', onclick: () => { addKV(); kvBox.lastChild.querySelector('input').focus(); } }, '+ Add attribute')),
-    el('div', { class: 'row' }, el('button', { class: 'btn primary small', type: 'button', onclick: () => { endEditing(); renderInfo(); } }, 'Done'), el('span', { class: 'status', id: 'f-status' })));
+    el('div', { class: 'row' }, el('button', { class: 'btn primary small', type: 'button', onclick: () => { endEditing(); checkHandNames(); renderInfo(); } }, 'Done'), el('span', { class: 'status', id: 'f-status' })));
   form.addEventListener('input', save);
   return form;
 }
@@ -7966,11 +7979,13 @@ function drawPlan() {
   drawTargetOutline(g, ui.selected, '#1f57a8', 3.5, 'rgba(255,255,255,.35)', px);
   for (const id of multi) drawTargetOutline(g, id, '#1f57a8', 2.5, 'rgba(31,87,168,.28)', px);
   for (const idx of marked) { const p = ringPath(world.buildings[idx].rings); g.fillStyle = 'rgba(255,211,77,.85)'; g.fill(p, 'evenodd'); }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (drawFlatNames('plan', g, w, h, dpr, s, plan.cx, plan.cz, { fade: false, repeat: 460 })) requestAnimationFrame(() => plan.invalidate());   // long lists finish over a few frames
   // labels for anything named
   if (s > 0.3) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0); g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const col of ['features', 'buildings']) for (const [id, d] of store[col]) {
-      const t = targetOf(id); if (!t || !d.name || (t.b && s < 0.45)) continue;
+      const t = targetOf(id); if (!t || !d.name || (t.b && s < 0.45) || t.kind === 'street' || t.kind === 'path') continue;
       const sx = (t.cx - plan.cx) * s + w / 2, sy = (t.cz - plan.cz) * s + h / 2; if (sx < -100 || sx > w + 100 || sy < -20 || sy > h + 20) continue;
       g.font = t.b ? '600 12px Figtree, sans-serif' : 'italic 600 13px Figtree, sans-serif';
       g.lineWidth = 3; g.strokeStyle = 'rgba(251,248,240,.9)'; g.strokeText(d.name, sx, sy); g.fillStyle = t.b ? '#12323f' : '#1f4f3a'; g.fillText(d.name, sx, sy);
@@ -8455,8 +8470,8 @@ function setMode(mode) {
   controls.enabled = mode === 'map';
   const touch = matchMedia('(pointer: coarse)').matches;
   $('joy').hidden = !(touch && (mode === 'walk' || mode === 'fly')); $('fly-pad').hidden = !(touch && mode === 'fly');
-  plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('compass').hidden = plan.active;
-  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('readouts').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = mode !== 'fly'; mm.last = 0; _hudSig = ''; placeMinimap();
+  plan.active = mode === 'plan'; plan.canvas.hidden = !plan.active; canvas.hidden = plan.active; $('names').hidden = plan.active; $('compass').hidden = plan.active;
+  $('minimap').hidden = !(mode === 'walk' || mode === 'fly'); $('readouts').hidden = !(mode === 'walk' || mode === 'fly'); $('alt-box').hidden = mode !== 'fly'; mm.last = 0; _hudSig = ''; placeMinimap(); stepHere(true);
   setHover(null);
   if (mode === 'plan') {
     const f = prev === 'map' ? controls.target : player.pos; plan.cx = f.x; plan.cz = f.z;
@@ -8595,7 +8610,7 @@ function initPegman() {
       yaw = Math.atan2(where.road.tx * s, where.road.tz * s);
     }
     dropIn(where.x, where.z); player.yaw = yaw; cam.yaw = yaw; cam.pitch = 0.3;
-    toast(where.road ? `Walking ${nameOf(where.road.f.id).toLowerCase()}.` : 'Dropped in.');
+    toast(where.road ? `Walking ${fileNamesOf(where.road.f.id)[0] || nameOf(where.road.f.id).toLowerCase()}.` : 'Dropped in.');
   };
   let suppress = false;
   addEventListener('pointerup', up); addEventListener('pointercancel', () => end());
@@ -8614,6 +8629,7 @@ function initControls() {
     if ((e.metaKey || e.ctrlKey) && (k === 'z' || k === 'y')) { e.preventDefault(); if (k === 'y' || e.shiftKey) redoEdit(); else undoEdit(); return; }
     if (k === 'b') toggleBoxTool();
     if (k === 'x') toggleMeasure();
+    if (k === 'n') toggleNames();
     if (k === 'g') { if (e.shiftKey) toggleAlt(); else toggleCoords(); }
     if (k === 'f') setMode(player.mode === 'fly' ? 'walk' : 'fly');
     if (k === 'm') setMode(player.mode === 'map' ? 'walk' : 'map');
@@ -9093,10 +9109,11 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t); stepForest();
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t); stepForest(); stepPlaques();
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
+  stepNames(dt); stepHere();
   placePill(); placeMeasure(); refreshUndo(); placeHud();
   // HUD
   const yawRef = player.mode === 'map' ? controls.target : player.pos, yaw = Math.atan2(camera.position.x - yawRef.x, camera.position.z - yawRef.z);
@@ -9204,6 +9221,8 @@ function drawMinimap(now) {
   for (const { p, bb } of plan.tiles.values()) if (vis(bb)) g.fill(p, 'evenodd');
   for (const idx of plan.custom) { const b = world.buildings[idx]; if (vis(b.bbox)) { g.fillStyle = (b.style || styleOf(b)).wall; g.fill(ringPath(b.rings), 'evenodd'); } }
   if (ui.selected) drawTargetOutline(g, ui.selected, '#1f57a8', 2.5, 'rgba(31,87,168,.25)', px);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (drawFlatNames('mini', g, W, Hh, dpr, s, cx, cz, { fade: false, scale: 0.8, repeat: 230, bias: 0.5, max: 24 })) mm.last = 0;
   // the character: a heading arrow (yaw 0 faces south, +z)
   g.setTransform(dpr, 0, 0, dpr, dpr * (W / 2 - mm.px * s), dpr * (Hh / 2 - mm.pz * s)); g.rotate(-player.yaw + Math.PI);
   g.beginPath(); g.moveTo(0, -8); g.lineTo(5.5, 6); g.lineTo(0, 3); g.lineTo(-5.5, 6); g.closePath();
@@ -9271,6 +9290,568 @@ function placePill() {
   pill.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy)}px) translate(-50%, -100%)`;
 }
 
+// ─────────────────────────── street names ───────────────────────────
+// The Illustrator file's "Street names" layer says which stretch of which line has which name (RAW.streetNames, built by the parser); a name typed
+// by hand in the panel wins. Where the text goes is decided live, the way Google Maps does it (NameLayer): lettered along the street's own line, never
+// upside down, the same size on screen at any zoom, major streets first, never overlapping, a name only where the street has room for it, repeated on long
+// ones, moved along as the view changes. In 3D it rides at eave height over the street, which projects to the middle of the slot between the rooftops at any angle.
+const NAMES = { on: true, list: [], byLine: new Map(), byName: new Map(), chars: new Set(), info: RAW.streetInfo || {}, view: null, plan: null, mini: null, sheets: new Map(), k: 0, idle: 0, tops: null, TN: 2048, topMax: 0, hand: '', here: null, hereAt: 0, painted: false, theme: '', ms: 0, FLY0: 34, FLY1: 60 };
+try { NAMES.on = localStorage.getItem('amparacan-map-names') !== '0'; } catch (e) {}
+const NAME_STEP = 14, NAME_FONTS = [[600, 14], [600, 13], [500, 12.5], [500, 11.5]], NAME_MINK = [0.045, 0.2, 0.38, 0.85];   // px per metre below which a rank of street goes unnamed
+const NAME_THEMES = { light: ['#20231d', 'rgba(253,250,241,.95)'], dark: ['#fdf6e2', 'rgba(20,22,30,.82)'] };
+const NAME_FACE = 'Figtree, system-ui, sans-serif';
+const rankOfStreet = (name, w, kind) => /^(Avenida|Bulevar|Paseo|Calzada|Gran)\b/.test(name) || w >= 14 ? 0 : w >= 8 || /^Camino\b/.test(name) ? 1 : kind === 'path' || /^(Callej[oó]n|Andador|Pasaje|Esquina)\b/.test(name) || w < 4 ? 3 : 2;
+const WIKI_URL = /claude/i.test(location.hostname) || location.protocol === 'file:' ? 'https://claude.ai/code/artifact/c68332cd-aa54-469e-be31-d3bf791a25af' : '/';
+function lineSlice(P, s0, s1) {   // the part of a polyline between two arc lengths
+  const out = []; let d = 0;
+  for (let i = 0; i < P.length - 2; i += 2) {
+    const ax = P[i], az = P[i + 1], bx = P[i + 2], bz = P[i + 3], l = Math.hypot(bx - ax, bz - az), e = d + l;
+    if (l > 0 && e >= s0 && d <= s1) {
+      if (!out.length) { const t = clamp((s0 - d) / l, 0, 1); out.push(ax + (bx - ax) * t, az + (bz - az) * t); }
+      if (e <= s1) out.push(bx, bz); else { const t = clamp((s1 - d) / l, 0, 1); out.push(ax + (bx - ax) * t, az + (bz - az) * t); break; }
+    }
+    d = e;
+  }
+  return out;
+}
+function arcOnLine(P, x, z) {   // arc length of the point of a polyline nearest (x, z)
+  let best = Infinity, arc = 0, d = 0;
+  for (let i = 0; i < P.length - 2; i += 2) {
+    const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, L2 = dx * dx + dz * dz, l = Math.sqrt(L2);
+    const t = L2 ? clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1) : 0, q = Math.hypot(x - ax - t * dx, z - az - t * dz);
+    if (q < best) { best = q; arc = d + t * l; }
+    d += l;
+  }
+  return arc;
+}
+// one name's pieces, joined end to end into as few long lines as they make, so text can run across a junction
+function chainPieces(name, parts) {
+  const left = parts.slice(), out = [];
+  while (left.length) {
+    const p0 = left.pop(); let pts = p0.pts.slice(), w = p0.f.w, street = p0.f.kind === 'street'; const ids = new Set([p0.f.id]);
+    for (;;) {
+      let best = null; const n = pts.length;
+      const tx = pts[n - 2] - pts[n - 4], tz = pts[n - 1] - pts[n - 3], hx = pts[0] - pts[2], hz = pts[1] - pts[3];
+      for (let j = 0; j < left.length; j++) {
+        const q = left[j].pts, m = q.length, tol = Math.min(12, Math.max(w, left[j].f.w) / 2 + 3);
+        for (const [tail, rev] of [[1, 0], [1, 1], [0, 0], [0, 1]]) {
+          const ex = tail ? pts[n - 2] : pts[0], ez = tail ? pts[n - 1] : pts[1], sx = rev ? q[m - 2] : q[0], sz = rev ? q[m - 1] : q[1], gap = Math.hypot(ex - sx, ez - sz);
+          if (gap > tol || (best && gap >= best.gap)) continue;
+          const ox = rev ? q[m - 4] : q[2], oz = rev ? q[m - 3] : q[3], ux = tail ? tx : hx, uz = tail ? tz : hz;   // the piece must carry on, not double back
+          const ang = Math.abs(Math.atan2(ux * (oz - sz) - uz * (ox - sx), ux * (ox - sx) + uz * (oz - sz)));
+          if (ang < 1.15) best = { j, tail, rev, gap };
+        }
+      }
+      if (!best) break;
+      const q = left.splice(best.j, 1)[0]; let seq = q.pts;
+      if (best.rev) { seq = []; for (let i = q.pts.length - 2; i >= 0; i -= 2) seq.push(q.pts[i], q.pts[i + 1]); }
+      pts = best.tail ? pts.concat(seq) : (() => { const r = []; for (let i = seq.length - 2; i >= 0; i -= 2) r.push(seq[i], seq[i + 1]); return r.concat(pts); })();
+      w = Math.max(w, q.f.w); street = street || q.f.kind === 'street'; ids.add(q.f.id);
+    }
+    // even spacing: no stretch longer than NAME_STEP, so heights and curves are followed
+    const xz = [];
+    for (let i = 0; i < pts.length - 2; i += 2) {
+      const ax = pts[i], az = pts[i + 1], dx = pts[i + 2] - ax, dz = pts[i + 3] - az, l = Math.hypot(dx, dz), m = Math.max(1, Math.ceil(l / NAME_STEP));
+      if (l < 1e-3) continue;
+      for (let k = 0; k < m; k++) xz.push(ax + dx * k / m, az + dz * k / m);
+    }
+    xz.push(pts[pts.length - 2], pts[pts.length - 1]);
+    const c = xz.length / 2; if (c < 2) continue;
+    const arr = new Float32Array(xz), cum = new Float32Array(c); let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < c; i++) { if (i) cum[i] = cum[i - 1] + Math.hypot(arr[i * 2] - arr[i * 2 - 2], arr[i * 2 + 1] - arr[i * 2 - 1]); x0 = Math.min(x0, arr[i * 2]); x1 = Math.max(x1, arr[i * 2]); z0 = Math.min(z0, arr[i * 2 + 1]); z1 = Math.max(z1, arr[i * 2 + 1]); }
+    out.push({ name, n: c, xz: arr, cum, len: cum[c - 1], w, ids: [...ids], rank: rankOfStreet(name, w, street ? 'street' : 'path'), y: null, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, r: Math.hypot(x1 - x0, z1 - z0) / 2, junctions: null, plaques: null, _d: 0 });
+  }
+  return out;
+}
+function buildStreetNames() {
+  const sn = RAW.streetNames || { names: [], lines: {} }, groups = new Map();
+  NAMES.byLine.clear(); NAMES.byName.clear();
+  for (const f of world.features) {
+    if (f.kind !== 'street' && f.kind !== 'path') continue;
+    const d = store.features.get(f.id), e = sn.lines[f.id], parts = [];
+    if (d && d.name) parts.push({ name: d.name, s0: 0, s1: f.size });
+    else if (e) { let s0 = 0; for (let i = 0; i < e.length; i += 2) { const s1 = i + 1 < e.length ? e[i + 1] : f.size; parts.push({ name: sn.names[e[i]], s0, s1 }); s0 = s1; } }
+    if (!parts.length) continue;
+    NAMES.byLine.set(f.id, parts);
+    for (const p of parts) {
+      p.f = f; p.pts = lineSlice(f.pts, p.s0, p.s1); if (p.pts.length < 4) continue;
+      let g = groups.get(p.name); if (!g) groups.set(p.name, g = []); g.push(p);
+      let ids = NAMES.byName.get(p.name); if (!ids) NAMES.byName.set(p.name, ids = new Set()); ids.add(f.id);
+    }
+  }
+  NAMES.list = []; const had = NAMES.chars.size;
+  for (const [name, parts] of groups) { for (const c of name) NAMES.chars.add(c); NAMES.list.push(...chainPieces(name, parts)); }
+  NAMES.list.forEach((c, i) => { c.i = i; });
+  if (NAMES.chars.size !== had) NAMES.sheets.clear();
+  NAMES.idle = 0; NAMES.segs = null;
+  for (const L of [NAMES.view, NAMES.plan, NAMES.mini]) if (L) L.reset();
+  plaqueReset();
+}
+function checkHandNames() { const s = handNamesSig(); if (s !== NAMES.hand) { NAMES.hand = s; buildStreetNames(); plan.invalidate(); mm.last = 0; } }
+function handNamesSig() { let s = ''; for (const [id, d] of store.features) if (d.name && (id.startsWith('st') || id.startsWith('pt'))) s += id + d.name + '|'; return s; }
+function fileNamesOf(id) { const parts = NAMES.byLine.get(id); return parts ? [...new Set(parts.map((p) => p.name))] : []; }
+function chainY(ch) {   // the height the text rides at: the street, plus the eaves of the buildings along it
+  if (ch.y) return ch.y;
+  const n = ch.n, y = new Float32Array(n), lift = new Float32Array(n), near = new Set(), reach = Math.min(ch.w / 2 + 7, 20);
+  for (let i = 0; i < n; i++) {
+    const x = ch.xz[i * 2], z = ch.xz[i * 2 + 1]; y[i] = Math.max(H(x, z), 0);
+    if (i % 2 && i < n - 1) continue;                           // the eaves every other point; the rest are filled in below
+    nearbyBuildings(x, z, near); let sum = 0, c = 0;
+    for (const k of near) { const b = world.buildings[k], bb = b.bbox, dx = Math.max(bb[0] - x, 0, x - bb[2]), dz = Math.max(bb[1] - z, 0, z - bb[3]); if (dx * dx + dz * dz < reach * reach) { sum += Math.max(0, b.top - y[i]); c++; } }
+    lift[i] = c ? Math.min(sum / c, 30) : 0.6;
+  }
+  for (let i = 1; i < n - 1; i += 2) lift[i] = (lift[i - 1] + lift[i + 1]) / 2;
+  for (let pass = 0; pass < 2; pass++) { let a = lift[0]; for (let i = 1; i < n - 1; i++) { const b = lift[i]; lift[i] = (a + b + lift[i + 1]) / 3; a = b; } }
+  for (let i = 0; i < n; i++) y[i] += lift[i];
+  return (ch.y = y);
+}
+function buildNameTops() {    // a coarse raster of building tops, for what blocks the view of a street
+  const N = NAMES.TN, T = new Float32Array(N * N), f = N / EXT, c = EXT / N; let mx = 0;
+  for (const b of world.buildings) {
+    if (b.removed) continue;
+    const bb = b.bbox, i0 = Math.max(0, Math.floor((bb[0] + EXT / 2) * f)), i1 = Math.min(N - 1, Math.floor((bb[2] + EXT / 2) * f)), j0 = Math.max(0, Math.floor((bb[1] + EXT / 2) * f)), j1 = Math.min(N - 1, Math.floor((bb[3] + EXT / 2) * f));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (pointInRings((i + 0.5) * c - EXT / 2, (j + 0.5) * c - EXT / 2, b.rings) && T[j * N + i] < b.top) T[j * N + i] = b.top;
+    if (b.top > mx) mx = b.top;
+  }
+  NAMES.tops = T; NAMES.topMax = Math.max(mx, world.topoMax || 0) + 5;
+}
+function nameBlocked(x, y, z) {   // a hill or a taller building between a point over the street and the camera
+  const T = NAMES.tops; if (!T) return false;
+  const c = camera.position, dx = c.x - x, dy = c.y - y, dz = c.z - z, dh = Math.hypot(dx, dz); if (dh < 30) return false;
+  const sl = dy / dh, ux = dx / dh, uz = dz / dh, N = NAMES.TN, f = N / EXT, top = world.sTopo;
+  let d = 18, step = 8;
+  while (d < dh) {
+    const py = y + sl * d, px = x + ux * d, pz = z + uz * d; if (py > NAMES.topMax) break;
+    const i = ((px + EXT / 2) * f) | 0, j = ((pz + EXT / 2) * f) | 0;
+    if (i >= 0 && j >= 0 && i < N && j < N && T[j * N + i] > py + 2.5) return true;
+    if (top(px, pz) + LAND_Y > py + 2.5) return true;
+    d += step; step = Math.min(step * 1.15, 48);
+  }
+  return false;
+}
+function nameSheet(rank, scale, theme) {   // every letter in one rank's type, its halo and its ink side by side, ready to stamp
+  const key = rank + '|' + scale + '|' + theme; let s = NAMES.sheets.get(key); if (s) return s;
+  const dpr = Math.min(devicePixelRatio, 2), [wt, px] = NAME_FONTS[rank], size = px * scale, cell = Math.ceil((size * 1.5 + 6) * dpr), chars = [...NAMES.chars], cols = 20, rows = Math.ceil(chars.length / cols) || 1;
+  const cv = document.createElement('canvas'); cv.width = cols * cell; cv.height = rows * cell * 2;
+  const c = cv.getContext('2d'), [ink, halo] = NAME_THEMES[theme], map = new Map();
+  c.font = `${wt} ${size * dpr}px ${NAME_FACE}`; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.lineJoin = 'round'; c.strokeStyle = halo; c.fillStyle = ink; c.lineWidth = 3 * dpr;
+  chars.forEach((ch, i) => {
+    const x = (i % cols) * cell, y = Math.floor(i / cols) * cell * 2, bx = x + cell / 2, by = cell / 2 + 0.36 * size * dpr;
+    c.strokeText(ch, bx, y + by); c.fillText(ch, bx, y + cell + by); map.set(ch, [x, y, y + cell]);
+  });
+  s = { cv, cell, css: cell / dpr, map }; NAMES.sheets.set(key, s); return s;
+}
+const _nameMeasure = document.createElement('canvas').getContext('2d');
+class NameLayer {
+  constructor({ scale = 1, fade = true, occlude = false, max = 130, repeat = 420, bias = 1 } = {}) {
+    Object.assign(this, { scale, fading: fade, occlude, max, repeat, bias, cell: 6, active: [], seen: new Map(), metrics: new Map(), e: new Float64Array(16), W: 0, H: 0, HW: 0, HH: 0, cot: 1, maxW: Infinity, moved: true, complete: false, last: 0, cands: [], cursor: 0, mask: null, mw: 0, mh: 0, px: 0, py: 0, pw: 1, ax: 0, ay: 0 });
+    this.bx = new Float32Array(130); this.by = new Float32Array(130); this.qx = new Float32Array(270); this.qy = new Float32Array(270); this.ql = new Float32Array(270);
+    this.tmp = { gx: new Float32Array(90), gy: new Float32Array(90), gc: new Float32Array(90), gs: new Float32Array(90), flip: null, k: 0, wp: new Float32Array(9) };
+    this.rl = new Float32Array(1024);
+  }
+  reset() { this.active.length = 0; this.moved = true; this.complete = false; this.cands = []; this.cursor = 0; }
+  fonts() { this.metrics.clear(); this.reset(); }
+  setView(e, W, H, cot) {
+    let ch = W !== this.W || H !== this.H || cot !== this.cot; const o = this.e;
+    for (let i = 0; i < 16; i++) { if (Math.abs(e[i] - o[i]) > 1e-6 * (Math.abs(o[i]) + 1e-3)) ch = true; o[i] = e[i]; }
+    if (W !== this.W || H !== this.H) { this.mw = Math.ceil(W / this.cell) + 1; this.mh = Math.ceil(H / this.cell) + 1; this.mask = new Uint8Array(this.mw * this.mh); }
+    this.W = W; this.H = H; this.HW = W / 2; this.HH = H / 2; this.cot = cot;
+    if (ch) this.moved = true;
+    return ch;
+  }
+  pr(x, y, z) {
+    const e = this.e, w = e[3] * x + e[7] * y + e[11] * z + e[15]; if (w < 1e-3 || w > this.maxW) return false;
+    this.px = (e[0] * x + e[4] * y + e[8] * z + e[12]) / w * this.HW + this.HW; this.py = this.HH - (e[1] * x + e[5] * y + e[9] * z + e[13]) / w * this.HH; this.pw = w;
+    return true;
+  }
+  metric(name, rank) {
+    const key = rank + name; let m = this.metrics.get(key); if (m) return m;
+    const [wt, px] = NAME_FONTS[rank], size = px * this.scale, c = _nameMeasure; c.font = `${wt} ${size}px ${NAME_FACE}`;
+    const chars = [...name], xs = new Float32Array(chars.length), track = 0.3 * this.scale; let run = '';
+    chars.forEach((ch, i) => { run += ch; const w = c.measureText(ch).width; xs[i] = c.measureText(run).width - w / 2 + track * i; });
+    const tw = c.measureText(name).width + track * (chars.length - 1);
+    for (let i = 0; i < xs.length; i++) xs[i] -= tw / 2;
+    m = { chars, xs, tw, size }; this.metrics.set(key, m); return m;
+  }
+  qAt(arc, q) { const l = this.ql; let i = 0; while (i < q - 2 && l[i + 1] < arc) i++; const d = l[i + 1] - l[i], t = d > 0 ? (arc - l[i]) / d : 0; this.ax = this.qx[i] + (this.qx[i + 1] - this.qx[i]) * t; this.ay = this.qy[i] + (this.qy[i + 1] - this.qy[i]) * t; }
+  // Lay a name along a street, centred at arc length s: the street's points are projected outward from there until they hold the text
+  fit(ch, s, lab, m) {
+    const xz = ch.xz, ys = ch.y, cum = ch.cum, n = ch.n, need = m.tw / 2 + 4, qx = this.qx, qy = this.qy, ql = this.ql, bx = this.bx, by = this.by;
+    if (m.chars.length > lab.gx.length) return false;
+    let lo = 0, hi = n - 2; while (lo < hi) { const c = (lo + hi + 1) >> 1; if (cum[c] <= s) lo = c; else hi = c - 1; }
+    const sg = cum[lo + 1] - cum[lo], t = sg > 0 ? clamp((s - cum[lo]) / sg, 0, 1) : 0, x0 = xz[lo * 2] + (xz[lo * 2 + 2] - xz[lo * 2]) * t, z0 = xz[lo * 2 + 1] + (xz[lo * 2 + 3] - xz[lo * 2 + 1]) * t, y0 = ys[lo] + (ys[lo + 1] - ys[lo]) * t;
+    if (!this.pr(x0, y0, z0)) return false;
+    const ax = this.px, ay = this.py, k = this.HH * this.cot / this.pw; lab.k = k;
+    let nb = 0, len = 0, lx = ax, ly = ay, j = lo;
+    while (len < need) {
+      if (j < 0 || nb >= 128) return false;
+      if (!this.pr(xz[j * 2], ys[j], xz[j * 2 + 1])) return false;
+      const d = Math.hypot(this.px - lx, this.py - ly); if (d > 1e-3) { bx[nb] = this.px; by[nb] = this.py; nb++; len += d; lx = this.px; ly = this.py; } j--;
+    }
+    const backEnd = j + 1; let q = 0;
+    for (let i = nb - 1; i >= 0; i--) { qx[q] = bx[i]; qy[q] = by[i]; q++; }
+    const aIdx = q; qx[q] = ax; qy[q] = ay; q++;
+    len = 0; lx = ax; ly = ay; j = lo + 1;
+    while (len < need) {
+      if (j >= n || q >= 268) return false;
+      if (!this.pr(xz[j * 2], ys[j], xz[j * 2 + 1])) return false;
+      const d = Math.hypot(this.px - lx, this.py - ly); if (d > 1e-3) { qx[q] = this.px; qy[q] = this.py; q++; len += d; lx = this.px; ly = this.py; } j++;
+    }
+    const fwdEnd = j - 1;
+    if ((cum[fwdEnd] - cum[backEnd]) * k > m.tw * 6) return false;   // too foreshortened: a street running straight away from the eye
+    ql[0] = 0; for (let i = 1; i < q; i++) ql[i] = ql[i - 1] + Math.hypot(qx[i] - qx[i - 1], qy[i] - qy[i - 1]);
+    const a0 = ql[aIdx], W = this.W, H = this.H, gx = lab.gx, gy = lab.gy, gc = lab.gc, gs = lab.gs;
+    this.qAt(a0 - m.tw / 2, q); const sx = this.ax; this.qAt(a0 + m.tw / 2, q); const dx = this.ax - sx;
+    let flip = lab.flip; if (flip === null || flip === undefined) flip = dx < 0; else if (flip !== dx < 0 && Math.abs(dx) > 0.2 * m.tw) flip = dx < 0;
+    lab.flip = flip;
+    let prev = 0, lo2 = 0, hi2 = 0, un = 0;
+    for (let g = 0; g < m.chars.length; g++) {
+      const off = m.xs[g], arc = a0 + (flip ? -off : off), h = 3.5;
+      this.qAt(arc, q); const x = this.ax, y = this.ay; if (x < 2 || y < 2 || x > W - 2 || y > H - 2) return false;
+      this.qAt(arc - h, q); const x1 = this.ax, y1 = this.ay; this.qAt(arc + h, q);
+      let an = Math.atan2(this.ay - y1, this.ax - x1); if (flip) an += Math.PI;
+      if (g) { let da = an - prev; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; if (Math.abs(da) > 0.62) return false; un += da; lo2 = Math.min(lo2, un); hi2 = Math.max(hi2, un); if (hi2 - lo2 > 1.3) return false; }
+      prev = an; gx[g] = x; gy[g] = y; gc[g] = Math.cos(an); gs[g] = Math.sin(an);
+    }
+    if (lab.wp) { const w = lab.wp, a = backEnd, b = Math.min(fwdEnd, n - 1); w[0] = xz[a * 2]; w[1] = ys[a]; w[2] = xz[a * 2 + 1]; w[3] = x0; w[4] = y0; w[5] = z0; w[6] = xz[b * 2]; w[7] = ys[b]; w[8] = xz[b * 2 + 1]; }
+    return true;
+  }
+  touch(lab, m, write) {
+    const c = this.cell, mw = this.mw, mh = this.mh, mask = this.mask, r = m.size * 0.62 + 2.5;
+    for (let g = 0; g < m.chars.length; g++) {
+      const x0 = Math.max(0, Math.floor((lab.gx[g] - r) / c)), x1 = Math.min(mw - 1, Math.floor((lab.gx[g] + r) / c)), y0 = Math.max(0, Math.floor((lab.gy[g] - r) / c)), y1 = Math.min(mh - 1, Math.floor((lab.gy[g] + r) / c));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { if (write) mask[y * mw + x] = 1; else if (mask[y * mw + x]) return true; }
+    }
+    return false;
+  }
+  sight(lab, need) { const w = lab.wp; let ok = 0; for (let i = 0; i < 9; i += 3) if (!nameBlocked(w[i], w[i + 1], w[i + 2])) ok++; return ok >= need; }
+  note(ch, m, lab) { const g = m.chars.length >> 1; let a = this.seen.get(ch.name); if (!a) this.seen.set(ch.name, a = []); a.push(lab.gx[g], lab.gy[g]); }
+  crowded(ch, m, lab) { const a = this.seen.get(ch.name); if (!a) return false; const g = m.chars.length >> 1, R = this.repeat * 0.62; for (let i = 0; i < a.length; i += 2) if (Math.hypot(a[i] - lab.gx[g], a[i + 1] - lab.gy[g]) < R) return true; return false; }
+  place(ch, m, s) {
+    const lab = this.tmp; lab.flip = null;
+    if (!this.fit(ch, s, lab, m) || this.crowded(ch, m, lab) || this.touch(lab, m, false) || (this.occlude && !this.sight(lab, 3))) return false;
+    const n = m.chars.length, l = { ch, m, s, flip: lab.flip, a: this.fading ? 0 : 1, want: 1, ok: true, k: lab.k, gx: lab.gx.slice(0, n), gy: lab.gy.slice(0, n), gc: lab.gc.slice(0, n), gs: lab.gs.slice(0, n), wp: lab.wp.slice() };
+    this.touch(l, m, true); this.note(ch, m, l); this.active.push(l);
+    return true;
+  }
+  tryChain(ch) {
+    if (!ch.y) chainY(ch);
+    const m = this.metric(ch.name, ch.rank), mn = NAME_MINK[ch.rank] * this.bias, W = this.W, H = this.H, cc = this.HH * this.cot, n = ch.n, xz = ch.xz, ys = ch.y;
+    if (this.rl.length < n + 1) this.rl = new Float32Array(n * 2);
+    const rl = this.rl; let i0 = -1, lx = 0, ly = 0, total = 0;
+    for (let i = 0; i <= n; i++) {
+      const on = i < n && this.pr(xz[i * 2], ys[i], xz[i * 2 + 1]) && this.px > 10 && this.py > 10 && this.px < W - 10 && this.py < H - 10 && cc / this.pw >= mn;
+      if (on) { if (i0 < 0) { i0 = i; total = 0; } else total += Math.hypot(this.px - lx, this.py - ly); rl[i] = total; lx = this.px; ly = this.py; }
+      else if (i0 >= 0) { this.tryRun(ch, m, i0, i - 1, total); i0 = -1; if (this.active.length >= this.max) return; }
+    }
+  }
+  tryRun(ch, m, i0, i1, L) {   // a stretch that is on screen: the name in its middle, or every so often along it when it is long
+    if (L < m.tw * 1.06) return;
+    const slots = Math.max(1, Math.floor(L / this.repeat)), rl = this.rl, cum = ch.cum;
+    for (let q = 0; q < slots; q++) {
+      const base = (q + 0.5) / slots * L, spread = Math.max(0, Math.min(L / slots / 2 - m.tw * 0.53, m.tw));
+      for (const o of [0, 0.5, -0.5, 1, -1]) {
+        if (o && !spread) break;
+        const want = base + o * spread; let i = i0; while (i < i1 - 1 && rl[i + 1] < want) i++;
+        const d = rl[i + 1] - rl[i], t = d > 0 ? clamp((want - rl[i]) / d, 0, 1) : 0, s = cum[i] + (cum[i + 1] - cum[i]) * t;
+        if (this.place(ch, m, s)) break;
+      }
+      if (this.active.length >= this.max) return;
+    }
+  }
+  // Keep what is up if it still fits (most important first), then look for room for more, a little each frame
+  pass(budget) {
+    const t0 = performance.now();
+    if (this.moved) {
+      this.moved = false; this.last = t0; this.mask.fill(0); this.seen.clear(); this.cursor = 0;
+      this.active.sort((a, b) => a.ch.rank - b.ch.rank || b.a - a.a);
+      for (const l of this.active) {
+        l.ok = this.fit(l.ch, l.s, l, l.m);
+        const keep = l.ok && l.k >= NAME_MINK[l.ch.rank] * this.bias * 0.8 && !this.crowded(l.ch, l.m, l) && !this.touch(l, l.m, false) && (!this.occlude || this.sight(l, 2));
+        l.want = keep ? 1 : 0;
+        if (keep) { this.touch(l, l.m, true); this.note(l.ch, l.m, l); }
+      }
+      if (!this.fading) this.active = this.active.filter((l) => l.want);
+      const c = [], e = this.e, W = this.W, H = this.H, cc = this.HH * this.cot;
+      for (const ch of NAMES.list) {
+        const y = ch.y ? ch.y[ch.n >> 1] : 5, w = e[3] * ch.cx + e[7] * y + e[11] * ch.cz + e[15]; if (w < -ch.r || w - ch.r > this.maxW) continue;
+        const wn = Math.max(w, 1), sx = (e[0] * ch.cx + e[4] * y + e[8] * ch.cz + e[12]) / wn * this.HW + this.HW, sy = this.HH - (e[1] * ch.cx + e[5] * y + e[9] * ch.cz + e[13]) / wn * this.HH, rp = ch.r * cc / wn + 20;
+        if (sx < -rp || sx > W + rp || sy < -rp || sy > H + rp) continue;
+        if (cc / Math.max(w - ch.r, 1) < NAME_MINK[ch.rank] * this.bias) continue;
+        ch._d = Math.hypot(sx - this.HW, sy - this.HH); c.push(ch);
+      }
+      c.sort((a, b) => a.rank - b.rank || a._d - b._d); this.cands = c;
+    }
+    const c = this.cands;
+    while (this.cursor < c.length && this.active.length < this.max) {
+      this.tryChain(c[this.cursor++]);
+      if (performance.now() - t0 > budget) break;
+    }
+    this.complete = this.cursor >= c.length || this.active.length >= this.max;
+  }
+  refit() { for (const l of this.active) { l.ok = this.fit(l.ch, l.s, l, l.m); if (!l.ok) { l.want = 0; l.a = 0; } } }
+  step(dt) {   // fade names in and out; true if anything changed
+    let ch = false, dead = false;
+    for (const l of this.active) {
+      const to = l.want ? 1 : 0; if (l.a === to) continue;
+      l.a = to ? Math.min(1, l.a + dt * 3.2) : Math.max(0, l.a - dt * 4.5); ch = true; if (!l.a && !to) dead = true;
+    }
+    for (const l of this.active) if (!l.a && !l.want) dead = true;
+    if (dead) this.active = this.active.filter((l) => l.a > 0 || l.want);
+    return ch || dead;
+  }
+  draw(c, dpr, theme, alpha = 1) {
+    for (const l of this.active) {
+      if (!l.ok || l.a <= 0.01) continue;
+      const sh = nameSheet(l.ch.rank, this.scale, theme), css = sh.css, half = css / 2, cell = sh.cell, cv = sh.cv, chars = l.m.chars, n = chars.length, gx = l.gx, gy = l.gy, gc = l.gc, gs = l.gs;
+      c.globalAlpha = l.a * alpha;
+      for (let row = 1; row < 3; row++) for (let g = 0; g < n; g++) {     // all the halos first, so none lies over a neighbouring letter
+        if (chars[g] === ' ') continue;
+        const en = sh.map.get(chars[g]); if (!en) continue;
+        c.setTransform(dpr * gc[g], dpr * gs[g], -dpr * gs[g], dpr * gc[g], dpr * gx[g], dpr * gy[g]);
+        c.drawImage(cv, en[0], en[row], cell, cell, -half, -half, css, css);
+      }
+    }
+    c.globalAlpha = 1; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+}
+const _nameM = new THREE.Matrix4(), _linM = new Float64Array(16);
+function flatView(cx, cz, s, W, Hh) {   // the matrix of a top-down view, s px per metre, centred on (cx, cz)
+  const e = _linM; e.fill(0); e[0] = s / (W / 2); e[12] = -cx * s / (W / 2); e[9] = -s / (Hh / 2); e[13] = cz * s / (Hh / 2); e[15] = 1; return e;
+}
+function drawFlatNames(key, g, W, Hh, dpr, s, cx, cz, opts) {   // the names on the 2D plan or the minimap
+  if (!NAMES.on) return false;
+  const L = NAMES[key] || (NAMES[key] = new NameLayer(opts));
+  L.setView(flatView(cx, cz, s, W, Hh), W, Hh, s / (Hh / 2));
+  if (L.moved || !L.complete) L.pass(L.scale < 1 ? 2.5 : 7);
+  L.draw(g, dpr, 'light');
+  return !L.complete;
+}
+function stepNames(dt) {
+  const L = NAMES.view; if (!L) return;
+  const t0 = performance.now();
+  // quietly, while nothing asks for it yet: the heights the text rides at and the raster of what can block it
+  if (!NAMES.tops) buildNameTops();
+  for (const list = NAMES.list; NAMES.idle < list.length && performance.now() - t0 < 1.5;) chainY(list[NAMES.idle++]);
+  const c = camera.position, mode = player.mode; let k = 0;
+  if (NAMES.on && mode === 'map') k = 1;
+  else if (NAMES.on && mode === 'fly') k = smooth(NAMES.FLY0, NAMES.FLY1, player.pos.y - H(player.pos.x, player.pos.z));
+  if (DECK.cov > 0.5 && c.y > DECK.base - 20) k = 0;     // in or above the cloud deck the city is out of sight, and so are its names
+  const before = NAMES.k; NAMES.k += (k - NAMES.k) * (1 - Math.exp(-dt * 6)); if (Math.abs(k - NAMES.k) < 0.004) NAMES.k = k;
+  const cv = $('names'), dpr = Math.min(devicePixelRatio, 2), W = innerWidth, Hh = innerHeight;
+  if (!NAMES.k && !k) {
+    if (NAMES.painted) { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); NAMES.painted = false; L.reset(); }
+    return;
+  }
+  camera.updateMatrixWorld();
+  _nameM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const moved = L.setView(_nameM.elements, W, Hh, camera.projectionMatrix.elements[5]); L.maxW = scene.fog.far * 0.8;
+  if (moved) L.refit();
+  const now = performance.now();
+  if (k > 0 && (L.moved ? now - L.last > 140 : !L.complete)) L.pass(3.5);
+  if (!k) for (const l of L.active) l.want = 0;
+  const faded = L.step(dt), theme = NIGHT.value >= 0.6 ? 'dark' : 'light', fresh = theme !== NAMES.theme;
+  NAMES.theme = theme;
+  if (moved || faded || fresh || before !== NAMES.k || !NAMES.painted || NAMES.force) {
+    NAMES.force = false;
+    const pw = Math.round(W * dpr), ph = Math.round(Hh * dpr), g = cv.getContext('2d');
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, pw, ph);
+    L.draw(g, dpr, theme, NAMES.k); NAMES.painted = true;
+  }
+  NAMES.ms = NAMES.ms * 0.95 + (performance.now() - t0) * 0.05;
+}
+function toggleNames(on = !NAMES.on) {
+  NAMES.on = on; try { localStorage.setItem('amparacan-map-names', on ? '1' : '0'); } catch (e) {}
+  $('names-btn').setAttribute('aria-pressed', String(on)); plan.invalidate(); mm.last = 0; stepHere(true);
+  toast(on ? 'Street names on.' : 'Street names off.');
+}
+function nameAt(x, z, maxD = 12) {   // the named street or path at a point, and how far off it
+  let best = null; const ix = Math.floor(x / FGRID) + 2000, iz = Math.floor(z / FGRID) + 2000;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const l = world.fGrid.get(gkey(ix + a, iz + b)); if (!l) continue;
+    for (const i of l) {
+      const f = world.features[i]; if (f.kind !== 'street' && f.kind !== 'path') continue;
+      const parts = NAMES.byLine.get(f.id); if (!parts) continue;
+      const d = Math.max(0, distToLine(f.pts, x, z) - f.w / 2) + (f.kind === 'path' ? 1 : 0);
+      if (d > maxD || (best && d >= best.d)) continue;
+      const s = parts.length > 1 ? arcOnLine(f.pts, x, z) : 0; let name = parts[0].name; for (const p of parts) if (s >= p.s0) name = p.name;
+      best = { name, d, id: f.id };
+    }
+  }
+  return best;
+}
+function stepHere(force) {   // the chip under the minimap: the street you are on
+  const now = performance.now(); if (!force && now - NAMES.hereAt < 300) return; NAMES.hereAt = now;
+  const box = $('street-box'), walking = player.mode === 'walk' || (player.mode === 'fly' && player.pos.y - H(player.pos.x, player.pos.z) < NAMES.FLY1);
+  let name = null;
+  if (NAMES.on && walking) {
+    const n = nameAt(player.pos.x, player.pos.z);
+    // stay with the street you are on until another is clearly nearer; a junction doesn't flicker
+    if (n) { if (NAMES.here && NAMES.here.name !== n.name && n.d > 0.5) { const o = nameAt(player.pos.x, player.pos.z, 16); name = o && o.name === NAMES.here.name ? NAMES.here.name : n.name; } else name = n.name; }
+  }
+  NAMES.here = name ? { name } : null;
+  if (name) { if ($('street-val').textContent !== name) $('street-val').textContent = name; box.hidden = false; } else box.hidden = true;
+}
+// ---- corner plaques, seen on foot: blue-and-white tile name plates on the corner buildings at each junction, one on each side of a street
+const PLAQUE = { W: 1.3, H: 0.52, UP: 3.2, R: 130, ALT: 110, MAX: 24, group: null, geo: null, frame: null, names: new Map(), at: 0, x: 1e9, z: 1e9, shown: 0 };
+function plaqueReset() { for (const ch of NAMES.list) ch.plaques = null; PLAQUE.x = 1e9; for (const o of PLAQUE.names.values()) if (o.mesh) o.mesh.count = 0; if (PLAQUE.frame) PLAQUE.frame.count = 0; }
+function plaqueTexture(name) {
+  const W = 640, Hp = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = Hp;
+  const c = cv.getContext('2d'), blue = '#1c3f94';
+  c.fillStyle = '#f4f0e6'; c.fillRect(0, 0, W, Hp);
+  c.strokeStyle = 'rgba(90,90,85,.4)'; c.lineWidth = 2; c.beginPath();
+  for (const x of [160, 320, 480]) { c.moveTo(x, 0); c.lineTo(x, Hp); } c.moveTo(0, Hp / 2); c.lineTo(W, Hp / 2); c.stroke();      // the joints between the tiles
+  c.strokeStyle = blue; c.lineWidth = 9; c.strokeRect(13, 13, W - 26, Hp - 26); c.lineWidth = 2.5; c.strokeRect(26, 26, W - 52, Hp - 52);
+  c.fillStyle = blue; for (const [x, y] of [[26, 26], [W - 26, 26], [26, Hp - 26], [W - 26, Hp - 26]]) { c.beginPath(); c.arc(x, y, 10, 0, 6.3); c.fill(); }
+  const m = name.match(/^(Calle|Camino|Callej[oó]n|Avenida|Paseo|Andador|Puente|Plaza|Calzada|Bulevar|Pasaje|Esquina)\s+(.+)$/), top = m ? m[1].toUpperCase() : '', main = (m ? m[2] : name).toUpperCase();
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  if (top) { c.font = "600 32px Georgia, 'Times New Roman', serif"; c.fillText(top.split('').join(String.fromCharCode(8202)), W / 2, 84); }
+  let size = top ? 84 : 92; c.font = `700 ${size}px Georgia, 'Times New Roman', serif`;
+  while (size > 24 && c.measureText(main).width > W - 84) { size -= 2; c.font = `700 ${size}px Georgia, 'Times New Roman', serif`; }
+  c.fillText(main, W / 2, top ? 132 + size * 0.42 : Hp / 2 + size * 0.34);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; return tex;
+}
+function segmentGrid() {   // every piece of every named line, by 32 m cell
+  if (NAMES.segs) return NAMES.segs;
+  const g = new Map(), C = 32;
+  for (const ch of NAMES.list) for (let i = 0; i < ch.n - 1; i++) {
+    const k = gkey(Math.floor((ch.xz[i * 2] + ch.xz[i * 2 + 2]) / 2 / C) + 2000, Math.floor((ch.xz[i * 2 + 1] + ch.xz[i * 2 + 3]) / 2 / C) + 2000);
+    let l = g.get(k); if (!l) g.set(k, l = []); l.push(ch, i);
+  }
+  return (NAMES.segs = g);
+}
+function segDist(ax, az, bx, bz, cx, cz, dx, dz) {   // closest approach of two short segments, and where along the first
+  let best = Infinity, u = 0;
+  const pt = (px, pz, qx, qz, rx, rz) => { const ex = rx - qx, ez = rz - qz, L = ex * ex + ez * ez, t = L ? clamp(((px - qx) * ex + (pz - qz) * ez) / L, 0, 1) : 0; return [Math.hypot(px - qx - t * ex, pz - qz - t * ez), t]; };
+  const ab = Math.hypot(bx - ax, bz - az);
+  for (const [px, pz] of [[cx, cz], [dx, dz]]) { const [d, t] = pt(px, pz, ax, az, bx, bz); if (d < best) { best = d; u = t * ab; } }
+  for (const [px, pz, a] of [[ax, az, 0], [bx, bz, ab]]) { const [d] = pt(px, pz, cx, cz, dx, dz); if (d < best) { best = d; u = a; } }
+  const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx);
+  if (Math.abs(den) > 1e-6) { const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / den, r = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / den; if (t >= 0 && t <= 1 && r >= 0 && r <= 1) return [0, t * ab]; }
+  return [best, u];
+}
+function junctionsOf(ch) {   // where other named streets meet this one: arc length and the other's width
+  if (ch.junctions) return ch.junctions;
+  const g = segmentGrid(), C = 32, found = new Map();
+  for (let i = 0; i < ch.n - 1; i++) {
+    const ax = ch.xz[i * 2], az = ch.xz[i * 2 + 1], bx = ch.xz[i * 2 + 2], bz = ch.xz[i * 2 + 3], ix = Math.floor((ax + bx) / 2 / C) + 2000, iz = Math.floor((az + bz) / 2 / C) + 2000, ang = Math.atan2(bz - az, bx - ax);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const l = g.get(gkey(ix + a, iz + b)); if (!l) continue;
+      for (let q = 0; q < l.length; q += 2) {
+        const o = l[q], j = l[q + 1]; if (o === ch || o.name === ch.name) continue;
+        const cx = o.xz[j * 2], cz = o.xz[j * 2 + 1], dx = o.xz[j * 2 + 2], dz = o.xz[j * 2 + 3];
+        let da = Math.abs(Math.atan2(dz - cz, dx - cx) - ang) % Math.PI; if (da > Math.PI / 2) da = Math.PI - da; if (da < 0.5) continue;
+        const [d, u] = segDist(ax, az, bx, bz, cx, cz, dx, dz); if (d > ch.w / 2 + o.w / 2 + 1) continue;
+        const s = ch.cum[i] + u, e = found.get(o); if (!e || d < e.d) found.set(o, { s, d, w: o.w });
+      }
+    }
+  }
+  const out = [...found.values()].sort((p, q) => p.s - q.s), merged = [];
+  for (const j of out) if (!merged.length || j.s - merged[merged.length - 1].s > 10) merged.push(j);
+  return (ch.junctions = merged);
+}
+function plaquesOf(ch) {   // for each junction, the corner wall on each side of the street that a plate goes on
+  if (ch.plaques) return ch.plaques;
+  const out = [], near = new Set(), W = PLAQUE.W;
+  for (const J of junctionsOf(ch)) {
+    let lo = 0, hi = ch.n - 2; while (lo < hi) { const c = (lo + hi + 1) >> 1; if (ch.cum[c] <= J.s) lo = c; else hi = c - 1; }
+    const sg = ch.cum[lo + 1] - ch.cum[lo] || 1, tx = (ch.xz[lo * 2 + 2] - ch.xz[lo * 2]) / sg, tz = (ch.xz[lo * 2 + 3] - ch.xz[lo * 2 + 1]) / sg, u = J.s - ch.cum[lo], jx = ch.xz[lo * 2] + tx * u, jz = ch.xz[lo * 2 + 1] + tz * u;
+    nearbyBuildings(jx, jz, near);
+    for (const side of [1, -1]) {
+      const nx = -tz * side, nz = tx * side; let best = null;
+      for (const k of near) {
+        const rec = world.buildings[k]; if (rec.removed) continue;
+        for (const f of facadesOf(rec)) {
+          if (f.L < W + 2.2) continue;
+          const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L; if (Math.abs(dx * tx + dz * tz) < 0.92 || f.nx * nx + f.nz * nz > -0.8) continue;   // along this street, facing it
+          const perp = ((f.ax + f.bx) / 2 - jx) * nx + ((f.az + f.bz) / 2 - jz) * nz; if (perp < ch.w / 2 - 1.5 || perp > ch.w / 2 + 8) continue;
+          const ua = (f.ax - jx) * tx + (f.az - jz) * tz, ub = (f.bx - jx) * tx + (f.bz - jz) * tz, u0 = Math.min(ua, ub), u1 = Math.max(ua, ub);
+          let at, gap;                                              // on this wall: at its corner nearest the junction, or facing the side street if it runs right across
+          if (u0 >= 0) { at = u0 + W / 2 + 1; gap = u0; } else if (u1 <= 0) { at = u1 - W / 2 - 1; gap = -u1; } else { at = clamp(0, u0 + W / 2 + 1, u1 - W / 2 - 1); gap = 0; }   // clear of the rounded corner
+          if (gap > J.w / 2 + 9) continue;
+          const score = gap + perp * 0.4; if (!best || score < best.score) best = { score, at, perp, rec, f };
+        }
+      }
+      if (!best) continue;
+      const x = jx + tx * best.at + nx * (best.perp - 0.07), z = jz + tz * best.at + nz * (best.perp - 0.07), wallDist = (x - best.f.ax) * best.f.nx + (z - best.f.az) * best.f.nz;
+      const px = x + best.f.nx * (0.07 - wallDist), pz = z + best.f.nz * (0.07 - wallDist);     // exactly on that wall
+      out.push({ x: px, z: pz, y: Math.max(best.rec.base, H(px, pz)) + PLAQUE.UP, a: Math.atan2(best.f.nx, best.f.nz), idx: best.rec.idx });
+    }
+  }
+  return (ch.plaques = out);
+}
+function stepPlaques() {
+  const now = performance.now(); if (now - PLAQUE.at < 300) return; PLAQUE.at = now;
+  const c = camera.position, low = player.mode !== 'plan' && c.y - H(c.x, c.z) < PLAQUE.ALT;
+  if (!PLAQUE.group) {
+    PLAQUE.group = new THREE.Group(); scene.add(PLAQUE.group); PLAQUE.geo = new THREE.PlaneGeometry(1, 1);
+    PLAQUE.frame = new THREE.InstancedMesh(PLAQUE.geo, new THREE.MeshStandardMaterial({ color: '#39342c', roughness: 0.8 }), 400); PLAQUE.frame.count = 0; PLAQUE.frame.frustumCulled = false; PLAQUE.group.add(PLAQUE.frame);
+  }
+  PLAQUE.group.visible = low; if (!low) return;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), byName = new Map(), R = PLAQUE.R; let n = 0, built = 0;
+  for (const ch of NAMES.list) {
+    if (Math.hypot(ch.cx - c.x, ch.cz - c.z) > ch.r + R) continue;
+    if (!ch.plaques && built >= 4) continue;                    // a few streets' worth a tick, so walking into a new area never hitches
+    if (!ch.plaques) built++;
+    for (const p of plaquesOf(ch)) { if (Math.hypot(p.x - c.x, p.z - c.z) > R) continue; let a = byName.get(ch.name); if (!a) byName.set(ch.name, a = []); a.push(p); }
+  }
+  for (const o of PLAQUE.names.values()) if (o.mesh) o.mesh.count = 0;
+  const glow = 0.05 + NIGHT.value * 0.4;
+  for (const [name, list] of byName) {
+    let o = PLAQUE.names.get(name);
+    if (!o) { const tex = plaqueTexture(name); o = { tex, mat: new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: glow, roughness: 0.28, metalness: 0.02 }), mesh: null, cap: 0 }; PLAQUE.names.set(name, o); }
+    if (o.cap < list.length) { if (o.mesh) { PLAQUE.group.remove(o.mesh); o.mesh.dispose(); } o.cap = Math.max(PLAQUE.MAX, list.length * 2); o.mesh = new THREE.InstancedMesh(PLAQUE.geo, o.mat, o.cap); o.mesh.frustumCulled = false; o.mesh.receiveShadow = false; PLAQUE.group.add(o.mesh); }
+    o.mat.emissiveIntensity = glow; o.used = now;
+    let i = 0;
+    for (const p of list) {
+      if (isSunk(p.idx)) continue;
+      q.setFromAxisAngle(Y, p.a); o.mesh.setMatrixAt(i++, m4.compose(V.set(p.x, p.y, p.z), q, S.set(PLAQUE.W, PLAQUE.H, 1)));
+      if (n < 400) PLAQUE.frame.setMatrixAt(n++, m4.compose(V.set(p.x - Math.sin(p.a) * 0.015, p.y, p.z - Math.cos(p.a) * 0.015), q, S.set(PLAQUE.W + 0.05, PLAQUE.H + 0.05, 1)));
+    }
+    o.mesh.count = i; o.mesh.instanceMatrix.needsUpdate = true;
+  }
+  PLAQUE.frame.count = n; PLAQUE.frame.instanceMatrix.needsUpdate = true; PLAQUE.shown = n;
+  if (PLAQUE.names.size > 60) for (const [name, o] of PLAQUE.names) if (!o.mesh || !o.mesh.count) { if (now - (o.used || 0) > 30000) { if (o.mesh) { PLAQUE.group.remove(o.mesh); o.mesh.dispose(); } o.tex.dispose(); o.mat.dispose(); PLAQUE.names.delete(name); } }
+}
+// ---- the name's facts from the Streets sheet, and selecting the whole of a street
+function streetFacts(name) {
+  const inf = NAMES.info[name]; if (!inf) return [];
+  const rows = [];
+  if (inf.n && inf.n.length) rows.push([inf.n.length > 1 ? 'Neighbourhoods' : 'Neighbourhood', inf.n.join(', ')]);
+  if (inf.m) rows.push(['Named for', inf.m]);
+  if (inf.c) rows.push(['Category', inf.c]);
+  if (inf.x) rows.push(['Note', inf.x]);
+  if (inf.w) rows.push(['Wiki', el('a', { href: `${WIKI_URL}#/e/${encodeURIComponent(inf.w)}`, target: '_blank', rel: 'noopener' }, 'Open the wiki page')]);
+  return rows;
+}
+function streetOfSelection(ids) {   // the name, if a selection is exactly the lines of one named street
+  const parts = NAMES.byLine.get(ids[0]); if (!parts) return null;
+  for (const p of parts) { const set = NAMES.byName.get(p.name); if (set && set.size === ids.length && ids.every((i) => set.has(i))) return p.name; }
+  return null;
+}
+function selectStreet(name, fly = true) {
+  const ids = [...(NAMES.byName.get(name) || [])]; if (!ids.length) return;
+  if (ids.length === 1) { if (fly) focusTarget(ids[0], true); else select(ids[0], { one: true }); return; }
+  setMulti(ids); if (!fly) return;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (const id of ids) { const b = world.featById.get(id).bbox; x0 = Math.min(x0, b[0]); x1 = Math.max(x1, b[2]); z0 = Math.min(z0, b[1]); z1 = Math.max(z1, b[3]); }
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0, 60);
+  if (player.mode === 'plan') { plan.cx = cx; plan.cz = cz; plan.scale = clamp(Math.min(innerWidth, innerHeight) / (span * 1.3), 0.03, 4); plan.invalidate(); return; }
+  if (player.mode !== 'map') setMode('map');
+  const h = clamp(span * 0.95 + 140, 160, 9000), g = H(cx, cz);
+  tweenCamera(new THREE.Vector3(cx + span * 0.1, g + h, cz + h * 0.8), new THREE.Vector3(cx, g, cz), 1.6);
+}
+function initStreetNames() {
+  buildStreetNames(); NAMES.hand = handNamesSig();
+  NAMES.view = new NameLayer({ occlude: true });
+  $('names-btn').setAttribute('aria-pressed', String(NAMES.on));
+  $('names-btn').addEventListener('click', () => toggleNames());
+  store.on((what) => { if (what === 'features') checkHandNames(); });
+  if (document.fonts && document.fonts.load) Promise.all([document.fonts.load(`500 13px Figtree`), document.fonts.load(`600 13px Figtree`)]).then(() => {
+    NAMES.sheets.clear(); for (const L of [NAMES.view, NAMES.plan, NAMES.mini]) if (L) L.fonts(); plan.invalidate(); mm.last = 0; NAMES.force = true;
+  }).catch(() => {});
+}
+
 // ─────────────────────────── public hooks ───────────────────────────
 // Building ids are stable hashes of each footprint's position, so wiki pages,
 // search results and editor changes can refer to them across map re-imports.
@@ -9306,6 +9887,14 @@ function runSearch(q) {
   if (!SEARCH.cats.size) for (const [gid, g] of store.groups) {   // groups by name
     const name = norm(g.name), first = groupIds(gid)[0]; if (!name || !first || !toks.every((t) => name.includes(t))) continue;
     out.push({ id: first, kind: 'group', group: gid, score: name === norm(q) ? 125 : name.startsWith(toks.join(' ')) ? 105 : 88, d: { name: g.name, tags: [], address: `${groupIds(gid).length.toLocaleString()} things` } });
+  }
+  if (!SEARCH.cats.size) for (const [name, ids] of NAMES.byName) {     // streets by name, or by the sheet's neighbourhood and meaning
+    const nm = norm(name), inf = NAMES.info[name], full = toks.join(' '), first = ids.values().next().value;
+    const extra = inf ? norm(`${(inf.n || []).join(' ')} ${inf.m || ''}`) : '';
+    if (!toks.every((t) => nm.includes(t) || extra.includes(t))) continue;
+    if (ids.size === 1 && seen.has(first)) continue;
+    const score = nm === norm(q) ? 122 : nm.startsWith(full) ? 102 : nm.includes(full) ? 86 : toks.every((t) => nm.includes(t)) ? 72 : 40;
+    out.push({ id: first, kind: 'street', street: name, score, d: { name, tags: [], address: inf && inf.n ? inf.n.join(', ') : '' } });
   }
   if (/^[a-z]{1,2}[0-9a-f]{3,}$/i.test(q.trim())) for (const [id] of world.byId) { if (!seen.has(id) && id.startsWith(q.trim().toLowerCase())) { out.push({ id, kind: 'building', score: 30, d: docFor(id) }); if (out.length > 60) break; } }
   return out.sort((a, b) => b.score - a.score || (a.d.name || '').localeCompare(b.d.name || '')).slice(0, 60);
@@ -9366,7 +9955,7 @@ function initSearch() {
     list.replaceChildren(); const rs = SEARCH.results;
     if (!SEARCH.q.trim()) { setOpen(false); return; }
     setOpen(true);
-    if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Names, addresses and tags come from each building’s Edit details.`)); return; }
+    if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Street names come from the map; other names, addresses and tags from each building’s Edit details.`)); return; }
     rs.slice(0, 12).forEach((r, i) => {
       const t = targetOf(r.id), label = r.group ? 'Group' : t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
       const li = el('li', { role: 'option', id: 's-opt-' + i, 'aria-selected': String(i === SEARCH.active) });
@@ -9383,7 +9972,7 @@ function initSearch() {
     panel.append(el('div', { class: 'chips' }, cs.map((c) => el('button', { type: 'button', class: 'chip', 'aria-pressed': String(SEARCH.cats.has(c.key)), onclick: () => { SEARCH.cats.has(c.key) ? SEARCH.cats.delete(c.key) : SEARCH.cats.add(c.key); draw(); } }, c.label, el('span', { class: 'n' }, String(c.ids.length))))), el('div', { class: 'hint' }, 'Switch categories on to light up every building in them. Add several to see them together.'));
   };
   const draw = () => { SEARCH.results = runSearch(SEARCH.q); SEARCH.active = SEARCH.results.length ? 0 : -1; clear.hidden = !SEARCH.q; drawList(); if (!panel.hidden) drawCats(); refreshLit(); };
-  const pick = (i) => { const r = SEARCH.results[i]; if (!r) return; setOpen(false); q.blur(); focusTarget(r.id); };
+  const pick = (i) => { const r = SEARCH.results[i]; if (!r) return; setOpen(false); q.blur(); if (r.street) selectStreet(r.street); else focusTarget(r.id); };
   let timer = 0;
   q.addEventListener('input', () => { SEARCH.q = q.value; clearTimeout(timer); timer = setTimeout(draw, 110); });
   q.addEventListener('focus', () => { if (SEARCH.q.trim()) { SEARCH.results = runSearch(SEARCH.q); drawList(); } });
@@ -9404,6 +9993,10 @@ function initSearch() {
   refreshLit();
 }
 window.amparacan = {
+  names() { const L = NAMES.view; return { on: NAMES.on, names: NAMES.byName.size, chains: NAMES.list.length, lines: NAMES.byLine.size, shown: L ? L.active.filter((l) => l.ok && l.a > 0.5).map((l) => l.ch.name) : [], k: NAMES.k, ms: +NAMES.ms.toFixed(2), complete: L && L.complete, moved: L && L.moved, active: L ? L.active.length : 0, plaques: PLAQUE.shown, here: NAMES.here && NAMES.here.name, ready: NAMES.idle / (NAMES.list.length || 1) }; },
+  nameAt(x, z) { return nameAt(x, z); },
+  streetLines(name) { return [...(NAMES.byName.get(name) || [])]; },
+  plaquesAround(x, z, r = 100) { const out = []; for (const ch of NAMES.list) if (Math.hypot(ch.cx - x, ch.cz - z) < ch.r + r) for (const p of plaquesOf(ch)) if (Math.hypot(p.x - x, p.z - z) < r) out.push({ name: ch.name, x: +p.x.toFixed(1), y: +p.y.toFixed(1), z: +p.z.toFixed(1), a: +p.a.toFixed(2) }); return out; },
   meteors() { MET.next = MET.t; MET.until = 0; return todState.name === 'night' ? 'shower starting' : 'only at night'; },
   audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), thunders: AUD.thunders || 0, env: AUD.env || null }; },
   view(x, y, z, tx, ty, tz) { setMode('map'); const to = new THREE.Vector3(x, y, z), at = new THREE.Vector3(tx, ty, tz); controls.minDistance = Math.min(30, to.distanceTo(at) * 0.9); tweenCamera(to, at, 0.6); },
@@ -9549,6 +10142,7 @@ store.on((what, ids) => {
     const storeReady = initStore().catch((e) => console.warn('Edits unavailable', e));
     await Promise.race([storeReady, new Promise((r) => setTimeout(r, 2500))]); // saved looks before the first build when they arrive quickly
     await buildWorld();
+    initStreetNames();
     for (const id of store.buildings.keys()) { const r = world.byId.get(id); if (r && JSON.stringify(styleOf(r)) !== JSON.stringify(r.style)) markDirty(id); }
     flushDirty();
     let tod = 'auto', wxSaved = 'auto';
