@@ -5235,7 +5235,7 @@ function treeMeshes(buckets) {
 // within CLOSE (casting shadows) and the tier's nearR, the cheap stand-ins (every other tree) to farR. Beyond that, and from high
 // above, a canopy layer (buildCanopy: the ground grid raised 12–22 m where the forest is, leaf-speckled) stands in, cut away
 // round the camera with a dither so the real trees take over.
-const FOREST = { N: 1024, CELL: 96, SP: 7.6, STEEP0: 0.5, STEEP1: 0.8, URBAN: 0.3, EDGE: 14, FULL: 240, SPARSE: 0.1, BEACH_CLEAR: 14, CLOSE: 150, MS: 5, NEAR: 0.8, FAR: 0.72, SHELL: 0.6, THIN: 3, CLEAR: 9, cam: { value: new THREE.Vector3() }, near: { value: 0 }, cells: new Map(), want: [], pools: new Map(), dirty: true, lastP: new THREE.Vector3(1e9, 0, 0), trees: 0 };
+const FOREST = { N: 1024, CELL: 96, SP: 7.6, STEEP0: 0.5, STEEP1: 0.8, URBAN: 0.3, EDGE: 14, FULL: 100, SPARSE: 0.1, BEACH_CLEAR: 14, CLOSE: 150, MS: 5, NEAR: 0.8, FAR: 0.72, SHELL: 0.6, THIN: 3, CLEAR: 9, cam: { value: new THREE.Vector3() }, near: { value: 0 }, cells: new Map(), want: [], pools: new Map(), dirty: true, lastP: new THREE.Vector3(1e9, 0, 0), trees: 0 };
 function forestMask(parks, beaches, sDens, sSL, sBeach, sTopo) {
   const FN = FOREST.N, C = EXT / FN, parkR = raster(FN, (g) => { g.fillStyle = '#fff'; for (const p of parks) g.fill(path2d(p), 'evenodd'); }), m = new Float32Array(FN * FN);
   // the beaches: all their sand down to the water, the beach line itself and BEACH_CLEAR metres round them (the promenade, and so no crown overhangs the sand)
@@ -5278,14 +5278,15 @@ function buildCanopy() {   // the far forest: one bumpy, leaf-speckled sheet ove
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uCamF = FOREST.cam; sh.uniforms.uNearF = FOREST.near;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCov; varying float vCov; varying vec3 vFW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCov = aCov; vFW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCov; varying vec3 vFW; uniform vec3 uCamF; uniform float uNearF;\nfloat fh(vec2 q) { return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453); }')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vCov; varying vec3 vFW; uniform vec3 uCamF; uniform float uNearF;\nfloat fh(vec2 q) { return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453); }\nfloat fv(vec2 q) { vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f); return mix(mix(fh(i), fh(i + vec2(1, 0)), f.x), mix(fh(i + vec2(0, 1)), fh(i + vec2(1, 1)), f.x), f.y); }')
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n{ float k = smoothstep(uNearF, uNearF + 180.0, distance(vFW.xz, uCamF.xz)); if (fh(floor(gl_FragCoord.xy)) > k) discard; }')
       .replace('#include <color_fragment>', `#include <color_fragment>
 { // crowns: jittered cells about 9 m across, lit on top and dark in the gaps between them, each its own green (a few in flower), fading with distance
   vec2 q = vFW.xz / 9.0, c = floor(q), f = fract(q); float best = 9.0; vec2 id = c;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec2 g = vec2(float(i), float(j)), o = vec2(fh(c + g), fh(c + g + 17.3)) * 0.8 + 0.1; float d = length(g + o - f); if (d < best) { best = d; id = c + g; } }
   float far = 1.0 - smoothstep(1400.0, 4200.0, distance(vFW.xz, uCamF.xz)), crown = 1.0 - smoothstep(0.25, 0.78, best), h = fh(id + 3.1);
-  if (mix(fh(floor(vFW.xz / 36.0) + 5.5), fh(id + 6.3), far) > vCov * 1.04) discard;   // where the woods thin (the outskirts, steep ground) whole crowns drop out and the ground shows
+  float patchy = clamp((0.62 * fv(vFW.xz / 44.0 + 5.5) + 0.38 * fv(vFW.xz / 15.0 - 2.5) - 0.2) / 0.6, 0.0, 1.0);
+  if (mix(patchy, fh(id + 6.3), far) > vCov * 1.04) discard;   // where the woods thin (the outskirts, steep ground) whole crowns drop out and the ground shows; far off, in soft-edged patches
   vec3 tint = h < 0.04 ? vec3(0.62, 0.48, 0.78) : h < 0.06 ? vec3(0.95, 0.8, 0.35) : h < 0.07 ? vec3(0.95, 0.95, 0.9) : vec3(0.85 + 0.3 * fh(id + 9.7), 0.95 + 0.15 * fh(id + 4.2), 0.8 + 0.2 * fh(id + 1.9));
   diffuseColor.rgb = mix(diffuseColor.rgb * (0.92 + 0.16 * fh(id)), diffuseColor.rgb * tint * (0.55 + 0.6 * crown), 0.85 * far);
 }`);
@@ -9434,7 +9435,7 @@ window.amparacan = {
     return { beaches: F.length, sandKm2: +(sandArea / 1e6).toFixed(2), cells: seen.size, trees, onSand, within8m: near, canopyOnSand: canopy };
   },
   forestProfile() {   // trees per hectare by distance from the built-up ground and by steepness, from a sample of cells (every 5th each way)
-    const C = FOREST.CELL, b = world.bounds, D = [14, 40, 80, 120, 160, 200, 240, 1e9], S = [0.3, 0.5, 0.6, 0.7, 0.8, 1e9], dT = D.map(() => 0), dP = D.map(() => 0), sT = S.map(() => 0), sP = S.map(() => 0);
+    const C = FOREST.CELL, b = world.bounds, D = [14, 30, 50, 70, 100, 150, 1e9], S = [0.3, 0.5, 0.6, 0.7, 0.8, 1e9], dT = D.map(() => 0), dP = D.map(() => 0), sT = S.map(() => 0), sP = S.map(() => 0);
     const band = (L, v) => L.findIndex((e) => v < e), slope = (x, z) => Math.hypot(H(x + 8, z) - H(x - 8, z), H(x, z + 8) - H(x, z - 8)) / 16;
     for (let j = Math.floor(b.minZ / C); j <= Math.floor(b.maxZ / C); j += 5) for (let i = Math.floor(b.minX / C); i <= Math.floor(b.maxX / C); i += 5) {
       for (let z = j * C + 6; z < (j + 1) * C; z += 12) for (let x = i * C + 6; x < (i + 1) * C; x += 12) {   // the open ground available in this cell
@@ -9445,7 +9446,7 @@ window.amparacan = {
       for (let t = 0; t < c.n; t++) { const x = c.mat[t * 16 + 12], z = c.mat[t * 16 + 14]; dT[band(D, world.forest.distAt(x, z))]++; sT[band(S, slope(x, z))]++; }
     }
     const perHa = (T, P) => T.map((n, k) => (P[k] ? Math.round(n / (P[k] * 144) * 1e4) : null));
-    return { byDistance: D.map((e, k) => [e === 1e9 ? '240+' : '<' + e, perHa(dT, dP)[k], dP[k]]), bySlope: S.map((e, k) => [e === 1e9 ? '>0.8' : '<' + e, perHa(sT, sP)[k], sP[k], sT[k]]) };
+    return { byDistance: D.map((e, k) => [e === 1e9 ? '>' + D[k - 1] : '<' + e, perHa(dT, dP)[k], dP[k]]), bySlope: S.map((e, k) => [e === 1e9 ? '>0.8' : '<' + e, perHa(sT, sP)[k], sP[k], sT[k]]) };
   },
   forestShow(canopy = true) { if (world.canopy) world.canopy.visible = canopy; return !!world.canopy; },
   forest() { return { km2: world.forest && world.forest.km2, cells: FOREST.cells.size, trees: FOREST.trees, waiting: FOREST.want.length, drawn: [...FOREST.pools.values()].reduce((a, p) => a + p.mesh.count, 0), pools: FOREST.pools.size, near: FOREST.near.value }; },
