@@ -1845,7 +1845,7 @@ async function buildWorld() {
 
   // ---- forest: where the open land is wooded (forestMask), before the ground so its floor can darken under the trees
   await progress('Planting the forest', 24);
-  forestMask(parks, sDens, sSL, sBeach, sTopo);
+  forestMask(parks, beaches, sDens, sSL, sBeach, sTopo);
   // ---- terrain mesh over the island's bounding box
   await progress('Laying the ground', 26);
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
@@ -4965,6 +4965,29 @@ function shiftLine(P, d, side) {      // offset a polyline sideways by d metres 
 // Sand from the beach line down to the waterline: at stations every few metres, march seaward
 // until the ground drops below sea level, and lay a strip whose vertices follow the terrain,
 // so the sand meets the sea exactly at the coast and never spills over the water.
+function beachSide(P) {   // which side of a beach line is land: +1 its left, -1 its right (a vote along the line)
+  let vote = 0;
+  for (let i = 0; i < P.length - 2; i += 2) { const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz) || 1, mx = (P[i] + P[i + 2]) / 2, mz = (P[i + 1] + P[i + 3]) / 2; vote += H(mx - dz / L * 30, mz + dx / L * 30) - H(mx + dz / L * 30, mz - dx / L * 30); }
+  return vote >= 0 ? 1 : -1;
+}
+function sandReach(x0, z0, sx, sz, MAX = 320) {   // metres from a point on the beach line to the waterline, marching seaward (0: no sea within reach, so no sand here)
+  let w = 0; for (let m = 2; m <= MAX; m += 2) { if (H(x0 + sx * m, z0 + sz * m) < 0) { w = m; break; } }
+  if (!w) return 0;
+  let lo = w - 2, hi = w; for (let k = 0; k < 3; k++) { const mid = (lo + hi) / 2; if (H(x0 + sx * mid, z0 + sz * mid) < 0) hi = mid; else lo = mid; }   // to half a metre
+  return Math.max(lo, 0.001);
+}
+function sandOutline(P, side, STEP = 5) {   // the sand between a beach line and the sea, as polygons (each unbroken run of stations)
+  const rings = []; let run = [], carry = 0;
+  const flush = () => { if (run.length > 1) { const r = []; for (const e of run) r.push(e[0], e[1]); for (let k = run.length - 1; k >= 0; k--) r.push(run[k][2], run[k][3]); rings.push(r); } run = []; };
+  for (let i = 0; i < P.length - 2; i += 2) {
+    const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, len = Math.hypot(dx, dz); if (len < 0.01) continue;
+    const tx = dx / len, tz = dz / len, sx = tz * side, sz = -tx * side;
+    for (let d = carry; d <= len; d += STEP) { const x0 = ax + tx * d, z0 = az + tz * d, lo = sandReach(x0, z0, sx, sz); if (lo) run.push([x0 - sx * 2, z0 - sz * 2, x0 + sx * lo, z0 + sz * lo]); else flush(); }
+    carry = (carry + Math.ceil((len - carry) / STEP) * STEP) - len;
+  }
+  flush();
+  return rings;
+}
 function sandStrip(geo, P, side) {
   const STEP = 5, K = 18, MAX = 320, col = linear('#f3dca6'), rows = [], rpos = [], edge = [];   // rpos: positions of the same grid, to light the sand up when selected; edge: the inland and waterline points of each row, for picking
   let carry = 0;
@@ -4973,10 +4996,8 @@ function sandStrip(geo, P, side) {
     const tx = dx / len, tz = dz / len, sx = tz * side, sz = -tx * side;          // seaward = away from the land side
     for (let d = carry; d <= len; d += STEP) {
       const x0 = ax + tx * d, z0 = az + tz * d;
-      let w = 0; for (let m = 2; m <= MAX; m += 2) { if (H(x0 + sx * m, z0 + sz * m) < 0) { w = m; break; } }
-      if (!w) { rows.push(null); rpos.push(null); edge.push(null); continue; }                                       // no sea within reach: no sand here
-      // refine the waterline to half a metre
-      let lo = w - 2, hi = w; for (let k = 0; k < 3; k++) { const mid = (lo + hi) / 2; if (H(x0 + sx * mid, z0 + sz * mid) < 0) hi = mid; else lo = mid; }
+      const lo = sandReach(x0, z0, sx, sz, MAX);
+      if (!lo) { rows.push(null); rpos.push(null); edge.push(null); continue; }                                       // no sea within reach: no sand here
       const row = [], rp = [];
       for (let k = 0; k <= K; k++) {
         const o = -2 + (lo + 2) * (k / K), x = x0 + sx * o, z = z0 + sz * o, h = H(x, z);
@@ -5024,12 +5045,9 @@ function buildBeaches(list) {
   const onPark = (x, z) => { const k = featureAt(x, z, 0); return k >= 0 && world.features[k].kind === 'park'; };
   for (const f of list) {
     const P = f.pts, look = featureStyle(f).look, rnd = mulberry(f.seed ^ 0xbeac4);
-    // which side is land? vote along the line
-    let vote = 0;
-    for (let i = 0; i < P.length - 2; i += 2) { const dx = P[i + 2] - P[i], dz = P[i + 3] - P[i + 1], L = Math.hypot(dx, dz) || 1, mx = (P[i] + P[i + 2]) / 2, mz = (P[i + 1] + P[i + 3]) / 2; vote += H(mx - dz / L * 30, mz + dx / L * 30) - H(mx + dz / L * 30, mz - dx / L * 30); }
     // the Illustrator line marks the beach's inland edge: sand runs from it down to the sea
     // (the far side is hidden under the water), the promenade runs along its city side
-    const side = vote >= 0 ? 1 : -1;
+    const side = beachSide(P);
     f.sandRings = sandStrip(sandGeo, P, side);
     { let x0 = f.bbox[0], z0 = f.bbox[1], x1 = f.bbox[2], z1 = f.bbox[3]; for (const r of f.sandRings) for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); } f.bbox = [x0, z0, x1, z1]; world.cellAdd(f.idx, x0, z0, x1, z1); }
     if (look !== 'copacabana') continue;
@@ -5216,9 +5234,15 @@ function treeMeshes(buckets) {
 // within CLOSE (casting shadows) and the tier's nearR, the cheap stand-ins (every other tree) to farR. Beyond that, and from high
 // above, a canopy layer (buildCanopy: the ground grid raised 12–22 m where the forest is, leaf-speckled) stands in, cut away
 // round the camera with a dither so the real trees take over.
-const FOREST = { N: 1024, CELL: 96, SP: 7.6, CLIFF: 0.75, CLOSE: 150, MS: 5, NEAR: 0.8, FAR: 0.72, SHELL: 0.6, THIN: 3, CLEAR: 9, cam: { value: new THREE.Vector3() }, near: { value: 0 }, cells: new Map(), want: [], pools: new Map(), dirty: true, lastP: new THREE.Vector3(1e9, 0, 0), trees: 0 };
-function forestMask(parks, sDens, sSL, sBeach, sTopo) {
+const FOREST = { N: 1024, CELL: 96, SP: 7.6, CLIFF: 0.75, BEACH_CLEAR: 14, CLOSE: 150, MS: 5, NEAR: 0.8, FAR: 0.72, SHELL: 0.6, THIN: 3, CLEAR: 9, cam: { value: new THREE.Vector3() }, near: { value: 0 }, cells: new Map(), want: [], pools: new Map(), dirty: true, lastP: new THREE.Vector3(1e9, 0, 0), trees: 0 };
+function forestMask(parks, beaches, sDens, sSL, sBeach, sTopo) {
   const FN = FOREST.N, C = EXT / FN, parkR = raster(FN, (g) => { g.fillStyle = '#fff'; for (const p of parks) g.fill(path2d(p), 'evenodd'); }), m = new Float32Array(FN * FN);
+  // the beaches: all their sand down to the water, the beach line itself and BEACH_CLEAR metres round them (the promenade, and so no crown overhangs the sand)
+  const SN = 2048, sandR = raster(SN, (g) => {
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineWidth = FOREST.BEACH_CLEAR * 2;
+    for (const L of beaches) { for (const r of sandOutline(L.pts, beachSide(L.pts))) { const q = path2d([r]); g.fill(q); g.stroke(q); } g.stroke(line2d(L.pts)); }
+  }), sSand = sampler(sandR, SN), sand = new Uint8Array(SN * SN);
+  for (let i = 0; i < sand.length; i++) sand[i] = sandR[i] > 0.2 ? 1 : 0;
   let area = 0;
   for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) {
     const x = (i + 0.5) * C - EXT / 2, z = (j + 0.5) * C - EXT / 2, k = j * FN + i;
@@ -5226,14 +5250,15 @@ function forestMask(parks, sDens, sSL, sBeach, sTopo) {
     const sl = Math.hypot(sTopo(x + C / 2, z) - sTopo(x - C / 2, z), sTopo(x, z + C / 2) - sTopo(x, z - C / 2)) / C;
     m[k] = (1 - smooth(0.04, 0.22, sDens(x, z))) * (1 - smooth(0.2, 0.6, parkR[k])) * (1 - smooth(FOREST.CLIFF - 0.12, FOREST.CLIFF + 0.1, sl)) * (1 - smooth(0.12, 0.45, sBeach(x, z))) * smooth(0.8, 0.92, sSL(x, z));
   }
-  const mb = blur(m, FN, 1, 1); for (let k = 0; k < mb.length; k++) area += mb[k] * C * C;
-  world.forest = { m: mb, at: sampler(mb, FN), coast: (x, z) => Math.max(sBeach(x, z), 1 - smooth(0.86, 0.97, sSL(x, z))), km2: +(area / 1e6).toFixed(1) };
+  const mb = blur(m, FN, 1, 1);
+  for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) { const k = j * FN + i; mb[k] *= 1 - smooth(0.05, 0.4, sSand((i + 0.5) * C - EXT / 2, (j + 0.5) * C - EXT / 2)); area += mb[k] * C * C; }   // after the softening, so it can't creep back over the sand
+  world.forest = { m: mb, at: sampler(mb, FN), onBeach: (x, z) => { const i = Math.floor((x / EXT + 0.5) * SN), j = Math.floor((z / EXT + 0.5) * SN); return i >= 0 && j >= 0 && i < SN && j < SN && sand[j * SN + i] === 1; }, coast: (x, z) => Math.max(sBeach(x, z), 1 - smooth(0.86, 0.97, sSL(x, z))), km2: +(area / 1e6).toFixed(1) };
 }
 function buildCanopy() {   // the far forest: one bumpy, leaf-speckled sheet over the woods, cut away near the camera (FOREST.near)
   const b = world.bounds, STEP = 16, x0 = b.minX - 100, z0 = b.minZ - 100, nx = Math.ceil((b.maxX - b.minX + 200) / STEP) + 1, nz = Math.ceil((b.maxZ - b.minZ + 200) / STEP) + 1;
   const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), on = new Uint8Array(nx * nz), cA = linear('#22471f'), cB = linear('#3f7330'), cC = linear('#5b8a3a'), tmp = new THREE.Color();
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, f = smooth(0.06, 0.55, world.forest.at(x, z)), g = H(x, z);
+    const x = x0 + i * STEP, z = z0 + j * STEP, k = j * nx + i, f = world.forest.onBeach(x, z) ? 0 : smooth(0.06, 0.55, world.forest.at(x, z)), g = H(x, z);
     const ch = (12 + 7 * vnoise(x / 95, z / 95) + 3 * vnoise(x / 27 + 3, z / 27 - 1)) * f;
     pos[k * 3] = x; pos[k * 3 + 1] = f > 0 ? g + ch : g - 3; pos[k * 3 + 2] = z; on[k] = f > 0 ? 1 : 0;
     tmp.copy(cA).lerp(cB, vnoise(x / 60 + 11, z / 60 - 7)).lerp(cC, smooth(0.6, 0.9, vnoise(x / 33 - 2, z / 33 + 5)) * 0.5);
@@ -5266,7 +5291,7 @@ function forestCell(ci, cj) {   // one cell's trees, the same every time: kind, 
   let n = 0;
   for (let z = z0 + SP / 2; z < z0 + C; z += SP) for (let x = x0 + SP / 2; x < x0 + C; x += SP) {
     const px = x + (rnd() - 0.5) * SP * 0.9, pz = z + (rnd() - 0.5) * SP * 0.9, r = rnd(), r2 = rnd(), r3 = rnd(), sc = 0.82 + rnd() * 0.45, rot = rnd() * 6.283, hue = rnd();
-    const m = world.forest.at(px, pz); if (m < 0.05 || r > Math.pow(m, 0.6) * 0.93) continue;
+    const m = world.forest.at(px, pz); if (m < 0.05 || r > Math.pow(m, 0.6) * 0.93 || world.forest.onBeach(px, pz)) continue;
     if (occAt(px, pz) > 0.2 || hardAt(px, pz, 1.4)) continue;
     const h = H(px, pz); if (h < 0.8) continue;
     const coast = world.forest.coast(px, pz), palmShare = coast > 0.3 ? 0.72 : h < 40 * K ? 0.32 : h > 280 * K ? 0.12 : 0.2;
@@ -5521,7 +5546,7 @@ function plantTrees({ streets, paths, pave, streetAreas, sS, sBeach }) {
   for (let z = minZ; z < maxZ && wild < 70000; z += S) for (let x = minX; x < maxX && wild < 70000; x += S) {
     const px = x + (rnd() - 0.5) * S, pz = z + (rnd() - 0.5) * S, m = sS(px, pz);
     if (m < 0.75 || occAt(px, pz) > 0.2 || roadAt(px, pz, 1.0)) continue;
-    if (world.forest && world.forest.at(px, pz) > 0.08) continue;   // the forest has it (initForest)
+    if (world.forest && (world.forest.at(px, pz) > 0.08 || world.forest.onBeach(px, pz))) continue;   // the forest has it (initForest); the beaches stay clear
     const coast = m < 0.93 || sBeach(px, pz) > 0.2;
     const forest = vnoise(px / 650, pz / 650) * 0.65 + vnoise(px / 140, pz / 140) * 0.35;
     // the hills are wooded: denser with height, thinning again toward the bare tops
@@ -9386,6 +9411,18 @@ window.amparacan = {
     if (x == null) { let mx = 0, at = 0; const band = TOPO.S; for (let i = 0; i < T.h.length; i++) if (T.h[i] > mx) { mx = T.h[i]; at = i; } const N = TOPO.N, c = EXT / N; return { band, ms: T.ms, flatMs: T.flatMs, flatMax: T.flatMax, pads: T.pads, laid: T.laid, kerbs: world.kerbPieces, kerbMeshes: (world.kerbs || []).length, stairFlights: world.stairFlights, stairSteps: world.stairSteps, flightsAt: (world.stairSegs || []).filter((q) => !q.prev).map((q) => [Math.round(q.ax), Math.round(q.az), +(q.hb - q.ha).toFixed(1)]).filter((q) => Math.hypot(q[0] - (x0 || 0), q[1] - (z0 || 0)) < (x0 == null ? 1e9 : 300)).slice(0, 12), comps: T.comps, max: +mx.toFixed(1), maxAt: [Math.round(((at % N) + 0.5) * c - EXT / 2), Math.round((((at / N) | 0) + 0.5) * c - EXT / 2)], highLakes: (world.highLakes || []).map((q) => ({ id: q.p.id, level: +(LAND_Y + q.W).toFixed(1) })) }; }
     const i = clamp(Math.floor((x / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1), j = clamp(Math.floor((z / EXT + 0.5) * TOPO.N), 0, TOPO.N - 1);
     return { band: T.lvAt(x, z), hill: +world.hillM(x, z).toFixed(1), H: +H(x, z).toFixed(1), dens: +T.dens[j * TOPO.N + i].toFixed(2), natural: +T.h0[j * TOPO.N + i].toFixed(1) };
+  },
+  forestOnBeaches() {   // builds the forest cells over every beach and counts the trees on its sand, and within 8 m of it (should both be 0)
+    const C = FOREST.CELL, F = world.features.filter((f) => f.kind === 'beach'), seen = new Set(); let trees = 0, onSand = 0, near = 0, canopy = 0, sandArea = 0;
+    for (const f of F) for (const r of f.sandRings || []) {
+      sandArea += Math.abs(ringArea(r)); const rr = [r], edge = [...r, r[0], r[1]]; let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); z0 = Math.min(z0, r[i + 1]); z1 = Math.max(z1, r[i + 1]); }
+      for (let x = x0; x <= x1; x += 16) for (let z = z0; z <= z1; z += 16) if (pointInRings(x, z, rr) && !world.forest.onBeach(x, z) && world.forest.at(x, z) >= 0.06) canopy++;
+      for (let j = Math.floor((z0 - 8) / C); j <= Math.floor((z1 + 8) / C); j++) for (let i = Math.floor((x0 - 8) / C); i <= Math.floor((x1 + 8) / C); i++) {
+        const c = forestCell(i, j); if (!seen.has(i * 8192 + j)) { seen.add(i * 8192 + j); trees += c.n; }
+        for (let t = 0; t < c.n; t++) { const x = c.mat[t * 16 + 12], z = c.mat[t * 16 + 14]; if (x < x0 - 8 || x > x1 + 8 || z < z0 - 8 || z > z1 + 8) continue; if (pointInRings(x, z, rr)) onSand++; else if (distToLine(edge, x, z) < 8) near++; }
+      }
+    }
+    return { beaches: F.length, sandKm2: +(sandArea / 1e6).toFixed(2), cells: seen.size, trees, onSand, within8m: near, canopyOnSand: canopy };
   },
   forestShow(canopy = true) { if (world.canopy) world.canopy.visible = canopy; return !!world.canopy; },
   forest() { return { km2: world.forest && world.forest.km2, cells: FOREST.cells.size, trees: FOREST.trees, waiting: FOREST.want.length, drawn: [...FOREST.pools.values()].reduce((a, p) => a + p.mesh.count, 0), pools: FOREST.pools.size, near: FOREST.near.value }; },
