@@ -6733,7 +6733,7 @@ function targetOf(id) {
   return null;
 }
 const labelOf = (kind) => (KINDS[kind] || { label: 'Feature' }).label;
-function nameOf(id) { const t = targetOf(id), d = store[colFor(id)].get(id); return (d && d.name) || fileNamesOf(id).join(' · ') || (t ? `Unnamed ${labelOf(t.kind).toLowerCase()}` : `Missing ${id}`); }
+function nameOf(id) { const t = targetOf(id), d = store[colFor(id)].get(id); return (d && d.name) || fileNamesOf(id).join(' · ') || (d && d.address) || addressOf(id) || (t ? `Unnamed ${labelOf(t.kind).toLowerCase()}` : `Missing ${id}`); }
 function styleFor(t) { return t.kind === 'building' ? (t.b.style || styleOf(t.b)) : featureStyle(t.f); }
 
 // ─────────────────────────── change history ───────────────────────────
@@ -6859,7 +6859,7 @@ const STYLE_DOCS = {
 };
 function promptFor(t, doc, text, nImages = 0, at = null) {
   const cur = styleFor(t), info = { id: t.id, type: labelOf(t.kind), name: doc.name || null, tags: doc.tags, details: doc.details || null };
-  if (t.kind === 'building') Object.assign(info, { address: doc.address || null, footprint_m2: Math.round(t.b.area),
+  if (t.kind === 'building') Object.assign(info, { address: doc.address || addressOf(t.id) || null, footprint_m2: Math.round(t.b.area),
     current_style: { facade: cur.facade, wall: cur.wall, shutters: cur.shutters, roof: cur.roof || (cur.roofType === 'hip' ? cur.tileRoof : cur.flatRoof), roofType: cur.roofType, floors: cur.floors, groundFloor: cur.groundFloor, windows: cur.windows, doors: doorsOf(t.b).length, floorStyles: cur.floorStyles || [], doorSide: cur.doorSide || null, awning: cur.awning || null, porch: !!cur.porch, sign: cur.sign || null } });
   else Object.assign(info, KINDS[t.kind].geom === 'poly' ? { area_m2: Math.round(t.f.size) } : { length_m: Math.round(t.f.size), width_m: t.f.w }, { current_style: cur });
   const fields = STYLE_DOCS[t.kind];
@@ -7370,17 +7370,18 @@ function renderGroupInfo() {
   const title = streetName || Object.entries(kinds).map(([k, n]) => `${n.toLocaleString()} ${n === 1 ? labelOf(k).toLowerCase() : KINDS[k].plural.toLowerCase()}`).join(' · ');
   const fl = bIds.map((id) => styleFor(targetOf(id)).floors), fmin = Math.min(...fl), fmax = Math.max(...fl);
   const floorsTxt = bIds.length ? `${fmin === fmax ? fmin : fmin + '–' + fmax} floors` : '';
-  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : streetName ? 'Street' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || 'Unnamed group' : title),
+  const kids = [el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, grp ? 'Group' : streetName ? 'Street' : 'Selection'), el('h3', grp && store.canEdit ? { title: 'Double-click to rename', class: 'dbl-edit', ondblclick: () => { const x = $('g-name'); if (x) { x.focus(); x.select(); } } } : {}, grp ? grp.name || groupAddress(gid) || 'Unnamed group' : title),
       el('div', { class: 'facts' }, streetName ? `${ids.length} lines · ${Math.round(ids.reduce((a, i) => a + world.featById.get(i).size, 0)).toLocaleString()} m` : grp ? [title, floorsTxt].filter(Boolean).join(' · ') : floorsTxt || null)),
     el('button', { class: 'close', type: 'button', 'aria-label': 'Clear selection', onclick: () => clearMulti() }, '×'))];
   if (grp && store.canEdit) {
     const nm = el('input', { type: 'text', id: 'g-name', value: grp.name || '', placeholder: 'Name this group', autocomplete: 'off' });
-    nm.addEventListener('input', () => { const g = store.groups.get(gid); if (!g) return; saveDoc('groups', gid, { ...g, name: nm.value.trim(), updatedAt: new Date().toISOString() }, 600); const h = box.querySelector('header h3'); if (h) h.textContent = nm.value.trim() || 'Unnamed group'; });
+    nm.addEventListener('input', () => { const g = store.groups.get(gid); if (!g) return; saveDoc('groups', gid, { ...g, name: nm.value.trim(), updatedAt: new Date().toISOString() }, 600); const h = box.querySelector('header h3'); if (h) h.textContent = nm.value.trim() || groupAddress(gid) || 'Unnamed group'; });
     nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); });
     kids.push(el('div', { class: 'field' }, el('label', { for: 'g-name' }, 'Group name'), nm));
   }
+  if (grp && grp.name && groupAddress(gid)) kids.push(el('dl', {}, el('dt', {}, 'Address'), el('dd', {}, groupAddress(gid))));
   if (streetName) { const rows = streetFacts(streetName); if (rows.length) kids.push(el('dl', {}, rows.map(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]))); }
-  if (!streetName) kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
+  if (!streetName) kids.push(el('div', { class: 'chips' }, ids.slice(0, 14).map((id, i) => el('button', { class: 'chip', type: 'button', style: 'border:0;cursor:pointer', title: grp ? 'Go to this one alone' : undefined, onclick: () => focusTarget(id, true) }, grp && nameOf(id) === addressOf(id) ? `Building ${i + 1}` : nameOf(id))), ids.length > 14 ? el('span', { class: 'hint' }, `+${(ids.length - 14).toLocaleString()} more`) : null));
   if (store.canEdit) {
     if (bIds.length) {
       const setIn = el('input', { type: 'number', id: 'g-floors', min: 1, max: 40, value: fmax, 'aria-label': 'Set every building to this many floors', style: 'width:64px' });
@@ -7488,12 +7489,12 @@ function renderInfo() {
     e.preventDefault(); getSelection().removeAllRanges(); startEditing(); renderInfo();
     const f = $(fid); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
   } } : {};
-  const named = fileNamesOf(id), title = el('h3', editAt('f-name'), doc.name || named.join(' · ') || `Unnamed ${label.toLowerCase()}`);
+  const named = fileNamesOf(id), title = el('h3', editAt('f-name'), doc.name || named.join(' · ') || doc.address || addressOf(id) || `Unnamed ${label.toLowerCase()}`);   // an unnamed building goes by its address, for display only: never stored as its name
   const head = el('header', {}, el('div', {}, el('div', { class: 'eyebrow' }, `${label} · ${id}`), title, el('div', { class: 'facts' }, facts(t))),
     pinned ? el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => select(null) }, '×') : null);
   const kids = [head];
   if (!pinned) {
-    if (doc.address) kids.push(el('div', {}, doc.address));
+    if (doc.name && (doc.address || addressOf(id))) kids.push(el('div', {}, doc.address || addressOf(id)));
     if (doc.tags.length) kids.push(el('div', { class: 'chips' }, doc.tags.map((x) => el('span', { class: 'chip' }, x))));
     if (doc.details) kids.push(el('div', { class: 'hint' }, doc.details.length > 160 ? doc.details.slice(0, 160) + '…' : doc.details));
     kids.push(el('div', { class: 'hint' }, store.canEdit ? 'Click to open it, add details or change it.' : 'Click for details.'));
@@ -7502,7 +7503,7 @@ function renderInfo() {
   } else {
     const rows = [];
     if (!doc.name && named.length === 1) rows.push(...streetFacts(named[0]));
-    if (doc.address) rows.push(['Address', doc.address]);
+    if (doc.name && (doc.address || addressOf(id))) rows.push(['Address', doc.address || addressOf(id)]);
     if (doc.tags.length) rows.push(['Tags', el('div', { ...editAt('f-tags'), class: 'chips' + (editable ? ' dbl-edit' : '') }, doc.tags.map((x) => el('span', { class: 'chip' }, x)))]);
     if (doc.history) rows.push(['History', doc.history]);
     if (doc.details) rows.push(['Details', doc.details]);
@@ -7604,7 +7605,7 @@ function editForm(t, title) {
     d.attrs = {}; for (const row of kvBox.querySelectorAll('.kv')) { const [ki, vi] = row.querySelectorAll('input'); const k = ki.value.trim(); if (k) d.attrs[k] = vi.value; }
     d.updatedAt = new Date().toISOString();
     saveDoc(colFor(id), id, d); $('f-status').textContent = store.kind === 'db' ? 'Saving…' : 'Saved in this browser';
-    title.textContent = d.name || fileNamesOf(id).join(' · ') || `Unnamed ${labelOf(t.kind).toLowerCase()}`;
+    title.textContent = d.name || fileNamesOf(id).join(' · ') || d.address || addressOf(id) || `Unnamed ${labelOf(t.kind).toLowerCase()}`;
     clearTimeout(form._t); form._t = setTimeout(() => { const st = $('f-status'); if (st) st.textContent = 'Saved'; if (ui.trayOpen) renderTray(); checkHandNames(); plan.invalidate(true); }, 900);
   };
   const addKV = (k = '', v = '') => {
@@ -7614,7 +7615,7 @@ function editForm(t, title) {
     kvBox.append(row);
   };
   for (const [k, v] of Object.entries(doc.attrs || {})) addKV(k, String(v));
-  form.append((() => { const nf = field('f-name', 'Name', doc.name), inp = nf.querySelector('input'), fileName = fileNamesOf(t.id).join(' · '); if (fileName) inp.placeholder = fileName; return nf; })(), t.kind === 'building' ? field('f-address', 'Street address', doc.address) : null,
+  form.append((() => { const nf = field('f-name', 'Name', doc.name), inp = nf.querySelector('input'), fileName = fileNamesOf(t.id).join(' · ') || doc.address || addressOf(t.id); if (fileName) inp.placeholder = fileName; return nf; })(), t.kind === 'building' ? (() => { const af = field('f-address', 'Street address', doc.address), inp = af.querySelector('input'); if (inp && addressOf(t.id)) inp.placeholder = addressOf(t.id); return af; })() : null,
     field('f-tags', 'Tags (comma separated)', doc.tags.join(', ')), field('f-history', 'History', doc.history, true), field('f-details', 'Details', doc.details, true),
     el('div', { class: 'field' }, el('label', {}, 'More attributes'), kvBox, el('button', { class: 'btn link', type: 'button', onclick: () => { addKV(); kvBox.lastChild.querySelector('input').focus(); } }, '+ Add attribute')),
     el('div', { class: 'row' }, el('button', { class: 'btn primary small', type: 'button', onclick: () => { endEditing(); checkHandNames(); renderInfo(); } }, 'Done'), el('span', { class: 'status', id: 'f-status' })));
@@ -9109,7 +9110,7 @@ function update(dt, t) {
   world.water.uniforms.uTime.value = t; camera.userData.sky.material.uniforms.uTime.value = t;
   stepMeteors(dt, t);
   stepCritters(dt, t);
-  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t); stepForest(); stepPlaques();
+  stepSigns(); stepPlazaExtras(t); stepReplacements(t); stepKerbs(t); stepForest(); stepPlaques(); stepPlates();
   if (world.sea) world.sea.position.y = (0.06 + 0.1 * world.water.uniforms.uRough.value) * (Math.sin(t * 0.85) * 0.7 + Math.sin(t * 0.37 + 1.3) * 0.3);   // the waterline laps up and down the beach
   if (world.clouds) world.clouds.position.x = (t * 6) % 4000;
   camera.userData.sky.position.copy(camera.position);
@@ -9386,6 +9387,7 @@ function buildStreetNames() {
   NAMES.idle = 0; NAMES.segs = null;
   for (const L of [NAMES.view, NAMES.plan, NAMES.mini]) if (L) L.reset();
   plaqueReset();
+  addrSchedule();
 }
 function checkHandNames() { const s = handNamesSig(); if (s !== NAMES.hand) { NAMES.hand = s; buildStreetNames(); plan.invalidate(); mm.last = 0; } }
 function handNamesSig() { let s = ''; for (const [id, d] of store.features) if (d.name && (id.startsWith('st') || id.startsWith('pt'))) s += id + d.name + '|'; return s; }
@@ -9846,10 +9848,234 @@ function initStreetNames() {
   NAMES.view = new NameLayer({ occlude: true });
   $('names-btn').setAttribute('aria-pressed', String(NAMES.on));
   $('names-btn').addEventListener('click', () => toggleNames());
-  store.on((what) => { if (what === 'features') checkHandNames(); });
+  store.on((what) => { if (what === 'features') checkHandNames(); if (what === 'buildings' || what === 'groups' || what === 'ready') addrCheckDocs(); });
   if (document.fonts && document.fonts.load) Promise.all([document.fonts.load(`500 13px Figtree`), document.fonts.load(`600 13px Figtree`)]).then(() => {
     NAMES.sheets.clear(); for (const L of [NAMES.view, NAMES.plan, NAMES.mini]) if (L) L.fonts(); plan.invalidate(); mm.last = 0; NAMES.force = true;
   }).catch(() => {});
+}
+
+// ─────────────────────────── street numbers and addresses ───────────────────────────
+// Worked out from the map, never stored: a building takes its address from the biggest named street it really fronts (a wall facing it, close by, nothing in between).
+// Unnamed streets get no numbers: their buildings have no address until a later import names the street. An address typed in Edit details always wins.
+// Numbers follow distance along the street (one number per 4–6 m, odd one side, even the other), rising away from the nearest of the old centres. Each street's quirks
+// (where it starts, a jump at a junction, the odd side, running the other way) are seeded from its name, so they hold across reloads; on each side the numbers only ever go up.
+const ADDR = {
+  CENTRES: [[-2721.7, 1617.3], [-4384.0, -41.0], [2288.2, 3992.1], [1960.1, -147.0], [543.5, -3893.3]],   // the old centres, each once a town of its own: add more here
+  GAP: 9, MIN_FRONT: 3, JOIN: 120, RING: 0.15, REVERSED: 0.1, JUMP: 0.15, FLIP: 0.15, LETTER: 0.08,
+  byId: new Map(), list: [], grid: new Map(), ready: false, job: null, timer: 0, sig: '', ms: 0, report: null,
+};
+const strSeed = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; };
+function addressOf(id) {    // a group of buildings is one address: one typed on any member goes for them all, else the one worked out for the group
+  const gid = world.byId.has(id) ? groupOf(id) : null;
+  if (gid) for (const m of groupIds(gid)) { const d = store.buildings.get(m); if (d && d.address) return d.address; }
+  const a = ADDR.byId.get(id); return a ? a.text : '';
+}
+function groupAddress(gid) {   // the one address of a group; empty if none, or if members' typed addresses disagree
+  const all = new Set(); for (const m of groupIds(gid)) if (world.byId.has(m)) { const d = store.buildings.get(m), t = (d && d.address) || addressOf(m); if (t) all.add(t); }
+  return all.size === 1 ? [...all][0] : '';
+}
+function addrBigger(a, b) {    // is frontage a on a bigger street than frontage b? The biggest street wins, whatever the door faces
+  const x = a.ch, y = b.ch;
+  if (x.rank !== y.rank) return x.rank < y.rank;
+  if (Math.abs(x.w - y.w) > 0.01) return x.w > y.w;
+  if (Math.abs(x.len - y.len) > 1) return x.len > y.len;
+  if (!!a.door !== !!b.door) return !!a.door;
+  return a.front > b.front;
+}
+function addrFront(rec) {    // the street a building belongs to, and the point on it that sets the number
+  const g = segmentGrid(), C = 32, bb = rec.bbox, near = [], pad = 44;
+  for (let ix = Math.floor((bb[0] - pad) / C) + 2000, x1 = Math.floor((bb[2] + pad) / C) + 2000; ix <= x1; ix++) for (let iz = Math.floor((bb[1] - pad) / C) + 2000, z1 = Math.floor((bb[3] + pad) / C) + 2000; iz <= z1; iz++) {
+    const l = g.get(gkey(ix, iz)); if (!l) continue;
+    for (let q = 0; q < l.length; q += 2) {
+      const ch = l[q], i = l[q + 1], mx = (ch.xz[i * 2] + ch.xz[i * 2 + 2]) / 2, mz = (ch.xz[i * 2 + 1] + ch.xz[i * 2 + 3]) / 2, r = ch.w / 2 + ADDR.GAP + 8;
+      const dx = Math.max(bb[0] - mx, 0, mx - bb[2]), dz = Math.max(bb[1] - mz, 0, mz - bb[3]); if (dx * dx + dz * dz < r * r) near.push(ch, i);
+    }
+  }
+  if (!near.length) return null;
+  const hits = (x, z, nx, nz, dx, dz, fn) => {     // the named streets this bit of wall faces
+    const best = new Map();
+    for (let k = 0; k < near.length; k += 2) {
+      const ch = near[k], i = near[k + 1], ax = ch.xz[i * 2], az = ch.xz[i * 2 + 1], ex = ch.xz[i * 2 + 2] - ax, ez = ch.xz[i * 2 + 3] - az, L2 = ex * ex + ez * ez; if (!L2) continue;
+      const t = clamp(((x - ax) * ex + (z - az) * ez) / L2, 0, 1), qx = ax + ex * t - x, qz = az + ez * t - z, d = Math.hypot(qx, qz);
+      if (d > ch.w / 2 + ADDR.GAP || d < 0.01) continue;
+      if (Math.abs(ex * dx + ez * dz) / Math.sqrt(L2) < 0.7 || qx * nx + qz * nz < 0.7 * d) continue;      // running along the street, and facing it
+      const e = best.get(ch); if (e === undefined || d < e) best.set(ch, d);
+    }
+    for (const [ch, d] of best) {
+      const open = d - ch.w / 2;                                  // nothing built between the wall and the street
+      if (open > 3 && (buildingAt(x + nx * open * 0.4, z + nz * open * 0.4) >= 0 || buildingAt(x + nx * open * 0.8, z + nz * open * 0.8) >= 0)) continue;
+      fn(ch);
+    }
+  };
+  const fronts = new Map(), of = (ch) => { let e = fronts.get(ch); if (!e) fronts.set(ch, e = { ch, front: 0, wall: 0, f: null, u: 0, door: null }); return e; };
+  for (const f of facadesOf(rec)) {
+    const dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, n = clamp(Math.ceil(f.L / 6), 1, 8), piece = f.L / n, here = new Map();
+    for (let j = 0; j < n; j++) {
+      const u = (j + 0.5) * piece;
+      hits(f.ax + dx * u, f.az + dz * u, f.nx, f.nz, dx, dz, (ch) => { const w = here.get(ch) || { n: 0, u: 0 }; w.n++; w.u += u; here.set(ch, w); });
+    }
+    for (const [ch, w] of here) { const e = of(ch), len = w.n * piece; e.front += len; if (len > e.wall) { e.wall = len; e.f = f; e.u = w.u / w.n; } }
+  }
+  for (const d of doorsOf(rec)) {
+    const f = d.f, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L;
+    hits(f.ax + dx * d.u, f.az + dz * d.u, f.nx, f.nz, dx, dz, (ch) => { const e = of(ch); if (!e.door) e.door = d; e.front = Math.max(e.front, Math.min(f.L, ADDR.MIN_FRONT)); });
+  }
+  let best = null;
+  for (const e of fronts.values()) if (e.front >= ADDR.MIN_FRONT && (!best || addrBigger(e, best))) best = e;
+  if (!best) return null;
+  const ch = best.ch, f = best.door ? best.door.f : best.f, u = best.door ? best.door.u : best.u, dx = (f.bx - f.ax) / f.L, dz = (f.bz - f.az) / f.L, x = f.ax + dx * u, z = f.az + dz * u;
+  let bd = Infinity, s = 0, left = true;
+  for (let k = 0; k < near.length; k += 2) {
+    if (near[k] !== ch) continue;
+    const i = near[k + 1], ax = ch.xz[i * 2], az = ch.xz[i * 2 + 1], ex = ch.xz[i * 2 + 2] - ax, ez = ch.xz[i * 2 + 3] - az, L2 = ex * ex + ez * ez; if (!L2) continue;
+    const t = clamp(((x - ax) * ex + (z - az) * ez) / L2, 0, 1), qx = x - ax - ex * t, qz = z - az - ez * t, d = qx * qx + qz * qz;
+    if (d < bd) { bd = d; s = ch.cum[i] + t * Math.sqrt(L2); left = qx * ez - qz * ex > 0; }        // the side you'd have on your left walking along the line (x east, z south)
+  }
+  // the plate: beside the door, or in the middle of the wall on this street when the door is round the corner
+  const pu = best.door ? (u + 1.15 + 0.3 < f.L ? u + 1.15 : Math.max(0.3, u - 1.15)) : u, px = f.ax + dx * pu + f.nx * 0.07, pz = f.az + dz * pu + f.nz * 0.07;
+  return { rec, ch, s, left, door: !!best.door, front: best.front, ids: [rec.id], px, pz, a: Math.atan2(f.nx, f.nz) };
+}
+function addrGroups() {     // pieces of one name close enough to be one street count as one, so a bend or a break doesn't restart its numbers
+  const byName = new Map(), out = [];
+  for (const ch of NAMES.list) { let l = byName.get(ch.name); if (!l) byName.set(ch.name, l = []); l.push(ch); }
+  const close = (a, b) => {
+    if (Math.hypot(a.cx - b.cx, a.cz - b.cz) > a.r + b.r + ADDR.JOIN) return false;
+    for (let i = 0; i < a.n; i = i + 4 < a.n || i === a.n - 1 ? i + 4 : a.n - 1) for (let j = 0; j < b.n; j = j + 4 < b.n || j === b.n - 1 ? j + 4 : b.n - 1) if (Math.hypot(a.xz[i * 2] - b.xz[j * 2], a.xz[i * 2 + 1] - b.xz[j * 2 + 1]) < ADDR.JOIN) return true;
+    return false;
+  };
+  for (const [name, list] of byName) {
+    const left = list.slice(), sets = [];
+    while (left.length) { const set = [left.pop()]; for (let i = 0; i < set.length; i++) for (let j = left.length - 1; j >= 0; j--) if (close(set[i], left[j])) set.push(left.splice(j, 1)[0]); sets.push(set); }
+    for (const set of sets) {
+      let best = Infinity, ci = 0;
+      for (const ch of set) for (const k of [0, ch.n - 1]) ADDR.CENTRES.forEach((c, i) => { const d = Math.hypot(ch.xz[k * 2] - c[0], ch.xz[k * 2 + 1] - c[1]); if (d < best) { best = d; ci = i; } });
+      set.dist = best; set.ci = ci;
+    }
+    sets.sort((p, q) => p.dist - q.dist);       // the piece nearest a centre keeps the name's own seed, so a far-off piece appearing later changes nothing here
+    sets.forEach((chains, k) => out.push({ name, k, chains, ci: chains.ci }));
+  }
+  return out;
+}
+function addrNumber(g, entries, done) {
+  const seed = strSeed(g.k ? `${g.name}#${g.k}` : g.name), r = (k) => hash2(seed, k + 1), c = ADDR.CENTRES[g.ci], ord = [];
+  for (const ch of g.chains) {            // each piece rises away from the centre; one that runs round it goes clockwise
+    const d0 = Math.hypot(ch.xz[0] - c[0], ch.xz[1] - c[1]), e = ch.n - 1, d1 = Math.hypot(ch.xz[e * 2] - c[0], ch.xz[e * 2 + 1] - c[1]), tx = ch.xz[e * 2] - ch.xz[0], tz = ch.xz[e * 2 + 1] - ch.xz[1];
+    const flip = Math.abs(d0 - d1) < ADDR.RING * ch.len ? (ch.cx - c[0]) * tz - (ch.cz - c[1]) * tx < 0 : d1 < d0;
+    ord.push({ ch, flip, near: Math.min(d0, d1) });
+  }
+  ord.sort((p, q) => p.near - q.near);
+  const reversed = r(0) < ADDR.REVERSED; if (reversed) { ord.reverse(); for (const o of ord) o.flip = !o.flip; }
+  let total = 0; for (const o of ord) { o.off = total; total += o.ch.len; }
+  const q = r(1), q2 = r(2), base = q < 0.7 ? 0 : q < 0.9 ? (q2 < 0.5 ? 100 : 200) : [50, 300, 400, 1000][Math.floor(q2 * 4)];
+  const M = 4 + r(3) * 2, oddLeft = r(4) >= ADDR.FLIP, bis = r(5) < 0.3;
+  let jumpS = Infinity;
+  if (r(6) < ADDR.JUMP && total > 160) {   // a stretch numbered on its own once: the count leaps at a cross street
+    const cand = []; for (const o of ord) for (const J of junctionsOf(o.ch)) { const S = o.off + (o.flip ? o.ch.len - J.s : J.s); if (S > total * 0.25 && S < total * 0.75) cand.push(S); }
+    if (cand.length) jumpS = cand.sort((a, b) => a - b)[Math.floor(r(7) * cand.length)];
+  }
+  const at = (S) => { let v = base + S / M; if (S > jumpS) { const j = base + jumpS / M; v += Math.ceil((j + 20) / 100) * 100 - j; } return v; };
+  const sides = [[], []];
+  for (const o of ord) for (const e of entries.get(o.ch) || []) sides[(o.flip ? !e.left : e.left) === oddLeft ? 0 : 1].push({ e, S: o.off + (o.flip ? o.ch.len - e.s : e.s) });
+  let letters = 0;
+  sides.forEach((list, sd) => {
+    const p = sd ? 0 : 1, first = base + (sd ? 2 : 1); let prev = null;
+    list.sort((a, b) => a.S - b.S || (a.e.rec.seed >>> 0) - (b.e.rec.seed >>> 0));
+    for (const it of list) {
+      const j = hash2(it.e.rec.seed, 11), wob = j < 0.12 ? -2 : j > 0.88 ? 2 : 0;      // the odd building a little out of step, never out of order
+      let num = Math.max(first, 2 * Math.round((at(it.S) - p) / 2) + p + wob), suffix = '';
+      if (prev && num <= prev.num) {     // that number's taken: the next free one, or now and then the same number with a letter, like a lot split long ago
+        if (!prev.suffix && hash2(it.e.rec.seed, 23) < ADDR.LETTER) { num = prev.num; suffix = bis ? ' Bis' : '-A'; letters++; } else num = prev.num + 2;
+      }
+      const label = `${num}${suffix}`; prev = { num, suffix };
+      done.push({ id: it.e.rec.id, ids: it.e.ids, idx: it.e.rec.idx, rec: it.e.rec, name: g.name, num, suffix, label, text: `${g.name} ${label}`, odd: !sd, S: it.S, door: it.e.door, x: it.e.px, z: it.e.pz, a: it.e.a });
+    }
+  });
+  return { name: g.name, base, M: +M.toFixed(2), oddLeft, reversed, jump: jumpS < Infinity ? +jumpS.toFixed(0) : null, centre: g.ci, length: Math.round(total), letters, buildings: sides[0].length + sides[1].length };
+}
+function* addrJob() {
+  const t0 = performance.now(), entries = new Map(), none = [], lots = new Map(); let c = 0, removed = 0;
+  const add = (e) => { let l = entries.get(e.ch); if (!l) entries.set(e.ch, l = []); l.push(e); };
+  for (const rec of world.buildings) {
+    if (rec.removed) { removed++; continue; }
+    const e = addrFront(rec), gid = groupOf(rec.id);
+    if (gid) { let lot = lots.get(gid); if (!lot) lots.set(gid, lot = { ids: [], best: null }); lot.ids.push(rec.id); if (e && (!lot.best || addrBigger(e, lot.best))) lot.best = e; }   // a group takes one address, from whichever member fronts the biggest street
+    else if (e) add(e); else none.push(rec.id);
+    if (!(++c % 48)) yield;
+  }
+  for (const lot of lots.values()) { if (lot.best) { lot.best.ids = lot.ids; add(lot.best); } else none.push(...lot.ids); }
+  const groups = addrGroups(); yield;
+  const done = [], streets = [];
+  for (const g of groups) { streets.push(addrNumber(g, entries, done)); if (!(++c % 16)) yield; }
+  const byId = new Map(), grid = new Map(), texts = new Map();
+  for (const a of done) {
+    for (const id of a.ids) byId.set(id, a);
+    texts.set(a.text, (texts.get(a.text) || 0) + 1);
+    const k = gkey(Math.floor(a.x / 64) + 2000, Math.floor(a.z / 64) + 2000); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(a);
+  }
+  ADDR.byId = byId; ADDR.list = done; ADDR.grid = grid; ADDR.ready = true; ADDR.ms = Math.round(performance.now() - t0);
+  ADDR.report = { none, removed, streets, sameTwice: [...texts].filter(([, n]) => n > 1).map(([t]) => t) };
+  PLATE.x = 1e9; PLATE.dirty = true;
+  if (ui.selected && !ui.editing) renderInfo();
+}
+function addrPump() {
+  const job = ADDR.job; if (!job) return;
+  const t = performance.now(), slice = document.hidden ? 120 : 5;     // a little each frame, so loading never hitches
+  while (performance.now() - t < slice) { if (job.next().done) { ADDR.job = null; return; } }
+  ADDR.timer = setTimeout(addrPump, document.hidden ? 0 : 16);
+}
+function addrSchedule(delay = 1200) { clearTimeout(ADDR.timer); ADDR.job = null; ADDR.timer = setTimeout(() => { ADDR.job = addrJob(); addrPump(); }, delay); }
+function addrDocsSig() { let s = ''; for (const [gid, g] of store.groups) s += `${gid}:${(g.ids || []).join(',')}|`; for (const [id, d] of store.buildings) { const y = d.style; if (y && (y.removed || y.replace || y.doors !== undefined || y.doorSide)) s += `${id}${y.removed ? 'r' : ''}${y.replace || ''}${y.doors ?? ''}${y.doorSide || ''}|`; } return s; }
+function addrCheckDocs() { const s = addrDocsSig(); if (s !== ADDR.sig) { ADDR.sig = s; addrSchedule(); } }
+function addressHits(toks, full) {     // addresses worked out by the map, for search; a typed address is found through its own doc
+  const out = []; if (!ADDR.ready || !toks.some((t) => /\d/.test(t))) return out;
+  for (const a of ADDR.list) {
+    const hay = a.search || (a.search = norm(a.text));
+    if (!toks.every((t) => hay.includes(t))) continue;
+    if (norm(docFor0(a.id).address) || addressOf(a.id) !== a.text) continue;
+    const num = norm(a.label), score = hay === full ? 118 : toks.includes(num) || toks.includes(String(a.num)) ? 64 : 14;
+    out.push({ a, score });
+  }
+  return out;
+}
+const docFor0 = (id) => store.buildings.get(id) || {};
+// ---- the number plates, seen on foot: small blue-and-white tiles beside the doors, matching the corner plaques
+const PLATE = { R: 45, ALT: 40, MAX: 60, UP: 2.2, H: 0.27, NEW: 8, group: null, pool: [], tex: new Map(), at: 0, x: 1e9, z: 1e9, dirty: true, shown: 0 };
+function plateTexture(label) {
+  const big = label.length > 4, pxW = big ? 400 : label.length > 3 ? 300 : 240, pxH = 150, cv = document.createElement('canvas'); cv.width = pxW; cv.height = pxH;
+  const c = cv.getContext('2d'), blue = '#1c3f94';
+  c.fillStyle = '#f4f0e6'; c.fillRect(0, 0, pxW, pxH);
+  c.strokeStyle = blue; c.lineWidth = 7; c.strokeRect(9, 9, pxW - 18, pxH - 18);
+  c.fillStyle = blue; c.textAlign = 'center'; c.textBaseline = 'middle';
+  let size = 92; c.font = `700 ${size}px Georgia, 'Times New Roman', serif`;
+  while (size > 30 && c.measureText(label).width > pxW - 44) { size -= 2; c.font = `700 ${size}px Georgia, 'Times New Roman', serif`; }
+  c.fillText(label, pxW / 2, pxH / 2 + 5);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.userData = { w: PLATE.H * pxW / pxH, used: 0 }; return tex;
+}
+function stepPlates() {
+  const now = performance.now(); if (now - PLATE.at < 300) return; PLATE.at = now;
+  const c = camera.position, low = ADDR.ready && player.mode !== 'plan' && c.y - H(c.x, c.z) < PLATE.ALT;
+  if (!PLATE.group) { PLATE.group = new THREE.Group(); scene.add(PLATE.group); PLATE.geo = new THREE.PlaneGeometry(1, 1); }
+  PLATE.group.visible = low; if (!low) return;
+  const glow = 0.05 + NIGHT.value * 0.4, found = [], R = PLATE.R, ix = Math.floor(c.x / 64) + 2000, iz = Math.floor(c.z / 64) + 2000;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const l = ADDR.grid.get(gkey(ix + a, iz + b)); if (!l) continue;
+    for (const p of l) { const d = Math.hypot(p.x - c.x, p.z - c.z); if (d < R && !p.rec.removed && !isSunk(p.idx)) found.push({ p, d }); }
+  }
+  found.sort((p, q) => p.d - q.d);
+  let n = 0, made = 0;
+  for (const { p } of found) {
+    if (n >= PLATE.MAX) break;
+    let tex = PLATE.tex.get(p.label);
+    if (!tex) { if (made >= PLATE.NEW) continue; made++; tex = plateTexture(p.label); PLATE.tex.set(p.label, tex); }   // a few new tiles a tick, nearest first
+    tex.userData.used = now;
+    let m = PLATE.pool[n];
+    if (!m) { m = new THREE.Mesh(PLATE.geo, new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: glow, roughness: 0.28, metalness: 0.02 })); PLATE.pool[n] = m; PLATE.group.add(m); }
+    m.material.map = tex; m.material.emissiveMap = tex; m.material.emissiveIntensity = glow;
+    m.position.set(p.x, Math.max(p.rec.base, H(p.x, p.z)) + PLATE.UP, p.z); m.rotation.y = p.a; m.scale.set(tex.userData.w, PLATE.H, 1); m.visible = true; n++;
+  }
+  for (let i = n; i < PLATE.pool.length; i++) PLATE.pool[i].visible = false;
+  PLATE.shown = n;
+  if (PLATE.tex.size > 240) for (const [k, t] of PLATE.tex) if (now - t.userData.used > 30000) { t.dispose(); PLATE.tex.delete(k); }
 }
 
 // ─────────────────────────── public hooks ───────────────────────────
@@ -9895,6 +10121,10 @@ function runSearch(q) {
     if (ids.size === 1 && seen.has(first)) continue;
     const score = nm === norm(q) ? 122 : nm.startsWith(full) ? 102 : nm.includes(full) ? 86 : toks.every((t) => nm.includes(t)) ? 72 : 40;
     out.push({ id: first, kind: 'street', street: name, score, d: { name, tags: [], address: inf && inf.n ? inf.n.join(', ') : '' } });
+  }
+  if (!SEARCH.cats.size) for (const { a, score } of addressHits(toks, toks.join(' '))) {     // addresses the map works out
+    if (seen.has(a.id)) continue; const d = docFor(a.id); seen.add(a.id);
+    out.push({ id: a.id, kind: 'building', score, d: { ...d, name: d.name || a.text, address: d.name ? a.text : '' } });
   }
   if (/^[a-z]{1,2}[0-9a-f]{3,}$/i.test(q.trim())) for (const [id] of world.byId) { if (!seen.has(id) && id.startsWith(q.trim().toLowerCase())) { out.push({ id, kind: 'building', score: 30, d: docFor(id) }); if (out.length > 60) break; } }
   return out.sort((a, b) => b.score - a.score || (a.d.name || '').localeCompare(b.d.name || '')).slice(0, 60);
@@ -9957,7 +10187,7 @@ function initSearch() {
     setOpen(true);
     if (!rs.length) { list.append(el('li', { id: 's-empty', role: 'presentation', style: 'cursor:default;background:none' }, `No match for “${SEARCH.q.trim()}”. Street names come from the map; other names, addresses and tags from each building’s Edit details.`)); return; }
     rs.slice(0, 12).forEach((r, i) => {
-      const t = targetOf(r.id), label = r.group ? 'Group' : t ? labelOf(t.kind) : r.kind, name = r.d.name || `Unnamed ${label.toLowerCase()}`, sub = [r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
+      const t = targetOf(r.id), label = r.group ? 'Group' : t ? labelOf(t.kind) : r.kind, name = r.d.name || (t ? nameOf(r.id) : `Unnamed ${label.toLowerCase()}`), sub = [r.d.address === name ? '' : r.d.address, (r.d.tags || []).join(', ')].filter(Boolean).join(' · ');
       const li = el('li', { role: 'option', id: 's-opt-' + i, 'aria-selected': String(i === SEARCH.active) });
       li.innerHTML = `<div class="t"><span>${hl(name, SEARCH.q)}</span><span class="k">${esc(label)}</span></div>${sub ? `<div class="s">${hl(sub, SEARCH.q)}</div>` : `<div class="s">${esc(r.id)}</div>`}`;
       li.addEventListener('mousedown', (e) => e.preventDefault());
@@ -9996,6 +10226,10 @@ window.amparacan = {
   names() { const L = NAMES.view; return { on: NAMES.on, names: NAMES.byName.size, chains: NAMES.list.length, lines: NAMES.byLine.size, shown: L ? L.active.filter((l) => l.ok && l.a > 0.5).map((l) => l.ch.name) : [], k: NAMES.k, ms: +NAMES.ms.toFixed(2), complete: L && L.complete, moved: L && L.moved, active: L ? L.active.length : 0, plaques: PLAQUE.shown, here: NAMES.here && NAMES.here.name, ready: NAMES.idle / (NAMES.list.length || 1) }; },
   nameAt(x, z) { return nameAt(x, z); },
   streetLines(name) { return [...(NAMES.byName.get(name) || [])]; },
+  addressOf(id) { return docFor(id).address || addressOf(id) || null; },
+  addresses() { const R = ADDR.report; if (!R) return { ready: false }; const named = R.streets.filter((s) => s.buildings); return { ready: true, ms: ADDR.ms, addressed: ADDR.byId.size, addresses: ADDR.list.length, groupClashes: [...store.groups.keys()].filter((g) => groupIds(g).some((m) => world.byId.has(m)) && !groupAddress(g) && groupIds(g).some((m) => addressOf(m))), noAddress: R.none.length, removed: R.removed, streets: named.length, lettered: ADDR.list.filter((a) => a.suffix).length, sameTwice: R.sameTwice.length, sameTwiceExamples: R.sameTwice.slice(0, 20), started: named.reduce((m, s) => { m[s.base] = (m[s.base] || 0) + 1; return m; }, {}), jumps: named.filter((s) => s.jump !== null).length, reversed: named.filter((s) => s.reversed).length, oddRight: named.filter((s) => !s.oddLeft).length, highest: Math.max(...ADDR.list.map((a) => a.num)), plates: PLATE.shown }; },
+  addressesOn(name) { const R = ADDR.report; return { streets: R ? R.streets.filter((s) => s.name === name) : [], list: ADDR.list.filter((a) => a.name === name).sort((p, q) => p.odd - q.odd || p.S - q.S).map((a) => ({ id: a.id, label: a.label, odd: a.odd, S: Math.round(a.S), door: a.door, x: +a.x.toFixed(1), z: +a.z.toFixed(1) })) }; },
+  noAddress() { return ADDR.report ? ADDR.report.none.slice() : []; },
   plaquesAround(x, z, r = 100) { const out = []; for (const ch of NAMES.list) if (Math.hypot(ch.cx - x, ch.cz - z) < ch.r + r) for (const p of plaquesOf(ch)) if (Math.hypot(p.x - x, p.z - z) < r) out.push({ name: ch.name, x: +p.x.toFixed(1), y: +p.y.toFixed(1), z: +p.z.toFixed(1), a: +p.a.toFixed(2) }); return out; },
   meteors() { MET.next = MET.t; MET.until = 0; return todState.name === 'night' ? 'shower starting' : 'only at night'; },
   audio() { if (!AUD.ctx) return null; const d = new Float32Array(AUD.an.fftSize); AUD.an.getFloatTimeDomainData(d); let r = 0; for (const v of d) r += v * v; return { state: AUD.ctx.state, sfx: AUD.sfx, mus: AUD.mus, rms: +Math.sqrt(r / d.length).toFixed(4), shore: Math.round(AUD.shore), thunders: AUD.thunders || 0, env: AUD.env || null }; },
